@@ -24,7 +24,6 @@ jobs:
           pip install pyinstaller
 
       - name: Compilar executável
-        # Tudo numa só linha, sem \ no PowerShell
         run: pyinstaller --onefile --add-data "app.py;." --hidden-import streamlit.web.cli launcher.py
 
       - name: Upload do executável para a Release
