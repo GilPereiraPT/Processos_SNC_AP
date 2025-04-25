@@ -3,6 +3,7 @@ name: Build Windows Executable on Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -24,7 +25,6 @@ jobs:
           pip install pyinstaller
 
       - name: Compilar executável
-        # executa tudo numa só linha para não dar ParserError no PowerShell
         run: pyinstaller --onefile --add-data "app.py;." --hidden-import streamlit.web.cli launcher.py
 
       - name: Upload do executável para a Release
