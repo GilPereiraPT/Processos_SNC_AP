@@ -1,0 +1,36 @@
+name: Build Windows Executable on Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Instalar dependências
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Compilar executável
+        run: pyinstaller --onefile --add-data "app.py;." --hidden-import streamlit.web.cli launcher.py
+
+      - name: Upload do executável para a Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/launcher.exe
+          asset_name: launcher.exe
+          asset_content_type: application/octet-stream
