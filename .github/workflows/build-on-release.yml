@@ -1,6 +1,5 @@
-name: Build Windows Executable on Release
+name: Build Windows Executable
 
-# Dispara quando publicares uma Release ou manualmente via botão
 on:
   release:
     types: [published]
@@ -11,24 +10,34 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout do repositório
+      - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Configurar Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      - name: Instalar dependências
+      - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Compilar executável
+      - name: Build executable
         run: pyinstaller --onefile --add-data "app.py;." --hidden-import streamlit.web.cli launcher.py
 
-      - name: Anexar executável à Release
+      # Se for um manual dispatch, sobe o exe como artifact do Actions
+      - name: Upload as Actions artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v3
+        with:
+          name: launcher
+          path: dist/launcher.exe
+
+      # Se for um release propriamente dito, anexa o exe à Release
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release'
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ github.event.release.upload_url }}
