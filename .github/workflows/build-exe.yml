@@ -31,7 +31,7 @@ jobs:
                     launcher.py
 
     - name: Upload exe as artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v2
       with:
         name: receita-alheia-exe
         path: dist/launcher.exe
