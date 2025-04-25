@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from io import BytesIO
+from io import BytesIO, StringIO
 
 st.set_page_config(page_title="Gerador Receita Alheia", layout="wide")
 st.title("📄 Gerador de Ficheiros - Receita Alheia")
 
+# 1️⃣ Carregar ficheiro de entidades
 st.sidebar.header("1️⃣ Ficheiro de Entidades")
 entidades_file = st.sidebar.file_uploader("Carregar ficheiro .xlsx", type=["xlsx"])
 df_entidades = None
@@ -13,23 +14,32 @@ if entidades_file:
     df_entidades = pd.read_excel(entidades_file)
     st.sidebar.success("Entidades carregadas com sucesso.")
 
+# 2️⃣ Dados para gerar Receita Alheia
 st.header("2️⃣ Dados para gerar Receita Alheia")
 df_input = None
 
-metodo = st.radio("Como pretendes fornecer os dados?", ["Upload de ficheiro", "Colar dados CSV (ponto e vírgula)"])
+metodo = st.radio(
+    "Como pretendes fornecer os dados?",
+    ["Upload de ficheiro", "Colar dados CSV (ponto e vírgula)"]
+)
 
 if metodo == "Upload de ficheiro":
     dados_file = st.file_uploader("Carrega um ficheiro Excel com os dados", type=["xlsx"])
     if dados_file:
         df_input = pd.read_excel(dados_file)
+
 elif metodo == "Colar dados CSV (ponto e vírgula)":
-    texto_colado = st.text_area("Cola aqui os dados no formato CSV (separador `;`):")
+    texto_colado = st.text_area(
+        "Cola aqui os dados no formato CSV (separador `;`):"
+    )
     if texto_colado:
         try:
-            df_input = pd.read_csv(pd.compat.StringIO(texto_colado), sep=';')
+            # <-- substituído pd.compat.StringIO por StringIO do módulo io
+            df_input = pd.read_csv(StringIO(texto_colado), sep=';')
         except Exception as e:
             st.error(f"Erro ao processar os dados colados: {e}")
 
+# 3️⃣ Validação e geração do ficheiro final
 if df_input is not None and df_entidades is not None:
     codigos_validos = set(df_entidades['Código da Entidade'])
     df_input['Valido'] = df_input['Entidade'].isin(codigos_validos)
@@ -70,7 +80,11 @@ if df_input is not None and df_entidades is not None:
                     'Conta Debito': '',
                     'Conta a Credito': '',
                     'Valor Lançamento': row.get('Valor Lançamento', 0),
-                    'Observaçoes documento': f"Respeitante ao recibo nº {row['Observaçoes documento']}" if str(row['Observaçoes documento']).isdigit() else row['Observaçoes documento'],
+                    'Observaçoes documento': (
+                        f"Respeitante ao recibo nº {row['Observaçoes documento']}"
+                        if str(row['Observaçoes documento']).isdigit()
+                        else row['Observaçoes documento']
+                    ),
                     'Observaçoes lançamento': '',
                     'Projeto Documento': ''
                 }
@@ -98,8 +112,14 @@ if df_input is not None and df_entidades is not None:
         df_final = pd.DataFrame(linhas_finais)
         st.dataframe(df_final)
 
+        # 4️⃣ Preparar download do Excel gerado
         buffer = BytesIO()
         df_final.to_excel(buffer, index=False)
         buffer.seek(0)
 
-        st.download_button("⬇️ Exportar Excel", data=buffer, file_name="ficheiro_RA.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button(
+            "⬇️ Exportar Excel",
+            data=buffer,
+            file_name="ficheiro_RA.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
