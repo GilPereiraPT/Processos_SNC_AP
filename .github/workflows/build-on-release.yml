@@ -23,13 +23,8 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build do executável
-        shell: bash
-        run: |
-          pyinstaller --onefile \
-                      --add-data "app.py;." \
-                      --hidden-import streamlit.web.cli \
-                      launcher.py
+      - name: Compilar executável
+        run: pyinstaller --onefile --add-data "app.py;." --hidden-import streamlit.web.cli launcher.py
 
       - name: Upload do executável para a Release
         uses: actions/upload-release-asset@v1
