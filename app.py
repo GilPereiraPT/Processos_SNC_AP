@@ -2,9 +2,16 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from io import BytesIO, StringIO
+import unicodedata
 
 st.set_page_config(page_title="Gerador Receita Alheia", layout="wide")
 st.title("📄 Gerador de Ficheiros - Receita Alheia")
+
+# Função de normalização de texto (lower, sem acentos, strip)
+def normalize(col_name: str) -> str:
+    s = col_name.strip().lower()
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(ch for ch in s if not unicodedata.combining(ch))
 
 # 1️⃣ Carregar ficheiro de entidades
 st.sidebar.header("1️⃣ Ficheiro de Entidades")
@@ -12,7 +19,23 @@ entidades_file = st.sidebar.file_uploader("Carregar ficheiro .xlsx", type=["xlsx
 df_entidades = None
 if entidades_file:
     df_entidades = pd.read_excel(entidades_file)
+    # tira espaços em branco inadvertidos dos labels
+    df_entidades.columns = df_entidades.columns.str.strip()
     st.sidebar.success("Entidades carregadas com sucesso.")
+    # Mostra quais são as colunas lidas
+    st.sidebar.write("📋 Colunas encontradas:", df_entidades.columns.tolist())
+
+    # Detecta automaticamente a coluna de 'Código da Entidade'
+    norm_map = { normalize(col): col for col in df_entidades.columns }
+    chave = normalize("Código da Entidade")
+    if chave in norm_map:
+        # renomeia para sempre usar este nome no restante código
+        df_entidades.rename(columns={ norm_map[chave]: "Código da Entidade" }, inplace=True)
+    else:
+        st.sidebar.error(
+            "⚠️ Não encontrei nenhuma coluna equivalente a 'Código da Entidade'.\n"
+            "Verifique o nome do cabeçalho no seu ficheiro."
+        )
 
 # 2️⃣ Dados para gerar Receita Alheia
 st.header("2️⃣ Dados para gerar Receita Alheia")
@@ -29,19 +52,17 @@ if metodo == "Upload de ficheiro":
         df_input = pd.read_excel(dados_file)
 
 elif metodo == "Colar dados CSV (ponto e vírgula)":
-    texto_colado = st.text_area(
-        "Cola aqui os dados no formato CSV (separador `;`):"
-    )
+    texto_colado = st.text_area("Cola aqui os dados no formato CSV (separador `;`):")
     if texto_colado:
         try:
-            # <-- substituído pd.compat.StringIO por StringIO do módulo io
             df_input = pd.read_csv(StringIO(texto_colado), sep=';')
         except Exception as e:
             st.error(f"Erro ao processar os dados colados: {e}")
 
 # 3️⃣ Validação e geração do ficheiro final
 if df_input is not None and df_entidades is not None:
-    codigos_validos = set(df_entidades['Código da Entidade'])
+    # Aqui já temos garantido que existe df_entidades["Código da Entidade"]
+    codigos_validos = set(df_entidades["Código da Entidade"])
     df_input['Valido'] = df_input['Entidade'].isin(codigos_validos)
 
     st.subheader("🔍 Validação de Códigos")
