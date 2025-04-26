@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-from collections import defaultdict, Counter
 import io
+import re
+from collections import defaultdict, Counter
+from datetime import datetime
 
-# Cabeçalhos esperados
+# --- Configurações ---
 CABECALHOS = [
     'Conta', 'Data Contab.', 'Data Doc.', 'Nº Lancamento', 'Entidade', 'Designação',
     'Tipo', 'Nº Documento', 'Serie', 'Ano', 'Debito', 'Credito', 'Acumulado',
@@ -15,142 +16,153 @@ CABECALHOS = [
     'Utiliz Ult Alteração', 'Data Ult Alteração'
 ]
 
-# Mapeamento Fonte → Cl. Orgânica esperado\NORG_POR_FONTE = {
-    '368': '108904000', '31H': '108904000', '483': '108904000', '488': '108904000',
-    '511': '101904000', '513': '101904000', '521': '101904000', '522': '101904000',
-    '541': '101904000', '724': '101904000',
+ORG_POR_FONTE = {
+    '368': '108904000',
+    '31H': '108904000',
+    '483': '108904000',
+    '488': '108904000',
+    '511': '101904000',
+    '513': '101904000',
+    '521': '101904000',
+    '522': '101904000',
+    '541': '101904000',
+    '724': '101904000',
 }
 
-# Configurar Streamlit
 st.set_page_config(page_title="Validador SNC-AP", layout="wide")
-st.title("🛡️ Validador SNC-AP")
+st.title("🛡️ Validador de Lançamentos SNC-AP")
 st.markdown(
-    "Carrega um **ficheiro CSV** gerado pelo SNC-AP e valida as mesmas regras do teu script local; no fim, descarrega um Excel com a coluna `Erro`."
+    "Carrega um **ficheiro CSV** gerado pelo SNC-AP para validar regras de fonte, rubrica, DOCID, etc.  \n"
+    "Verás uma barra de progresso e, no fim, poderás descarregar um Excel com a coluna `Erro`."
 )
 
-uploaded = st.file_uploader("Selecione um ficheiro CSV", type="csv")
+uploaded = st.file_uploader("Selecione um ficheiro CSV", type="csv", accept_multiple_files=False)
 
-# Função para normalizar campos de texto (remover espaços e caracteres estranhos)
-def normalize(text, only_digits=False):
-    txt = str(text).strip()
-    # remove espaços duros e outros
-    txt = txt.replace("\xa0", "").replace(" ", "")
-    if only_digits:
-        return ''.join(filter(str.isdigit, txt))
-    else:
-        return ''.join(filter(str.isalnum, txt))
+def limpar_texto(x: str) -> str:
+    # remove espaços, apóstrofos, símbolos e normaliza
+    return re.sub(r"[^\w\d]", "", str(x or "")).strip()
 
-# Funções de validação
-
-def extrair_rubrica(conta):
-    partes = str(conta).split('.')
-    return '.'.join(partes[1:]) if len(partes) > 1 else ''
-
+def extrair_rubrica(conta: str) -> str:
+    partes = str(conta).split(".")
+    return ".".join(partes[1:]) if len(partes) > 1 else ""
 
 def validar_linha(idx, row):
     erros = []
-    rd = normalize(row['R/D'])
-    fonte = normalize(row['Fonte Finan.'])
-    org = normalize(row['Cl. Orgânica'], only_digits=True)
-    programa = normalize(row['Programa'])
-    medida = normalize(row['Medida'])
-    projeto = row['Projeto']
-    atividade = normalize(row['Atividade'])
-    funcional = normalize(row['Cl. Funcional'])
-    entidade = normalize(row['Entidade'], only_digits=True)
+    # normalização
+    rd        = limpar_texto(row['R/D'])
+    fonte     = limpar_texto(row['Fonte Finan.'])
+    org       = limpar_texto(row['Cl. Orgânica'])
+    programa  = limpar_texto(row['Programa'])
+    medida    = limpar_texto(row['Medida'])
+    projeto   = str(row['Projeto']).strip()
+    atividade = limpar_texto(row['Atividade'])
+    funcional = limpar_texto(row['Cl. Funcional'])
+    entidade  = limpar_texto(row['Entidade'])
 
-    # 1) Fonte vazia
+    # Fonte não preenchida
     if not fonte:
-        erros.append("Fonte de Financiamento não preenchida")
-    # 2) Cl. Orgânica conforme fonte
+        erros.append("Fonte de Finan. não preenchida")
+    # Cl. Orgânica conforme fonte
     elif fonte in ORG_POR_FONTE and org != ORG_POR_FONTE[fonte]:
-        erros.append(f"Cl. Orgânica deve ser {ORG_POR_FONTE[fonte]} para fonte {fonte}, mas está {org}")
+        erros.append(f"Cl. Orgânica deve ser {ORG_POR_FONTE[fonte]} para fonte {fonte}")
 
-    # 3) Regras R ou D
+    # Regras R / D
     if rd == 'R':
         if entidade == '971010' and fonte != '511':
             erros.append("Fonte Finan. deve ser 511 para entidade 971010")
         if programa != "011":
-            erros.append("Programa deve ser '011'")
-        if fonte not in ['483','31H','488'] and medida != '022':
-            erros.append("Medida deve ser '022' (exceto fontes 483,31H,488)")
+            erros.append("Programa deve ser 011")
+        if fonte not in ['483', '31H', '488'] and medida != "022":
+            erros.append("Medida deve ser 022 (exceto fontes 483,31H,488)")
         if entidade == '971007' and fonte != '541':
             erros.append("Fonte Finan. deve ser 541 para entidade 971007")
-    elif rd == 'D':
-        if fonte not in ['483','31H','488'] and medida != '022':
-            erros.append("Medida deve ser '022' (exceto fontes 483,31H,488)")
-        if org == '101904000':
-            if pd.notna(projeto) and str(projeto).strip():
-                if atividade != '000':
-                    erros.append("Se o Projeto estiver preenchido, a Atividade deve ser 000")
-            else:
-                if atividade != '130':
-                    erros.append("Se o Projeto estiver vazio, a Atividade deve ser 130")
-        if org == '108904000':
-            if atividade != '000' or not(pd.notna(projeto) and str(projeto).strip()):
-                erros.append("Atividade deve ser 000 e Projeto preenchido")
-        if funcional != '0730':
-            erros.append("Cl. Funcional deve ser '0730'")
-    return erros
 
+    elif rd == 'D':
+        if fonte not in ['483', '31H', '488'] and medida != "022":
+            erros.append("Medida deve ser 022 (exceto fontes 483,31H,488)")
+        if org == '101904000':
+            if projeto and atividade != '000':
+                erros.append("Projeto preenchido → Atividade deve ser 000")
+            if not projeto and atividade != '130':
+                erros.append("Projeto vazio → Atividade deve ser 130")
+        if org == '108904000':
+            if atividade != '000' or not projeto:
+                erros.append("Cl. Orgânica 108904000 → Atividade=000 e Projeto preenchido")
+        if funcional != "0730":
+            erros.append("Cl. Funcional deve ser 0730")
+
+    return erros
 
 def validar_documentos_co(df):
     erros = []
     df_co = df[df['Tipo'] == 'CO']
-    for docid, grupo in df_co.groupby('DOCID'):
-        debs = grupo[grupo['Conta'].astype(str).str.startswith(('0281','0282'))]
-        creds = grupo[grupo['Conta'].astype(str).str.startswith('0272')]
+    for docid, grp in df_co.groupby('DOCID'):
+        debs  = grp[grp['Conta'].astype(str).str.startswith(('0281','0282'))]
+        creds = grp[grp['Conta'].astype(str).str.startswith('0272')]
         rubs = {extrair_rubrica(c) for c in debs['Conta']}
         for idx, ln in creds.iterrows():
             rub = extrair_rubrica(ln['Conta'])
             if rub not in rubs:
-                erros.append((idx, f"DOCID {docid}: falta débito para rubrica {rub}"))
+                erros.append((idx, f"DOCID {docid}: sem débito para rubrica {rub}"))
     return erros
 
-# Processamento principal
 if uploaded:
-    content = uploaded.getvalue().decode('ISO-8859-1')
-    df = pd.read_csv(io.StringIO(content), sep=';', header=9,
-                     names=CABECALHOS, dtype=str, low_memory=False)
-    # remover duplicado de cabeçalho
+    st.subheader(f"Processando {uploaded.name}")
+    # leitura e limpeza
+    df = pd.read_csv(
+        io.StringIO(uploaded.getvalue().decode('ISO-8859-1')),
+        sep=';', skiprows=9, names=CABECALHOS,
+        dtype=str, keep_default_na=False, low_memory=False
+    )
+    # filtrar cabeçalhos repetidos e "Saldo Inicial"
     df = df[df['Conta'] != 'Conta']
-    # remover Saldo Inicial
-    df = df[~df['Data Contab.'].str.contains('Saldo Inicial', na=False)]
-
+    df = df[~df['Data Contab.'].str.contains("Saldo Inicial", na=False)]
     n = len(df)
-    st.subheader(f"Processando {uploaded.name} ({n} linhas)")
+
     progresso = st.progress(0)
-
-    erros_por_linha = defaultdict(list)
     resumo = Counter()
+    erros_por_linha = defaultdict(list)
 
-    for idx, row in df.iterrows():
-        msgs = validar_linha(idx, row)
+    # valida linha a linha
+    block = max(1, n // 100)
+    for i, row in df.iterrows():
+        msgs = validar_linha(i, row)
         if msgs:
-            erros_por_linha[idx].extend(msgs)
+            erros_por_linha[i].extend(msgs)
             resumo.update(msgs)
-        progresso.progress(min((idx+1)/n, 1.0))
+        if i % block == 0 or i == n - 1:
+            progresso.progress(min((i + 1) / n, 1.0))
 
+    # valida CO
     for idx, msg in validar_documentos_co(df):
         erros_por_linha[idx].append(msg)
-        resumo.update([msg])
+        resumo[msg] += 1
 
-    # coluna de Erro
-    df['Erro'] = df.index.map(lambda i: '; '.join(erros_por_linha.get(i, ['Sem erros'])))
+    # preencher coluna Erro
+    df['Erro'] = [
+        "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
+        for i in range(n)
+    ]
 
-    # exibir e download
-    st.dataframe(df)
+    # gerar Excel e botão de download
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
     buffer.seek(0)
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    fname = f"{uploaded.name.rstrip('.csv')}_output_{ts}.xlsx"
-    st.download_button("⬇️ Descarregar Excel", data=buffer, file_name=fname,
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nome_ficheiro = f"{uploaded.name.rstrip('.csv')}_output_{ts}.xlsx"
 
+    st.success("Validação concluída!")
+    st.dataframe(df)
+    st.download_button(
+        "⬇️ Descarregar Excel com erros",
+        data=buffer, file_name=nome_ficheiro,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # resumo geral
     if resumo:
-        st.subheader('📊 Resumo de Erros')
-        df_resumo = pd.DataFrame(resumo.most_common(), columns=['Regra','Ocorrências'])
-        st.table(df_resumo)
+        st.subheader("📊 Resumo de Erros")
+        st.table(pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"]))
+
 else:
-    st.info('Primeiro, carrega um ficheiro CSV acima.')
+    st.info("Primeiro, carrega um ficheiro CSV acima.")
