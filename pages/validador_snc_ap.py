@@ -40,37 +40,38 @@ def extrair_rubrica(conta: str) -> str:
 
 def validar_linha(idx, row):
     erros = []
-    rd = str(row['R/D']).strip()
-    fonte = str(row['Fonte Finan.']).strip()
-    org = str(row['Cl. Orgânica']).strip()
-    programa = str(row['Programa']).strip()
-    medida = str(row['Medida']).strip()
-    projeto = row['Projeto']
+    # Extrai e normaliza valores
+    rd        = str(row['R/D']).strip()
+    fonte     = str(row['Fonte Finan.']).strip()
+    org       = str(row['Cl. Orgânica']).replace("'", "").strip()
+    programa  = str(row['Programa']).replace("'", "").strip()
+    medida    = str(row['Medida']).replace("'", "").strip()
+    projeto   = row['Projeto']
     atividade = str(row['Atividade']).strip()
-    funcional = str(row['Cl. Funcional']).strip()
-    entidade = str(row['Entidade']).strip()
+    funcional = str(row['Cl. Funcional']).replace("'", "").strip()
+    entidade  = str(row['Entidade']).strip()
 
-    # fonte não preenchida
+    # 1) Fonte não preenchida
     if not fonte:
         erros.append("Fonte de Financiamento não preenchida")
-    # 1) Verifica orgânica conforme fonte
+    # 2) Verifica orgânica conforme fonte (após normalizar aspas)
     elif fonte in ORG_POR_FONTE and org != ORG_POR_FONTE[fonte]:
         erros.append(f"Cl. Orgânica deve ser {ORG_POR_FONTE[fonte]} para fonte {fonte}")
 
-    # 2) Regras R ou D
+    # 3) Regras específicas consoante R/D
     if rd == 'R':
         if entidade == '971010' and fonte != '511':
             erros.append("Fonte Finan. deve ser 511 para entidade 971010")
-        if programa != "'011":
-            erros.append("Programa deve ser '011'")
-        if fonte not in ['483','31H','488'] and medida != "'022":
-            erros.append("Medida deve ser '022' (exceto fontes 483,31H,488)")
+        if programa != '011':
+            erros.append("Programa deve ser 011")
+        if fonte not in ['483','31H','488'] and medida != '022':
+            erros.append("Medida deve ser 022 (exceto fontes 483,31H,488)")
         if entidade == '971007' and fonte != '541':
             erros.append("Fonte Finan. deve ser 541 para entidade 971007")
 
     elif rd == 'D':
-        if fonte not in ['483','31H','488'] and medida != "'022":
-            erros.append("Medida deve ser '022' (exceto fontes 483,31H,488)")
+        if fonte not in ['483','31H','488'] and medida != '022':
+            erros.append("Medida deve ser 022 (exceto fontes 483,31H,488)")
         if org == '101904000':
             if pd.notna(projeto) and str(projeto).strip():
                 if atividade != '000':
@@ -79,10 +80,11 @@ def validar_linha(idx, row):
                 if atividade != '130':
                     erros.append("Se o Projeto estiver vazio, a Atividade deve ser 130")
         if org == '108904000':
-            if atividade != '000' or not(pd.notna(projeto) and str(projeto).strip()):
-                erros.append("Atividade deve ser 000 e Projeto preenchido")
-        if funcional != "'0730":
-            erros.append("Cl. Funcional deve ser '0730'")
+            if atividade != '000' or not (pd.notna(projeto) and str(projeto).strip()):
+                erros.append("Atividade deve ser 000 e Projeto preenchido (Cl. Orgânica 108904000)")
+        if funcional != '0730':
+            erros.append("Cl. Funcional deve ser 0730")
+
     return erros
 
 
