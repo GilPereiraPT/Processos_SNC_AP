@@ -28,6 +28,9 @@ ORG_POR_FONTE = {
     '522': '101904000',
     '541': '101904000',
     '724': '101904000',
+    '721': '101904000',
+    '361': '108904000',
+    '415': '108904000',
 }
 
 # --- Funções auxiliares ---
@@ -80,6 +83,12 @@ def validar_linha(row):
     elif fonte in ORG_POR_FONTE and org != ORG_POR_FONTE[fonte]:
         erros.append(f"Cl. Orgânica deve ser {ORG_POR_FONTE[fonte]} para fonte {fonte}")
 
+    # NOVAS Regras para fontes específicas
+    if fonte == '721' and org != '101904000':
+        erros.append(f"Fonte {fonte} deve ter Cl. Orgânica 101904000, mas tem {org}")
+    if fonte in ['361', '415'] and org != '108904000':
+        erros.append(f"Fonte {fonte} deve ter Cl. Orgânica 108904000, mas tem {org}")
+
     if rd == 'R':
         if entidade == '971010' and fonte != '511':
             erros.append("Fonte Finan. deve ser 511 para entidade 971010")
@@ -125,8 +134,8 @@ def validar_documentos_co(df):
     return erros
 
 # --- Streamlit App ---
-st.set_page_config(page_title="Validador SNC-AP Turbo Corrigido", layout="wide")
-st.title("🛡️ Validador de Lançamentos SNC-AP Turbo Corrigido")
+st.set_page_config(page_title="Validador SNC-AP Turbo Finalíssimo", layout="wide")
+st.title("🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo")
 
 uploaded = st.file_uploader("Carrega um ficheiro CSV ou ZIP", type=["csv", "zip"])
 
@@ -137,7 +146,6 @@ if uploaded:
         df = df[df['Conta'] != 'Conta']
         df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
 
-        # Validação rápida
         with st.spinner("Validando linhas..."):
             df['Erro'] = df.apply(validar_linha, axis=1)
 
@@ -149,11 +157,9 @@ if uploaded:
                 else:
                     df.at[idx, 'Erro'] += f"; {msg}"
 
-        # Mostrar DataFrame
         st.success(f"Validação concluída. Total de linhas: {len(df)}")
         st.dataframe(df)
 
-        # Resumo de Erros
         resumo = Counter()
         for erros in df['Erro']:
             if erros != "Sem erros":
@@ -165,12 +171,10 @@ if uploaded:
             resumo_df = pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"])
             st.table(resumo_df)
 
-            # Gráfico
             fig, ax = plt.subplots(figsize=(8, len(resumo_df) * 0.5))
             resumo_df.plot(kind="barh", x="Regra", y="Ocorrências", ax=ax, legend=False)
             st.pyplot(fig)
 
-        # Gerar Excel
         buffer = io.BytesIO()
         df.to_excel(buffer, index=False, engine='openpyxl')
         buffer.seek(0)
