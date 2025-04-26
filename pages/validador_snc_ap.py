@@ -30,12 +30,9 @@ ORG_POR_FONTE = {
 }
 
 st.set_page_config(page_title="Validador SNC-AP", layout="wide")
-st.title("🛡️ Validador de Lançamentos SNC-AP (.zip ou CSV finalíssimo)")
-st.markdown(
-    "Carrega um **ficheiro ZIP ou CSV** para validar lançamentos conforme as regras locais!"
-)
+st.title("🛡️ Validador de Lançamentos SNC-AP (CSV ou ZIP)")
 
-uploaded = st.file_uploader("Selecione um ficheiro ZIP ou CSV", type=["zip", "csv"], accept_multiple_files=False)
+uploaded = st.file_uploader("Selecione um ficheiro CSV ou ZIP", type=["csv", "zip"], accept_multiple_files=False)
 
 def extrair_rubrica(conta: str) -> str:
     partes = str(conta).split(".")
@@ -107,79 +104,83 @@ def validar_documentos_co(df):
 if uploaded:
     st.subheader(f"Processando {uploaded.name}")
 
-    if uploaded.name.endswith(".zip"):
-        with zipfile.ZipFile(uploaded) as zip_ref:
-            filenames = zip_ref.namelist()
-            if filenames:
-                with zip_ref.open(filenames[0]) as f:
-                    df = pd.read_csv(
-                        f,
-                        sep=';',
-                        header=9,
-                        names=CABECALHOS,
-                        encoding='ISO-8859-1',
-                        dtype=str,
-                        low_memory=False
-                    )
-            else:
-                st.error("O ZIP está vazio.")
-                st.stop()
-    else:
-        uploaded.seek(0)
-        df = pd.read_csv(
-            uploaded,
-            sep=';',
-            header=9,
-            names=CABECALHOS,
-            encoding='ISO-8859-1',
-            dtype=str,
-            low_memory=False
+    try:
+        if uploaded.name.endswith(".zip"):
+            with zipfile.ZipFile(uploaded) as zip_ref:
+                filenames = zip_ref.namelist()
+                if filenames:
+                    with zip_ref.open(filenames[0]) as f:
+                        df = pd.read_csv(
+                            f,
+                            sep=';',
+                            header=9,
+                            names=CABECALHOS,
+                            encoding='ISO-8859-1',
+                            dtype=str,
+                            low_memory=False
+                        )
+                else:
+                    st.error("O ZIP está vazio.")
+                    st.stop()
+        else:  # CSV normal
+            uploaded.seek(0)
+            df = pd.read_csv(
+                uploaded,
+                sep=';',
+                header=9,
+                names=CABECALHOS,
+                encoding='ISO-8859-1',
+                dtype=str,
+                low_memory=False
+            )
+
+        df = df[df['Conta'] != 'Conta']
+        df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
+        n = len(df)
+
+        progresso = st.progress(0)
+        resumo = Counter()
+        erros_por_linha = defaultdict(list)
+
+        block = max(1, n // 100)
+        for i, row in df.iterrows():
+            msgs = validar_linha(i, row)
+            if msgs:
+                erros_por_linha[i].extend(msgs)
+                resumo.update(msgs)
+            if i % block == 0 or i == n - 1:
+                progresso.progress(min((i + 1) / n, 1.0))
+
+        for idx, msg in validar_documentos_co(df):
+            erros_por_linha[idx].append(msg)
+            resumo[msg] += 1
+
+        df['Erro'] = [
+            "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
+            for i in range(n)
+        ]
+
+        buffer = io.BytesIO()
+        df.to_excel(buffer, index=False)
+        buffer.seek(0)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nome_ficheiro = f"{uploaded.name.rstrip('.csv').rstrip('.zip')}_output_{ts}.xlsx"
+
+        st.success("Validação concluída!")
+        st.dataframe(df)
+        st.download_button(
+            "⬇️ Descarregar Excel com erros",
+            data=buffer,
+            file_name=nome_ficheiro,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-    df = df[df['Conta'] != 'Conta']
-    df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
-    n = len(df)
-
-    progresso = st.progress(0)
-    resumo = Counter()
-    erros_por_linha = defaultdict(list)
-
-    block = max(1, n // 100)
-    for i, row in df.iterrows():
-        msgs = validar_linha(i, row)
-        if msgs:
-            erros_por_linha[i].extend(msgs)
-            resumo.update(msgs)
-        if i % block == 0 or i == n - 1:
-            progresso.progress(min((i + 1) / n, 1.0))
-
-    for idx, msg in validar_documentos_co(df):
-        erros_por_linha[idx].append(msg)
-        resumo[msg] += 1
-
-    df['Erro'] = [
-        "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
-        for i in range(n)
-    ]
-
-    buffer = io.BytesIO()
-    df.to_excel(buffer, index=False)
-    buffer.seek(0)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nome_ficheiro = f"{uploaded.name.rstrip('.csv').rstrip('.zip')}_output_{ts}.xlsx"
-
-    st.success("Validação concluída!")
-    st.dataframe(df)
-    st.download_button(
-        "⬇️ Descarregar Excel com erros",
-        data=buffer,
-        file_name=nome_ficheiro,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    if resumo:
-        st.subheader("📊 Resumo de Erros")
-        st.table(pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"]))
+        if resumo:
+            st.subheader("📊 Resumo de Erros")
+            st.table(pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"]))
+        
+    except Exception as e:
+        st.error(f"Erro ao processar o ficheiro: {e}")
 
 else:
-    st.info("Primeiro, carrega um ficheiro ZIP ou CSV acima.")
+    st.info("Primeiro, carrega um ficheiro CSV ou ZIP acima.")
