@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import zipfile
 import io
 from collections import defaultdict, Counter
 from datetime import datetime
@@ -29,13 +30,12 @@ ORG_POR_FONTE = {
 }
 
 st.set_page_config(page_title="Validador SNC-AP", layout="wide")
-st.title("🛡️ Validador de Lançamentos SNC-AP")
+st.title("🛡️ Validador de Lançamentos SNC-AP (.zip test)")
 st.markdown(
-    "Carrega um **ficheiro CSV** gerado pelo SNC-AP para validar regras específicas de Receita (R).  \n"
-    "**Nota**: Aplicamos regras especiais para entidade 971010 e 971007 em Receitas (R)."
+    "Carrega um **ficheiro ZIP** que contém o CSV para validação. Assim evitamos problemas de encoding via browser!"
 )
 
-uploaded = st.file_uploader("Selecione um ficheiro CSV", type="csv", accept_multiple_files=False)
+uploaded = st.file_uploader("Selecione um ficheiro ZIP", type="zip", accept_multiple_files=False)
 
 def extrair_rubrica(conta: str) -> str:
     partes = str(conta).split(".")
@@ -107,61 +107,67 @@ def validar_documentos_co(df):
 if uploaded:
     st.subheader(f"Processando {uploaded.name}")
     
-    uploaded.seek(0)  # Reset pointer para o início do ficheiro
-    df = pd.read_csv(
-        uploaded,
-        sep=';',
-        header=9,
-        names=CABECALHOS,
-        encoding='ISO-8859-1',
-        dtype=str,
-        low_memory=False
-    )
+    with zipfile.ZipFile(uploaded) as zip_ref:
+        filenames = zip_ref.namelist()
+        if filenames:
+            with zip_ref.open(filenames[0]) as f:
+                df = pd.read_csv(
+                    f,
+                    sep=';',
+                    header=9,
+                    names=CABECALHOS,
+                    encoding='ISO-8859-1',
+                    dtype=str,
+                    low_memory=False
+                )
 
-    df = df[df['Conta'] != 'Conta']
-    df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
-    n = len(df)
+            df = df[df['Conta'] != 'Conta']
+            df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
+            n = len(df)
 
-    progresso = st.progress(0)
-    resumo = Counter()
-    erros_por_linha = defaultdict(list)
+            progresso = st.progress(0)
+            resumo = Counter()
+            erros_por_linha = defaultdict(list)
 
-    block = max(1, n // 100)
-    for i, row in df.iterrows():
-        msgs = validar_linha(i, row)
-        if msgs:
-            erros_por_linha[i].extend(msgs)
-            resumo.update(msgs)
-        if i % block == 0 or i == n - 1:
-            progresso.progress(min((i + 1) / n, 1.0))
+            block = max(1, n // 100)
+            for i, row in df.iterrows():
+                msgs = validar_linha(i, row)
+                if msgs:
+                    erros_por_linha[i].extend(msgs)
+                    resumo.update(msgs)
+                if i % block == 0 or i == n - 1:
+                    progresso.progress(min((i + 1) / n, 1.0))
 
-    for idx, msg in validar_documentos_co(df):
-        erros_por_linha[idx].append(msg)
-        resumo[msg] += 1
+            for idx, msg in validar_documentos_co(df):
+                erros_por_linha[idx].append(msg)
+                resumo[msg] += 1
 
-    df['Erro'] = [
-        "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
-        for i in range(n)
-    ]
+            df['Erro'] = [
+                "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
+                for i in range(n)
+            ]
 
-    buffer = io.BytesIO()
-    df.to_excel(buffer, index=False)
-    buffer.seek(0)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nome_ficheiro = f"{uploaded.name.rstrip('.csv')}_output_{ts}.xlsx"
+            buffer = io.BytesIO()
+            df.to_excel(buffer, index=False)
+            buffer.seek(0)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            nome_ficheiro = f"{filenames[0].rstrip('.csv')}_output_{ts}.xlsx"
 
-    st.success("Validação concluída!")
-    st.dataframe(df)
-    st.download_button(
-        "⬇️ Descarregar Excel com erros",
-        data=buffer, 
-        file_name=nome_ficheiro,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+            st.success("Validação concluída!")
+            st.dataframe(df)
+            st.download_button(
+                "⬇️ Descarregar Excel com erros",
+                data=buffer,
+                file_name=nome_ficheiro,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
-    if resumo:
-        st.subheader("📊 Resumo de Erros")
-        st.table(pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"]))
+            if resumo:
+                st.subheader("📊 Resumo de Erros")
+                st.table(pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"]))
+
+        else:
+            st.error("O ZIP não contém nenhum ficheiro.")
 
 else:
-    st.info("Primeiro, carrega um ficheiro CSV acima.")
+    st.info("Primeiro, carrega um ficheiro ZIP acima.")
