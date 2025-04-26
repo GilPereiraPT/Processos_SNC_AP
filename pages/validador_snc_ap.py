@@ -32,21 +32,23 @@ uploaded = st.file_uploader(
     "Selecione um ficheiro CSV", type="csv", accept_multiple_files=False
 )
 
+
 def extrair_rubrica(conta: str) -> str:
     partes = str(conta).split(".")
     return ".".join(partes[1:]) if len(partes) > 1 else ""
 
+
 def validar_linha(idx, row):
     erros = []
-    rd        = str(row['R/D']).strip()
-    fonte     = str(row['Fonte Finan.']).strip()
-    org       = str(row['Cl. Orgânica']).strip()
-    programa  = str(row['Programa']).strip()
-    medida    = str(row['Medida']).strip()
-    projeto   = row['Projeto']
+    rd = str(row['R/D']).strip()
+    fonte = str(row['Fonte Finan.']).strip()
+    org = str(row['Cl. Orgânica']).strip()
+    programa = str(row['Programa']).strip()
+    medida = str(row['Medida']).strip()
+    projeto = row['Projeto']
     atividade = str(row['Atividade']).strip()
     funcional = str(row['Cl. Funcional']).strip()
-    entidade  = str(row['Entidade']).strip()
+    entidade = str(row['Entidade']).strip()
 
     # fonte não preenchida
     if not fonte:
@@ -57,65 +59,69 @@ def validar_linha(idx, row):
 
     # 2) Regras R ou D
     if rd == 'R':
-        if entidade=='971010' and fonte!='511':
+        if entidade == '971010' and fonte != '511':
             erros.append("Fonte Finan. deve ser 511 para entidade 971010")
-        if programa!="'011":
+        if programa != "'011":
             erros.append("Programa deve ser '011'")
-        if fonte not in ['483','31H','488'] and medida!="'022":
+        if fonte not in ['483','31H','488'] and medida != "'022":
             erros.append("Medida deve ser '022' (exceto fontes 483,31H,488)")
-        if entidade=='971007' and fonte!='541':
+        if entidade == '971007' and fonte != '541':
             erros.append("Fonte Finan. deve ser 541 para entidade 971007")
 
     elif rd == 'D':
-        if fonte not in ['483','31H','488'] and medida!="'022":
+        if fonte not in ['483','31H','488'] and medida != "'022":
             erros.append("Medida deve ser '022' (exceto fontes 483,31H,488)")
-        if org=='101904000':
+        if org == '101904000':
             if pd.notna(projeto) and str(projeto).strip():
-                if atividade!='000':
+                if atividade != '000':
                     erros.append("Se o Projeto estiver preenchido, a Atividade deve ser 000")
             else:
-                if atividade!='130':
+                if atividade != '130':
                     erros.append("Se o Projeto estiver vazio, a Atividade deve ser 130")
-        if org=='108904000':
-            if atividade!='000' or not(pd.notna(projeto) and str(projeto).strip()):
+        if org == '108904000':
+            if atividade != '000' or not(pd.notna(projeto) and str(projeto).strip()):
                 erros.append("Atividade deve ser 000 e Projeto preenchido")
-        if funcional!="'0730":
+        if funcional != "'0730":
             erros.append("Cl. Funcional deve ser '0730'")
     return erros
+
 
 def validar_documentos_co(df):
     """
     Retorna lista de tuplos (índice, mensagem) para cada erro de DOCID.
     """
     erros = []
-    df_co = df[df['Tipo']=='CO']
+    df_co = df[df['Tipo'] == 'CO']
     for docid, grp in df_co.groupby('DOCID'):
-        debs  = grp[grp['Conta'].astype(str).str.startswith(('0281','0282'))]
+        debs = grp[grp['Conta'].astype(str).str.startswith(('0281','0282'))]
         creds = grp[grp['Conta'].astype(str).str.startswith('0272')]
         rubs = {extrair_rubrica(c) for c in debs['Conta']}
         for idx, ln in creds.iterrows():
             rub = extrair_rubrica(ln['Conta'])
             if rub not in rubs:
-                erros.append((idx, f"DOCID {docid}: falta débito para rubrica {rub}"))
+                erros.append((idx, f"DOCID {docid}: sem débito para rubrica {rub}"))
     return erros
 
 if uploaded:
     st.subheader(f"Processando: {uploaded.name}")
-    # lê e filtra
+    # ler e ignorar linha de cabeçalhos duplicados
     df = pd.read_csv(
         io.StringIO(uploaded.getvalue().decode('ISO-8859-1')),
         sep=';', skiprows=9, names=CABECALHOS,
         dtype=str, low_memory=False
     )
+    # remover eventual linha de cabeçalhos repetidos
+    df = df[df['Conta'] != 'Conta']
+    # filtrar "Saldo Inicial"
     df = df[~df['Data Contab.'].str.contains("Saldo Inicial", na=False)]
     n = len(df)
 
-    # placeholders
+    # placeholders de progresso
     progress = st.progress(0)
     resumo_global = Counter()
     erros_por_linha = defaultdict(list)
 
-    # validação linha a linha (com iterrows())
+    # validação linha a linha
     block = max(1, n // 100)
     for idx, row in df.iterrows():
         msgs = validar_linha(idx, row)
@@ -130,13 +136,13 @@ if uploaded:
         erros_por_linha[idx].append(msg)
         resumo_global[msg] += 1
 
-    # preenche coluna Erro
+    # preencher coluna Erro
     df['Erro'] = [
         "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
         for i in range(n)
     ]
 
-    # gera Excel em memória
+    # gerar Excel em memória
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
     buffer.seek(0)
@@ -152,11 +158,10 @@ if uploaded:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    # resumo agregados
+    # mostrar resumo de erros
     if resumo_global:
         st.subheader("📊 Resumo de Erros")
         df_res = pd.DataFrame(resumo_global.most_common(), columns=["Regra","Ocorrências"])
         st.table(df_res)
-
 else:
     st.info("Primeiro, carrega um ficheiro CSV acima.")
