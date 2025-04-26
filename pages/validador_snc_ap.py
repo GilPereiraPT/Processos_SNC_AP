@@ -126,7 +126,7 @@ if uploaded:
         for i, msg in linha_erros:
             erros_por_linha[i].append(msg)
             resumo[msg] += 1
-        progresso.progress((idx+1)/n)
+        progresso.progress(min((idx+1)/n, 1.0))
 
     # Validação documentos CO
     for idx, msg in validar_documentos_co(df):
