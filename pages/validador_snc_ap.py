@@ -136,24 +136,9 @@ if uploaded:
     # Construir coluna 'Erro'
     df['Erro'] = ["; ".join(erros_por_linha[i]) if erros_por_linha[i] else 'Sem erros' for i in df.index]
 
-    # Mostrar tabela e download
-    st.dataframe(df)
-    buffer = io.BytesIO()
-    df.to_excel(buffer, index=False)
-    buffer.seek(0)
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    fname = f"{uploaded.name.rstrip('.csv')}_output_{ts}.xlsx"
-    st.download_button(
-        "⬇️ Descarregar Excel de output",
-        data=buffer,
-        file_name=fname,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    # **DEBUG**: Mostrar valores únicos de Fonte vs Cl. Orgânica
+    st.subheader('📋 Valores únicos de Fonte Finan. e Cl. Orgânica')
+    unique_pairs = df[['Fonte Finan.', 'Cl. Orgânica', 'Erro']].drop_duplicates().sort_values(['Fonte Finan.', 'Cl. Orgânica'])
+    st.dataframe(unique_pairs)
 
-    # Resumo
-    if resumo:
-        st.subheader('📊 Resumo de Erros')
-        df_resumo = pd.DataFrame(resumo.most_common(), columns=['Regra','Ocorrências'])
-        st.table(df_resumo)
-else:
-    st.info('Primeiro, carrega um ficheiro CSV acima.')
+    # Mostrar tabela e download
