@@ -32,7 +32,7 @@ st.set_page_config(page_title="Validador SNC-AP", layout="wide")
 st.title("🛡️ Validador de Lançamentos SNC-AP")
 st.markdown(
     "Carrega um **ficheiro CSV** gerado pelo SNC-AP para validar regras específicas de Receita (R).  \n"
-    "**Nota**: Só aplicamos regras especiais para entidade 971010 e 971007 em Receitas (R)."
+    "**Nota**: Aplicamos regras especiais para entidade 971010 e 971007 em Receitas (R)."
 )
 
 uploaded = st.file_uploader("Selecione um ficheiro CSV", type="csv", accept_multiple_files=False)
@@ -106,14 +106,18 @@ def validar_documentos_co(df):
 
 if uploaded:
     st.subheader(f"Processando {uploaded.name}")
+    
+    uploaded.seek(0)  # Reset pointer para o início do ficheiro
     df = pd.read_csv(
-        io.StringIO(uploaded.getvalue().decode('ISO-8859-1')),
-        sep=';', 
+        uploaded,
+        sep=';',
         header=9,
         names=CABECALHOS,
+        encoding='ISO-8859-1',
         dtype=str,
         low_memory=False
     )
+
     df = df[df['Conta'] != 'Conta']
     df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
     n = len(df)
