@@ -30,12 +30,12 @@ ORG_POR_FONTE = {
 }
 
 st.set_page_config(page_title="Validador SNC-AP", layout="wide")
-st.title("🛡️ Validador de Lançamentos SNC-AP (.zip test)")
+st.title("🛡️ Validador de Lançamentos SNC-AP (.zip ou CSV finalíssimo)")
 st.markdown(
-    "Carrega um **ficheiro ZIP** que contém o CSV para validação. Assim evitamos problemas de encoding via browser!"
+    "Carrega um **ficheiro ZIP ou CSV** para validar lançamentos conforme as regras locais!"
 )
 
-uploaded = st.file_uploader("Selecione um ficheiro ZIP", type="zip", accept_multiple_files=False)
+uploaded = st.file_uploader("Selecione um ficheiro ZIP ou CSV", type=["zip", "csv"], accept_multiple_files=False)
 
 def extrair_rubrica(conta: str) -> str:
     partes = str(conta).split(".")
@@ -46,13 +46,13 @@ def validar_linha(idx, row):
     rd        = str(row['R/D']).strip()
     fonte     = str(row['Fonte Finan.']).strip()
     org       = str(row['Cl. Orgânica']).strip()
-    programa  = str(row['Programa']).strip()
-    medida    = str(row['Medida']).strip()
+    programa  = str(row['Programa']).strip().lstrip("'")
+    medida    = str(row['Medida']).strip().lstrip("'")
     projeto   = str(row['Projeto']) if pd.notna(row['Projeto']) else ''
     projeto   = projeto.strip()
     atividade = str(row['Atividade']) if pd.notna(row['Atividade']) else ''
     atividade = atividade.strip()
-    funcional = str(row['Cl. Funcional']).strip()
+    funcional = str(row['Cl. Funcional']).strip().lstrip("'")
     entidade  = str(row['Entidade']).strip()
 
     if not fonte:
@@ -65,13 +65,13 @@ def validar_linha(idx, row):
             erros.append("Fonte Finan. deve ser 511 para entidade 971010")
         if entidade == '971007' and fonte != '541':
             erros.append("Fonte Finan. deve ser 541 para entidade 971007")
-        if programa != "'011":
+        if programa != "011":
             erros.append("Programa deve ser '011")
-        if fonte not in ['483', '31H', '488'] and medida != "'022":
+        if fonte not in ['483', '31H', '488'] and medida != "022":
             erros.append("Medida deve ser '022 exceto para fontes 483, 31H ou 488")
 
     elif rd == 'D':
-        if fonte not in ['483', '31H', '488'] and medida != "'022":
+        if fonte not in ['483', '31H', '488'] and medida != "022":
             erros.append("Medida deve ser '022 exceto para fontes 483, 31H ou 488")
 
         if org == '101904000':
@@ -86,7 +86,7 @@ def validar_linha(idx, row):
             if atividade != '000' or not projeto:
                 erros.append("Atividade deve ser 000 e Projeto preenchido")
 
-        if funcional != "'0730":
+        if funcional != "0730":
             erros.append("Cl. Funcional deve ser '0730")
 
     return erros
@@ -106,68 +106,80 @@ def validar_documentos_co(df):
 
 if uploaded:
     st.subheader(f"Processando {uploaded.name}")
-    
-    with zipfile.ZipFile(uploaded) as zip_ref:
-        filenames = zip_ref.namelist()
-        if filenames:
-            with zip_ref.open(filenames[0]) as f:
-                df = pd.read_csv(
-                    f,
-                    sep=';',
-                    header=9,
-                    names=CABECALHOS,
-                    encoding='ISO-8859-1',
-                    dtype=str,
-                    low_memory=False
-                )
 
-            df = df[df['Conta'] != 'Conta']
-            df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
-            n = len(df)
+    if uploaded.name.endswith(".zip"):
+        with zipfile.ZipFile(uploaded) as zip_ref:
+            filenames = zip_ref.namelist()
+            if filenames:
+                with zip_ref.open(filenames[0]) as f:
+                    df = pd.read_csv(
+                        f,
+                        sep=';',
+                        header=9,
+                        names=CABECALHOS,
+                        encoding='ISO-8859-1',
+                        dtype=str,
+                        low_memory=False
+                    )
+            else:
+                st.error("O ZIP está vazio.")
+                st.stop()
+    else:
+        uploaded.seek(0)
+        df = pd.read_csv(
+            uploaded,
+            sep=';',
+            header=9,
+            names=CABECALHOS,
+            encoding='ISO-8859-1',
+            dtype=str,
+            low_memory=False
+        )
 
-            progresso = st.progress(0)
-            resumo = Counter()
-            erros_por_linha = defaultdict(list)
+    df = df[df['Conta'] != 'Conta']
+    df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
+    n = len(df)
 
-            block = max(1, n // 100)
-            for i, row in df.iterrows():
-                msgs = validar_linha(i, row)
-                if msgs:
-                    erros_por_linha[i].extend(msgs)
-                    resumo.update(msgs)
-                if i % block == 0 or i == n - 1:
-                    progresso.progress(min((i + 1) / n, 1.0))
+    progresso = st.progress(0)
+    resumo = Counter()
+    erros_por_linha = defaultdict(list)
 
-            for idx, msg in validar_documentos_co(df):
-                erros_por_linha[idx].append(msg)
-                resumo[msg] += 1
+    block = max(1, n // 100)
+    for i, row in df.iterrows():
+        msgs = validar_linha(i, row)
+        if msgs:
+            erros_por_linha[i].extend(msgs)
+            resumo.update(msgs)
+        if i % block == 0 or i == n - 1:
+            progresso.progress(min((i + 1) / n, 1.0))
 
-            df['Erro'] = [
-                "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
-                for i in range(n)
-            ]
+    for idx, msg in validar_documentos_co(df):
+        erros_por_linha[idx].append(msg)
+        resumo[msg] += 1
 
-            buffer = io.BytesIO()
-            df.to_excel(buffer, index=False)
-            buffer.seek(0)
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            nome_ficheiro = f"{filenames[0].rstrip('.csv')}_output_{ts}.xlsx"
+    df['Erro'] = [
+        "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
+        for i in range(n)
+    ]
 
-            st.success("Validação concluída!")
-            st.dataframe(df)
-            st.download_button(
-                "⬇️ Descarregar Excel com erros",
-                data=buffer,
-                file_name=nome_ficheiro,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+    buffer = io.BytesIO()
+    df.to_excel(buffer, index=False)
+    buffer.seek(0)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nome_ficheiro = f"{uploaded.name.rstrip('.csv').rstrip('.zip')}_output_{ts}.xlsx"
 
-            if resumo:
-                st.subheader("📊 Resumo de Erros")
-                st.table(pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"]))
+    st.success("Validação concluída!")
+    st.dataframe(df)
+    st.download_button(
+        "⬇️ Descarregar Excel com erros",
+        data=buffer,
+        file_name=nome_ficheiro,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
-        else:
-            st.error("O ZIP não contém nenhum ficheiro.")
+    if resumo:
+        st.subheader("📊 Resumo de Erros")
+        st.table(pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"]))
 
 else:
-    st.info("Primeiro, carrega um ficheiro ZIP acima.")
+    st.info("Primeiro, carrega um ficheiro ZIP ou CSV acima.")
