@@ -48,8 +48,10 @@ def validar_linha(idx, row):
     org       = str(row['Cl. Orgânica']).strip()
     programa  = str(row['Programa']).strip()
     medida    = str(row['Medida']).strip()
-    projeto   = row['Projeto']
-    atividade = str(row['Atividade']).strip()
+    projeto   = str(row['Projeto']) if pd.notna(row['Projeto']) else ''
+    projeto   = projeto.strip()
+    atividade = str(row['Atividade']) if pd.notna(row['Atividade']) else ''
+    atividade = atividade.strip()
     funcional = str(row['Cl. Funcional']).strip()
     entidade  = str(row['Entidade']).strip()
 
@@ -73,7 +75,7 @@ def validar_linha(idx, row):
             erros.append("Medida deve ser '022 exceto para fontes 483, 31H ou 488")
 
         if org == '101904000':
-            if pd.notna(projeto) and str(projeto).strip():
+            if projeto:
                 if atividade != '000':
                     erros.append("Se o Projeto estiver preenchido, a Atividade deve ser 000")
             else:
@@ -81,7 +83,7 @@ def validar_linha(idx, row):
                     erros.append("Se o Projeto estiver vazio, a Atividade deve ser 130")
 
         if org == '108904000':
-            if atividade != '000' or (not pd.notna(projeto) or not str(projeto).strip()):
+            if atividade != '000' or not projeto:
                 erros.append("Atividade deve ser 000 e Projeto preenchido")
 
         if funcional != "'0730":
@@ -106,15 +108,12 @@ if uploaded:
     st.subheader(f"Processando {uploaded.name}")
     df = pd.read_csv(
         io.StringIO(uploaded.getvalue().decode('ISO-8859-1')),
-        sep=';',
+        sep=';', 
         header=9,
         names=CABECALHOS,
         dtype=str,
-        low_memory=False,
-        keep_default_na=False,
-        na_values=[""]
+        low_memory=False
     )
-    # Filtrar linhas erradas
     df = df[df['Conta'] != 'Conta']
     df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
     n = len(df)
@@ -132,18 +131,15 @@ if uploaded:
         if i % block == 0 or i == n - 1:
             progresso.progress(min((i + 1) / n, 1.0))
 
-    # Validação extra de CO
     for idx, msg in validar_documentos_co(df):
         erros_por_linha[idx].append(msg)
         resumo[msg] += 1
 
-    # Adicionar coluna de Erros
     df['Erro'] = [
         "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
         for i in range(n)
     ]
 
-    # Gerar ficheiro de saída
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
     buffer.seek(0)
@@ -154,7 +150,8 @@ if uploaded:
     st.dataframe(df)
     st.download_button(
         "⬇️ Descarregar Excel com erros",
-        data=buffer, file_name=nome_ficheiro,
+        data=buffer, 
+        file_name=nome_ficheiro,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
