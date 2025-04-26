@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import zipfile
 import io
-from collections import defaultdict, Counter
+import matplotlib.pyplot as plt
+from collections import Counter
 from datetime import datetime
 
 # --- Configurações ---
@@ -29,28 +30,50 @@ ORG_POR_FONTE = {
     '724': '101904000',
 }
 
-st.set_page_config(page_title="Validador SNC-AP", layout="wide")
-st.title("🛡️ Validador de Lançamentos SNC-AP (CSV ou ZIP)")
+# --- Funções auxiliares ---
 
-uploaded = st.file_uploader("Selecione um ficheiro CSV ou ZIP", type=["csv", "zip"], accept_multiple_files=False)
+def ler_csv(f):
+    return pd.read_csv(
+        f,
+        sep=';',
+        header=9,
+        names=CABECALHOS,
+        encoding='ISO-8859-1',
+        dtype=str,
+        low_memory=False
+    )
+
+def ler_ficheiro(uploaded):
+    if uploaded.name.endswith(".zip"):
+        with zipfile.ZipFile(uploaded) as zip_ref:
+            filenames = zip_ref.namelist()
+            if filenames:
+                with zip_ref.open(filenames[0]) as f:
+                    return ler_csv(f)
+            else:
+                raise ValueError("ZIP vazio!")
+    else:
+        uploaded.seek(0)
+        return ler_csv(uploaded)
 
 def extrair_rubrica(conta: str) -> str:
     partes = str(conta).split(".")
     return ".".join(partes[1:]) if len(partes) > 1 else ""
 
-def validar_linha(idx, row):
+def limpar(x):
+    return str(x).strip().lstrip("'") if pd.notna(x) else ""
+
+def validar_linha(row):
     erros = []
-    rd        = str(row['R/D']).strip()
-    fonte     = str(row['Fonte Finan.']).strip()
-    org       = str(row['Cl. Orgânica']).strip()
-    programa  = str(row['Programa']).strip().lstrip("'")
-    medida    = str(row['Medida']).strip().lstrip("'")
-    projeto   = str(row['Projeto']) if pd.notna(row['Projeto']) else ''
-    projeto   = projeto.strip()
-    atividade = str(row['Atividade']) if pd.notna(row['Atividade']) else ''
-    atividade = atividade.strip()
-    funcional = str(row['Cl. Funcional']).strip().lstrip("'")
-    entidade  = str(row['Entidade']).strip()
+    rd        = limpar(row['R/D'])
+    fonte     = limpar(row['Fonte Finan.'])
+    org       = limpar(row['Cl. Orgânica'])
+    programa  = limpar(row['Programa'])
+    medida    = limpar(row['Medida'])
+    projeto   = limpar(row['Projeto'])
+    atividade = limpar(row['Atividade'])
+    funcional = limpar(row['Cl. Funcional'])
+    entidade  = limpar(row['Entidade'])
 
     if not fonte:
         erros.append("Fonte de Finan. não preenchida")
@@ -86,7 +109,7 @@ def validar_linha(idx, row):
         if funcional != "0730":
             erros.append("Cl. Funcional deve ser '0730")
 
-    return erros
+    return "; ".join(erros) if erros else "Sem erros"
 
 def validar_documentos_co(df):
     erros = []
@@ -101,73 +124,59 @@ def validar_documentos_co(df):
                 erros.append((idx, f"DOCID {docid}: sem débito para rubrica {rub}"))
     return erros
 
+# --- Streamlit App ---
+st.set_page_config(page_title="Validador SNC-AP Turbo Corrigido", layout="wide")
+st.title("🛡️ Validador de Lançamentos SNC-AP Turbo Corrigido")
+
+uploaded = st.file_uploader("Carrega um ficheiro CSV ou ZIP", type=["csv", "zip"])
+
 if uploaded:
-    st.subheader(f"Processando {uploaded.name}")
-
     try:
-        if uploaded.name.endswith(".zip"):
-            with zipfile.ZipFile(uploaded) as zip_ref:
-                filenames = zip_ref.namelist()
-                if filenames:
-                    with zip_ref.open(filenames[0]) as f:
-                        df = pd.read_csv(
-                            f,
-                            sep=';',
-                            header=9,
-                            names=CABECALHOS,
-                            encoding='ISO-8859-1',
-                            dtype=str,
-                            low_memory=False
-                        )
-                else:
-                    st.error("O ZIP está vazio.")
-                    st.stop()
-        else:  # CSV normal
-            uploaded.seek(0)
-            df = pd.read_csv(
-                uploaded,
-                sep=';',
-                header=9,
-                names=CABECALHOS,
-                encoding='ISO-8859-1',
-                dtype=str,
-                low_memory=False
-            )
-
+        st.subheader(f"Processando {uploaded.name}...")
+        df = ler_ficheiro(uploaded)
         df = df[df['Conta'] != 'Conta']
         df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
-        n = len(df)
 
-        progresso = st.progress(0)
+        # Validação rápida
+        with st.spinner("Validando linhas..."):
+            df['Erro'] = df.apply(validar_linha, axis=1)
+
+            # Validar documentos CO
+            co_erros = validar_documentos_co(df)
+            for idx, msg in co_erros:
+                if df.at[idx, 'Erro'] == "Sem erros":
+                    df.at[idx, 'Erro'] = msg
+                else:
+                    df.at[idx, 'Erro'] += f"; {msg}"
+
+        # Mostrar DataFrame
+        st.success(f"Validação concluída. Total de linhas: {len(df)}")
+        st.dataframe(df)
+
+        # Resumo de Erros
         resumo = Counter()
-        erros_por_linha = defaultdict(list)
+        for erros in df['Erro']:
+            if erros != "Sem erros":
+                for erro in erros.split("; "):
+                    resumo[erro] += 1
 
-        block = max(1, n // 100)
-        for i, row in df.iterrows():
-            msgs = validar_linha(i, row)
-            if msgs:
-                erros_por_linha[i].extend(msgs)
-                resumo.update(msgs)
-            if i % block == 0 or i == n - 1:
-                progresso.progress(min((i + 1) / n, 1.0))
+        if resumo:
+            st.subheader("📊 Resumo de Erros")
+            resumo_df = pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"])
+            st.table(resumo_df)
 
-        for idx, msg in validar_documentos_co(df):
-            erros_por_linha[idx].append(msg)
-            resumo[msg] += 1
+            # Gráfico
+            fig, ax = plt.subplots(figsize=(8, len(resumo_df) * 0.5))
+            resumo_df.plot(kind="barh", x="Regra", y="Ocorrências", ax=ax, legend=False)
+            st.pyplot(fig)
 
-        df['Erro'] = [
-            "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
-            for i in range(n)
-        ]
-
+        # Gerar Excel
         buffer = io.BytesIO()
-        df.to_excel(buffer, index=False)
+        df.to_excel(buffer, index=False, engine='openpyxl')
         buffer.seek(0)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         nome_ficheiro = f"{uploaded.name.rstrip('.csv').rstrip('.zip')}_output_{ts}.xlsx"
 
-        st.success("Validação concluída!")
-        st.dataframe(df)
         st.download_button(
             "⬇️ Descarregar Excel com erros",
             data=buffer,
@@ -175,12 +184,7 @@ if uploaded:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        if resumo:
-            st.subheader("📊 Resumo de Erros")
-            st.table(pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"]))
-        
     except Exception as e:
-        st.error(f"Erro ao processar o ficheiro: {e}")
-
+        st.error(f"Erro ao processar: {e}")
 else:
-    st.info("Primeiro, carrega um ficheiro CSV ou ZIP acima.")
+    st.info("Carrega primeiro um ficheiro CSV ou ZIP para começar.")
