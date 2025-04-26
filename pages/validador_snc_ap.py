@@ -115,9 +115,9 @@ if uploaded:
     resumo_global = Counter()
     erros_por_linha = defaultdict(list)
 
-    # validação linha a linha
+    # validação linha a linha (com iterrows())
     block = max(1, n // 100)
-    for idx, row in enumerate(df.itertuples(index=True), start=0):
+    for idx, row in df.iterrows():
         msgs = validar_linha(idx, row)
         if msgs:
             erros_por_linha[idx].extend(msgs)
