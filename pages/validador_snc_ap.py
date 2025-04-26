@@ -25,7 +25,7 @@ st.set_page_config(page_title="Validador SNC-AP", layout="wide")
 st.title("🛡️ Validador de Lançamentos SNC-AP")
 st.markdown(
     "Carrega um **ficheiro CSV** gerado pelo SNC-AP para validar regras de fonte, rubrica, DOCID, etc.  \n"
-    "Verás uma barra de progresso durante a validação e, no fim, um botão para descarregar um Excel com a coluna `Erro`."
+    "Verás uma barra de progresso e, no fim, poderás descarregar um Excel com a coluna `Erro`."
 )
 
 uploaded = st.file_uploader(
@@ -36,7 +36,7 @@ def extrair_rubrica(conta: str) -> str:
     partes = str(conta).split(".")
     return ".".join(partes[1:]) if len(partes) > 1 else ""
 
-def validar_linha(row):
+def validar_linha(idx, row):
     erros = []
     rd        = str(row['R/D']).strip()
     fonte     = str(row['Fonte Finan.']).strip()
@@ -48,20 +48,23 @@ def validar_linha(row):
     funcional = str(row['Cl. Funcional']).strip()
     entidade  = str(row['Entidade']).strip()
 
+    # fonte não preenchida
+    if not fonte:
+        erros.append("Fonte de Financiamento não preenchida")
     # 1) Verifica orgânica conforme fonte
-    if fonte in ORG_POR_FONTE and org != ORG_POR_FONTE[fonte]:
-        erros.append(f"Cl. Orgânica deveria ser {ORG_POR_FONTE[fonte]} para fonte {fonte}")
+    elif fonte in ORG_POR_FONTE and org != ORG_POR_FONTE[fonte]:
+        erros.append(f"Cl. Orgânica deve ser {ORG_POR_FONTE[fonte]} para fonte {fonte}")
 
     # 2) Regras R ou D
     if rd == 'R':
         if entidade=='971010' and fonte!='511':
-            erros.append("Entidade 971010 requer fonte 511")
+            erros.append("Fonte Finan. deve ser 511 para entidade 971010")
         if programa!="'011":
             erros.append("Programa deve ser '011'")
         if fonte not in ['483','31H','488'] and medida!="'022":
             erros.append("Medida deve ser '022' (exceto fontes 483,31H,488)")
         if entidade=='971007' and fonte!='541':
-            erros.append("Entidade 971007 requer fonte 541")
+            erros.append("Fonte Finan. deve ser 541 para entidade 971007")
 
     elif rd == 'D':
         if fonte not in ['483','31H','488'] and medida!="'022":
@@ -69,28 +72,31 @@ def validar_linha(row):
         if org=='101904000':
             if pd.notna(projeto) and str(projeto).strip():
                 if atividade!='000':
-                    erros.append("Projeto preenchido → Atividade deve ser 000")
+                    erros.append("Se o Projeto estiver preenchido, a Atividade deve ser 000")
             else:
                 if atividade!='130':
-                    erros.append("Projeto vazio → Atividade deve ser 130")
+                    erros.append("Se o Projeto estiver vazio, a Atividade deve ser 130")
         if org=='108904000':
             if atividade!='000' or not(pd.notna(projeto) and str(projeto).strip()):
-                erros.append("Cl. Orgânica 108904000 → Atividade=000 e Projeto preenchido")
+                erros.append("Atividade deve ser 000 e Projeto preenchido")
         if funcional!="'0730":
             erros.append("Cl. Funcional deve ser '0730'")
     return erros
 
 def validar_documentos_co(df):
+    """
+    Retorna lista de tuplos (índice, mensagem) para cada erro de DOCID.
+    """
     erros = []
     df_co = df[df['Tipo']=='CO']
     for docid, grp in df_co.groupby('DOCID'):
         debs  = grp[grp['Conta'].astype(str).str.startswith(('0281','0282'))]
         creds = grp[grp['Conta'].astype(str).str.startswith('0272')]
         rubs = {extrair_rubrica(c) for c in debs['Conta']}
-        for _, ln in creds.iterrows():
+        for idx, ln in creds.iterrows():
             rub = extrair_rubrica(ln['Conta'])
             if rub not in rubs:
-                erros.append(f"DOCID {docid}: sem débito para rubrica {rub}")
+                erros.append((idx, f"DOCID {docid}: falta débito para rubrica {rub}"))
     return erros
 
 if uploaded:
@@ -104,30 +110,30 @@ if uploaded:
     df = df[~df['Data Contab.'].str.contains("Saldo Inicial", na=False)]
     n = len(df)
 
-    # placeholders e estado
-    progress_rows = st.progress(0)
+    # placeholders
+    progress = st.progress(0)
     resumo_global = Counter()
     erros_por_linha = defaultdict(list)
 
-    # validação com itertuples (mais rápido que iterrows)
+    # validação linha a linha
     block = max(1, n // 100)
     for idx, row in enumerate(df.itertuples(index=True), start=0):
-        lista = validar_linha(row)
-        if lista:
-            erros_por_linha[idx].extend(lista)
-            resumo_global.update(lista)
+        msgs = validar_linha(idx, row)
+        if msgs:
+            erros_por_linha[idx].extend(msgs)
+            resumo_global.update(msgs)
         if idx % block == 0 or idx == n-1:
-            progress_rows.progress((idx+1) / n)
+            progress.progress((idx+1)/n)
 
-    # valida DOCID
-    co_errors = validar_documentos_co(df)
-    for err in co_errors:
-        resumo_global[err] += 1
+    # validação CO
+    for idx, msg in validar_documentos_co(df):
+        erros_por_linha[idx].append(msg)
+        resumo_global[msg] += 1
 
     # preenche coluna Erro
     df['Erro'] = [
-        "; ".join(erros_por_linha[idx]) if erros_por_linha[idx] else "Sem erros"
-        for idx in range(n)
+        "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
+        for i in range(n)
     ]
 
     # gera Excel em memória
@@ -138,19 +144,19 @@ if uploaded:
     fname = f"{uploaded.name.rstrip('.csv')}_output_{ts}.xlsx"
 
     st.success("Validação concluída!")
-    st.dataframe(df)  # exibe o DataFrame com a coluna Erro
-
+    st.dataframe(df)
     st.download_button(
-        label="⬇️ Descarregar Excel de output",
+        "⬇️ Descarregar Excel de output",
         data=buffer,
         file_name=fname,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    # resumo global
+    # resumo agregados
     if resumo_global:
         st.subheader("📊 Resumo de Erros")
         df_res = pd.DataFrame(resumo_global.most_common(), columns=["Regra","Ocorrências"])
         st.table(df_res)
+
 else:
     st.info("Primeiro, carrega um ficheiro CSV acima.")
