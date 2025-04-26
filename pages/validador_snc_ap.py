@@ -32,7 +32,7 @@ st.set_page_config(page_title="Validador SNC-AP", layout="wide")
 st.title("🛡️ Validador de Lançamentos SNC-AP")
 st.markdown(
     "Carrega um **ficheiro CSV** gerado pelo SNC-AP para validar regras específicas de Receita (R).  \n"
-    "**Importante**: Só aplicamos regras especiais para entidade 971010 e 971007 em Receitas (R)."
+    "**Nota**: Só aplicamos regras especiais para entidade 971010 e 971007 em Receitas (R)."
 )
 
 uploaded = st.file_uploader("Selecione um ficheiro CSV", type="csv", accept_multiple_files=False)
@@ -53,20 +53,16 @@ def validar_linha(idx, row):
     funcional = str(row['Cl. Funcional']).strip()
     entidade  = str(row['Entidade']).strip()
 
-    # Fonte não preenchida
     if not fonte:
         erros.append("Fonte de Finan. não preenchida")
-    # Cl. Orgânica conforme fonte
     elif fonte in ORG_POR_FONTE and org != ORG_POR_FONTE[fonte]:
         erros.append(f"Cl. Orgânica deve ser {ORG_POR_FONTE[fonte]} para fonte {fonte}")
 
-    # Validações específicas apenas para Receita (R)
     if rd == 'R':
         if entidade == '971010' and fonte != '511':
             erros.append("Fonte Finan. deve ser 511 para entidade 971010")
         if entidade == '971007' and fonte != '541':
             erros.append("Fonte Finan. deve ser 541 para entidade 971007")
-
         if programa != "'011":
             erros.append("Programa deve ser '011")
         if fonte not in ['483', '31H', '488'] and medida != "'022":
@@ -75,7 +71,7 @@ def validar_linha(idx, row):
     elif rd == 'D':
         if fonte not in ['483', '31H', '488'] and medida != "'022":
             erros.append("Medida deve ser '022 exceto para fontes 483, 31H ou 488")
-        
+
         if org == '101904000':
             if pd.notna(projeto) and str(projeto).strip():
                 if atividade != '000':
@@ -83,11 +79,11 @@ def validar_linha(idx, row):
             else:
                 if atividade != '130':
                     erros.append("Se o Projeto estiver vazio, a Atividade deve ser 130")
-        
+
         if org == '108904000':
             if atividade != '000' or (not pd.notna(projeto) or not str(projeto).strip()):
                 erros.append("Atividade deve ser 000 e Projeto preenchido")
-        
+
         if funcional != "'0730":
             erros.append("Cl. Funcional deve ser '0730")
 
@@ -110,8 +106,13 @@ if uploaded:
     st.subheader(f"Processando {uploaded.name}")
     df = pd.read_csv(
         io.StringIO(uploaded.getvalue().decode('ISO-8859-1')),
-        sep=';', header=9, names=CABECALHOS,
-        dtype=str, low_memory=False
+        sep=';',
+        header=9,
+        names=CABECALHOS,
+        dtype=str,
+        low_memory=False,
+        keep_default_na=False,
+        na_values=[""]
     )
     # Filtrar linhas erradas
     df = df[df['Conta'] != 'Conta']
