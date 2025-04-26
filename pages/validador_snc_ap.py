@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import io
-import re
 from collections import defaultdict, Counter
 from datetime import datetime
 
@@ -38,58 +37,52 @@ st.markdown(
 
 uploaded = st.file_uploader("Selecione um ficheiro CSV", type="csv", accept_multiple_files=False)
 
-def limpar_texto(x: str) -> str:
-    # remove espaços, apóstrofos, símbolos e normaliza
-    return re.sub(r"[^\w\d]", "", str(x or "")).strip()
-
 def extrair_rubrica(conta: str) -> str:
     partes = str(conta).split(".")
     return ".".join(partes[1:]) if len(partes) > 1 else ""
 
 def validar_linha(idx, row):
     erros = []
-    # normalização
-    rd        = limpar_texto(row['R/D'])
-    fonte     = limpar_texto(row['Fonte Finan.'])
-    org       = limpar_texto(row['Cl. Orgânica'])
-    programa  = limpar_texto(row['Programa'])
-    medida    = limpar_texto(row['Medida'])
-    projeto   = str(row['Projeto']).strip()
-    atividade = limpar_texto(row['Atividade'])
-    funcional = limpar_texto(row['Cl. Funcional'])
-    entidade  = limpar_texto(row['Entidade'])
+    rd        = str(row['R/D']).strip()
+    fonte     = str(row['Fonte Finan.']).strip()
+    org       = str(row['Cl. Orgânica']).strip()
+    programa  = str(row['Programa']).strip()
+    medida    = str(row['Medida']).strip()
+    projeto   = row['Projeto']
+    atividade = str(row['Atividade']).strip()
+    funcional = str(row['Cl. Funcional']).strip()
+    entidade  = str(row['Entidade']).strip()
 
-    # Fonte não preenchida
     if not fonte:
         erros.append("Fonte de Finan. não preenchida")
-    # Cl. Orgânica conforme fonte
     elif fonte in ORG_POR_FONTE and org != ORG_POR_FONTE[fonte]:
         erros.append(f"Cl. Orgânica deve ser {ORG_POR_FONTE[fonte]} para fonte {fonte}")
 
-    # Regras R / D
     if rd == 'R':
         if entidade == '971010' and fonte != '511':
             erros.append("Fonte Finan. deve ser 511 para entidade 971010")
-        if programa != "011":
-            erros.append("Programa deve ser 011")
-        if fonte not in ['483', '31H', '488'] and medida != "022":
-            erros.append("Medida deve ser 022 (exceto fontes 483,31H,488)")
+        if programa != "'011":
+            erros.append("Programa deve ser '011")
+        if fonte not in ['483', '31H', '488'] and medida != "'022":
+            erros.append("Medida deve ser '022 exceto para fontes 483, 31H ou 488")
         if entidade == '971007' and fonte != '541':
             erros.append("Fonte Finan. deve ser 541 para entidade 971007")
 
     elif rd == 'D':
-        if fonte not in ['483', '31H', '488'] and medida != "022":
-            erros.append("Medida deve ser 022 (exceto fontes 483,31H,488)")
+        if fonte not in ['483', '31H', '488'] and medida != "'022":
+            erros.append("Medida deve ser '022 exceto para fontes 483, 31H ou 488")
         if org == '101904000':
-            if projeto and atividade != '000':
-                erros.append("Projeto preenchido → Atividade deve ser 000")
-            if not projeto and atividade != '130':
-                erros.append("Projeto vazio → Atividade deve ser 130")
+            if pd.notna(projeto) and str(projeto).strip():
+                if atividade != '000':
+                    erros.append("Se o Projeto estiver preenchido, a Atividade deve ser 000")
+            else:
+                if atividade != '130':
+                    erros.append("Se o Projeto estiver vazio, a Atividade deve ser 130")
         if org == '108904000':
-            if atividade != '000' or not projeto:
-                erros.append("Cl. Orgânica 108904000 → Atividade=000 e Projeto preenchido")
-        if funcional != "0730":
-            erros.append("Cl. Funcional deve ser 0730")
+            if atividade != '000' or (not pd.notna(projeto) or not str(projeto).strip()):
+                erros.append("Atividade deve ser 000 e Projeto preenchido")
+        if funcional != "'0730":
+            erros.append("Cl. Funcional deve ser '0730")
 
     return erros
 
@@ -108,22 +101,20 @@ def validar_documentos_co(df):
 
 if uploaded:
     st.subheader(f"Processando {uploaded.name}")
-    # leitura e limpeza
     df = pd.read_csv(
         io.StringIO(uploaded.getvalue().decode('ISO-8859-1')),
-        sep=';', skiprows=9, names=CABECALHOS,
-        dtype=str, keep_default_na=False, low_memory=False
+        sep=';', header=9, names=CABECALHOS,
+        dtype=str, low_memory=False
     )
-    # filtrar cabeçalhos repetidos e "Saldo Inicial"
+    # Filtrar linhas erradas
     df = df[df['Conta'] != 'Conta']
-    df = df[~df['Data Contab.'].str.contains("Saldo Inicial", na=False)]
+    df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
     n = len(df)
 
     progresso = st.progress(0)
     resumo = Counter()
     erros_por_linha = defaultdict(list)
 
-    # valida linha a linha
     block = max(1, n // 100)
     for i, row in df.iterrows():
         msgs = validar_linha(i, row)
@@ -133,18 +124,18 @@ if uploaded:
         if i % block == 0 or i == n - 1:
             progresso.progress(min((i + 1) / n, 1.0))
 
-    # valida CO
+    # Validação extra de CO
     for idx, msg in validar_documentos_co(df):
         erros_por_linha[idx].append(msg)
         resumo[msg] += 1
 
-    # preencher coluna Erro
+    # Adicionar coluna de Erros
     df['Erro'] = [
         "; ".join(erros_por_linha[i]) if erros_por_linha[i] else "Sem erros"
         for i in range(n)
     ]
 
-    # gerar Excel e botão de download
+    # Gerar ficheiro de saída
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
     buffer.seek(0)
@@ -159,7 +150,6 @@ if uploaded:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    # resumo geral
     if resumo:
         st.subheader("📊 Resumo de Erros")
         st.table(pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"]))
