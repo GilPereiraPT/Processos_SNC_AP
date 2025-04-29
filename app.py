@@ -5,7 +5,8 @@ st.title("🛠️ Ferramenta Integrada: Receita Alheia + Validador SNC-AP")
 
 st.markdown("""
 Bem-vindo!  
-Utiliza o menu lateral 👉 para selecionar a funcionalidade:
+Utiliza o menu lateral à esquerda 👉 para selecionar a funcionalidade:
 - Criador de Receita Alheia
 - Validador SNC-AP
+- Conversor de Centros de Custo
 """)
