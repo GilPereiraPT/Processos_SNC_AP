@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import streamlit as st
 import pandas as pd
 import zipfile
@@ -51,7 +53,6 @@ def extrair_rubrica(conta: str) -> str:
     partes = str(conta).split(".")
     return ".".join(partes[1:]) if len(partes) > 1 else ""
 
-# --- Função Principal de Validação ---
 def validar_linha(row):
     erros = []
     rd        = limpar(row['R/D'])
@@ -65,13 +66,11 @@ def validar_linha(row):
     entidade  = limpar(row['Entidade'])
     tipo      = limpar(row['Tipo'])
 
-    # Fonte obrigatória e relação Fonte-Orgânica
     if not fonte:
         erros.append("Fonte de Finan. não preenchida")
     elif fonte in ORG_POR_FONTE and org != ORG_POR_FONTE[fonte]:
         erros.append(f"Cl. Orgânica deve ser {ORG_POR_FONTE[fonte]} para fonte {fonte}")
 
-    # Validações para 'R'
     if rd == 'R':
         if entidade == '971010' and fonte != '511':
             erros.append("Fonte Finan. deve ser 511 para entidade 971010")
@@ -82,7 +81,6 @@ def validar_linha(row):
         if fonte not in ['483', '31H', '488'] and medida != '022':
             erros.append("Medida deve ser '022' exceto para fontes 483, 31H ou 488")
 
-    # Validações para 'D'
     elif rd == 'D':
         if fonte not in ['483', '31H', '488'] and medida != '022':
             erros.append("Medida deve ser '022' exceto para fontes 483, 31H ou 488")
@@ -96,7 +94,6 @@ def validar_linha(row):
                 erros.append("Atividade deve ser 000 e Projeto preenchido")
         if funcional != '0730':
             erros.append("Cl. Funcional deve ser '0730'")
-        # NOVA REGRA: Despesa CO obrigatoriamente Fonte 511
         if tipo == 'CO' and fonte != '511':
             erros.append("Se R/D = D e Tipo = CO, Fonte Finan. tem de ser 511")
 
@@ -106,7 +103,7 @@ def validar_documentos_co(df):
     erros = []
     df_co = df[df['Tipo'] == 'CO']
     for docid, grp in df_co.groupby('DOCID'):
-        debs  = grp[grp['Conta'].astype(str).str.startswith(('0281','0282'))]
+        debs = grp[grp['Conta'].astype(str).str.startswith(('0281','0282'))]
         creds = grp[grp['Conta'].astype(str).str.startswith('0272')]
         rubs = {extrair_rubrica(c) for c in debs['Conta']}
         for idx, ln in creds.iterrows():
@@ -115,12 +112,12 @@ def validar_documentos_co(df):
                 erros.append((idx, f"DOCID {docid}: sem débito para rubrica {rub}"))
     return erros
 
-# --- Streamlit App ---
+# --- App Streamlit ---
 st.set_page_config(page_title="Validador SNC-AP Turbo Finalíssimo", layout="wide")
-st.title("\ud83d\udee1\ufe0f Validador de Lançamentos SNC-AP Turbo Finalíssimo")
+st.title("🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo")
 
-with st.expander("1. Upload de Ficheiro"):
-    uploaded = st.file_uploader("Carrega um ficheiro CSV ou ZIP", type=["csv", "zip"])
+st.sidebar.title("Menu")
+uploaded = st.sidebar.file_uploader("Carrega um ficheiro CSV ou ZIP", type=["csv", "zip"])
 
 if uploaded:
     try:
@@ -128,20 +125,21 @@ if uploaded:
         df = df[df['Conta'] != 'Conta']
         df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
 
-        with st.expander("2. Validação de Línhas"):
-            with st.spinner("Validando..."):
-                df['Erro'] = df.apply(validar_linha, axis=1)
-                co_erros = validar_documentos_co(df)
-                for idx, msg in co_erros:
-                    if df.at[idx, 'Erro'] == "Sem erros":
-                        df.at[idx, 'Erro'] = msg
-                    else:
-                        df.at[idx, 'Erro'] += f"; {msg}"
+        with st.spinner("Validando lançamentos..."):
+            df['Erro'] = df.apply(validar_linha, axis=1)
+            co_erros = validar_documentos_co(df)
+            for idx, msg in co_erros:
+                if df.at[idx, 'Erro'] == "Sem erros":
+                    df.at[idx, 'Erro'] = msg
+                else:
+                    df.at[idx, 'Erro'] += f"; {msg}"
 
-            st.success(f"Validação concluída. Total de linhas: {len(df)}")
-            st.dataframe(df)
+        st.success(f"Validação concluída. Total de linhas: {len(df)}")
 
-        with st.expander("3. Resumo de Erros e Download"):
+        with st.expander("🔍 Dados Validados"):
+            st.dataframe(df, use_container_width=True)
+
+        with st.expander("📊 Resumo de Erros"):
             resumo = Counter()
             for erros in df['Erro']:
                 if erros != "Sem erros":
@@ -156,18 +154,19 @@ if uploaded:
                 resumo_df.plot(kind="barh", x="Regra", y="Ocorrências", ax=ax, legend=False)
                 st.pyplot(fig)
 
-            buffer = io.BytesIO()
-            df.to_excel(buffer, index=False, engine='openpyxl')
-            buffer.seek(0)
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            nome_ficheiro = f"{uploaded.name.rstrip('.csv').rstrip('.zip')}_output_{ts}.xlsx"
+        # --- Download ---
+        buffer = io.BytesIO()
+        df.to_excel(buffer, index=False, engine='openpyxl')
+        buffer.seek(0)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nome_ficheiro = f"{uploaded.name.replace('.csv','').replace('.zip','').replace(' ','_')}_output_{ts}.xlsx"
 
-            st.download_button(
-                "\u2b07\ufe0f Descarregar Excel com erros",
-                data=buffer,
-                file_name=nome_ficheiro,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        st.sidebar.download_button(
+            "⬇️ Descarregar Excel com Erros",
+            data=buffer,
+            file_name=nome_ficheiro,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     except Exception as e:
         st.error(f"Erro ao processar: {e}")
