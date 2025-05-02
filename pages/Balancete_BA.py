@@ -63,23 +63,30 @@ def converter_para_excel(df):
     buffer.seek(0)
     return buffer
 
-uploaded_file = st.file_uploader("Carregar ficheiro XML do balancete BA", type=["xml"])
+# Upload do ficheiro XML
+uploaded_file = st.file_uploader("Carregar ficheiro XML do balancete BA")
 
 if uploaded_file is not None:
-    xml_content = uploaded_file.read()
-    df = extrair_dados(xml_content)
-    erros_df = aplicar_regras(df)
+    if uploaded_file.name.lower().endswith(".xml"):
+        try:
+            xml_content = uploaded_file.read()
+            df = extrair_dados(xml_content)
+            erros_df = aplicar_regras(df)
 
-    if not erros_df.empty:
-        st.subheader("❗Erros encontrados")
-        st.dataframe(erros_df, use_container_width=True)
+            if not erros_df.empty:
+                st.subheader("❗Erros encontrados")
+                st.dataframe(erros_df, use_container_width=True)
 
-        excel_buffer = converter_para_excel(erros_df)
-        st.download_button(
-            label="📥 Download do Excel com erros",
-            data=excel_buffer,
-            file_name="erros_validacao_balancete.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+                excel_buffer = converter_para_excel(erros_df)
+                st.download_button(
+                    label="📥 Download do Excel com erros",
+                    data=excel_buffer,
+                    file_name="erros_validacao_balancete.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.success("Nenhum erro encontrado! ✅")
+        except Exception as e:
+            st.error(f"Erro ao processar o ficheiro: {e}")
     else:
-        st.success("Nenhum erro encontrado! ✅")
+        st.error("Por favor, carregue um ficheiro com extensão .xml")
