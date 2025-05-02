@@ -5,32 +5,27 @@ from io import BytesIO
 
 st.set_page_config(page_title="Validador Balancete BA", layout="wide")
 st.title("📊 Validador de Balancete BA - SNC-AP")
-st.markdown("Validação automática de cabimentos, compromissos, obrigações e pagamentos a negativo (BA04).")
+st.markdown("Validação de cabimentos, compromissos, obrigações e pagamentos a negativo — apenas em registos com **BA04**.")
 
 def extrair_dados(xml_content):
     root = ET.fromstring(xml_content)
     registos = []
 
     for reg in root.findall(".//Registo"):
-        base = {
-            'ID_Registo': reg.findtext("ID_Registo"),
-            'ContaLocal': reg.findtext("ContaLocal"),
-            'SaldosEMovimentos3': '',
-            'Debito4': '',
-        }
-
         detalhes = reg.findall("DetalheResumo")
         for det in detalhes:
             if det.findtext("SaldosEMovimentos") == "BA04":
-                base['SaldosEMovimentos3'] = "BA04"
-                base['Debito4'] = float(det.findtext("Debito") or 0.0)
-                break
-
-        if base['SaldosEMovimentos3'] == "BA04":
-            for child in reg:
-                if child.tag not in base:
-                    base[child.tag] = child.text
-            registos.append(base)
+                base = {
+                    'ID_Registo': reg.findtext("ID_Registo"),
+                    'ContaLocal': reg.findtext("ContaLocal"),
+                    'SaldosEMovimentos3': "BA04",
+                    'Debito4': float(det.findtext("Debito") or 0.0),
+                }
+                for child in reg:
+                    if child.tag not in base:
+                        base[child.tag] = child.text
+                registos.append(base)
+                break  # só precisa do primeiro BA04
 
     return pd.DataFrame(registos)
 
@@ -63,7 +58,7 @@ def converter_para_excel(df):
     buffer.seek(0)
     return buffer
 
-# Upload do ficheiro XML
+# Upload do ficheiro
 uploaded_file = st.file_uploader("Carregar ficheiro XML do balancete BA")
 
 if uploaded_file is not None:
@@ -71,6 +66,7 @@ if uploaded_file is not None:
         try:
             xml_content = uploaded_file.read()
             df = extrair_dados(xml_content)
+            st.info(f"🔎 Registos analisados com BA04: {len(df)}")
             erros_df = aplicar_regras(df)
 
             if not erros_df.empty:
