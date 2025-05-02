@@ -25,7 +25,7 @@ def extrair_dados(xml_content):
                     if child.tag not in base:
                         base[child.tag] = child.text
                 registos.append(base)
-                break  # só precisa do primeiro BA04
+                break
 
     return pd.DataFrame(registos)
 
@@ -41,11 +41,11 @@ def aplicar_regras(df):
         conta = row['ContaLocal']
         debito = float(row.get('Debito4', 0.0))
 
-        if conta.startswith("02.5.1.") and debito != 0:
+        if conta.startswith("02.5.1") and debito != 0:
             regista_erro(row, "Cabimento com débito diferente de zero")
-        elif conta.startswith("02.6.1.") and debito != 0:
+        elif conta.startswith("02.6.1") and debito != 0:
             regista_erro(row, "Compromisso com débito diferente de zero")
-        elif conta.startswith("02.7.1.") and debito != 0:
+        elif conta.startswith("02.7.1") and debito != 0:
             regista_erro(row, "Obrigação com débito diferente de zero")
         elif (conta.startswith("02.8.1") or conta.startswith("02.8.2")) and debito != 0:
             regista_erro(row, "Pagamento a negativo com débito diferente de zero")
@@ -58,7 +58,6 @@ def converter_para_excel(df):
     buffer.seek(0)
     return buffer
 
-# Upload do ficheiro
 uploaded_file = st.file_uploader("Carregar ficheiro XML do balancete BA")
 
 if uploaded_file is not None:
