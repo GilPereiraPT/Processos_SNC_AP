@@ -80,6 +80,8 @@ def validar_linha(row):
             erros.append("Programa deve ser '011'")
         if fonte not in ['483', '31H', '488'] and medida != '022':
             erros.append("Medida deve ser '022' exceto para fontes 483, 31H ou 488")
+        if tipo == 'PG' and fonte != '511':
+            erros.append("Fonte Finan. deve ser 511 quando R/D = R e Tipo = PG")
 
     elif rd == 'D':
         if fonte not in ['483', '31H', '488'] and medida != '022':
