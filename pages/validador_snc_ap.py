@@ -44,7 +44,6 @@ def ler_ficheiro(uploaded_file):
     if uploaded_file.name.endswith(".zip"):
         with zipfile.ZipFile(uploaded_file) as zip_ref:
             filenames = zip_ref.namelist()
-            # MELHORIA: Escolher o primeiro ficheiro CSV válido no ZIP
             csv_files = [f_name for f_name in filenames if f_name.lower().endswith('.csv') and not f_name.startswith('__MACOSX')]
             if csv_files:
                 with zip_ref.open(csv_files[0]) as f:
@@ -62,10 +61,8 @@ def extrair_rubrica(conta: str) -> str:
     partes = str(conta).split(".")
     return ".".join(partes[1:]) if len(partes) > 1 else ""
 
-# MELHORIA: validar_linha modificada para usar colunas pré-limpas
-def validar_linha(row): # row ainda é uma pandas Series
+def validar_linha(row):
     erros = []
-    # Aceder às colunas pré-limpas (com sufixo _clean)
     rd        = row['R/D_clean']
     fonte     = row['Fonte Finan._clean']
     org       = row['Cl. Orgânica_clean']
@@ -76,8 +73,6 @@ def validar_linha(row): # row ainda é uma pandas Series
     funcional = row['Cl. Funcional_clean']
     entidade  = row['Entidade_clean']
     tipo      = row['Tipo_clean']
-    # Colunas que não foram pré-limpas podem ser limpas aqui se necessário,
-    # ou acedidas diretamente se o seu formato já for o esperado.
 
     if not fonte:
         erros.append("Fonte de Finan. não preenchida")
@@ -93,8 +88,6 @@ def validar_linha(row): # row ainda é uma pandas Series
             erros.append("Programa deve ser '011'")
         if fonte not in ['483', '31H', '488'] and medida != '022':
             erros.append("Medida deve ser '022' exceto para fontes 483, 31H ou 488")
-        # A função limpar já foi aplicada, então usamos 'tipo' diretamente.
-        # O .upper() continua a ser importante se o case não for garantido.
         if tipo.upper() == 'PG' and fonte != '513':
             erros.append("Fonte Finan. deve ser 513 quando R/D = R e Tipo = PG")
 
@@ -102,7 +95,7 @@ def validar_linha(row): # row ainda é uma pandas Series
         if fonte not in ['483', '31H', '488'] and medida != '022':
             erros.append("Medida deve ser '022' exceto para fontes 483, 31H ou 488")
         if org == '101904000':
-            if projeto and atividade != '000': # projeto e atividade já são os valores limpos
+            if projeto and atividade != '000':
                 erros.append("Se o Projeto estiver preenchido, a Atividade deve ser 000")
             elif not projeto and atividade != '130':
                 erros.append("Se o Projeto estiver vazio, a Atividade deve ser 130")
@@ -111,22 +104,18 @@ def validar_linha(row): # row ainda é uma pandas Series
                 erros.append("Atividade deve ser 000 e Projeto preenchido")
         if funcional != '0730':
             erros.append("Cl. Funcional deve ser '0730'")
-        if tipo == 'CO' and fonte != '511': # tipo já é o valor limpo
+        if tipo == 'CO' and fonte != '511':
             erros.append("Se R/D = D e Tipo = CO, Fonte Finan. tem de ser 511")
 
     return "; ".join(erros) if erros else "Sem erros"
 
 def validar_documentos_co(df_input):
     erros = []
-    # Certificar que estamos a operar numa cópia se formos modificar df_co,
-    # mas aqui apenas filtramos e iteramos, então o original não é alterado.
-    df_co = df_input[df_input['Tipo_clean'] == 'CO'] # Usar a coluna pré-limpa para Tipo
+    df_co = df_input[df_input['Tipo_clean'] == 'CO']
 
     for docid, grp in df_co.groupby('DOCID'):
-        # MELHORIA: Remover .astype(str) se 'Conta' já for string (devido a dtype=str na leitura)
         debs = grp[grp['Conta'].str.startswith(('0281','0282'))]
         creds = grp[grp['Conta'].str.startswith('0272')]
-
         rubs = {extrair_rubrica(c) for c in debs['Conta']}
         for idx, ln in creds.iterrows():
             rub = extrair_rubrica(ln['Conta'])
@@ -144,67 +133,53 @@ uploaded = st.sidebar.file_uploader("Carrega um ficheiro CSV ou ZIP", type=["csv
 if uploaded:
     try:
         df_original = ler_ficheiro(uploaded)
-        df = df_original.copy() # Trabalhar numa cópia para não alterar o original desnecessariamente
+        df = df_original.copy()
 
-        # Limpeza inicial do DataFrame
-        df = df[df['Conta'] != 'Conta'] # Remove linhas de cabeçalho repetidas
-        df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)] # Remove saldos iniciais
-        df.reset_index(drop=True, inplace=True) # Resetar o índice após filtros
+        df = df[df['Conta'] != 'Conta']
+        df = df[~df['Data Contab.'].astype(str).str.contains("Saldo Inicial", na=False)]
+        df.reset_index(drop=True, inplace=True)
 
         st.info(f"Ficheiro '{uploaded.name}' carregado. Total de linhas a processar: {len(df)}")
 
-        # MELHORIA: Barra de progresso
         total_etapas = 3
         progresso_atual = 0
         barra_progresso = st.progress(0, text="A iniciar validação...")
         tempo_inicio_total = time.time()
 
-        # Etapa 1: Pré-limpeza das colunas
-        # (A mensagem do spinner será atualizada pela barra de progresso)
         barra_progresso.progress(progresso_atual / total_etapas, text="Fase 1/3: A preparar dados (pré-limpeza)...")
         tempo_inicio_etapa = time.time()
         for col_original in COLUNAS_A_PRE_LIMPAR:
-            # Assegurar que a coluna existe antes de tentar limpá-la
             if col_original in df.columns:
                 df[f'{col_original}_clean'] = df[col_original].apply(limpar)
             else:
-                # Se uma coluna crucial para pré-limpeza não existir, pode adicionar um erro ou aviso.
-                # Por agora, vamos criar uma coluna vazia para evitar erros em 'validar_linha',
-                # mas idealmente deveria haver um tratamento de erro mais robusto aqui.
-                df[f'{col_original}_clean'] = "" # Ou pd.Series([""] * len(df), dtype=str)
+                df[f'{col_original}_clean'] = ""
                 st.warning(f"Coluna '{col_original}' não encontrada no ficheiro. Será tratada como vazia para validação.")
-
         st.write(f"Tempo Fase 1 (Pré-limpeza): {time.time() - tempo_inicio_etapa:.2f}s")
         progresso_atual += 1
 
-        # Etapa 2: Validar Linha
         barra_progresso.progress(progresso_atual / total_etapas, text="Fase 2/3: A validar lançamentos linha a linha...")
         tempo_inicio_etapa = time.time()
         df['Erro'] = df.apply(validar_linha, axis=1)
         st.write(f"Tempo Fase 2 (Validação de Linhas): {time.time() - tempo_inicio_etapa:.2f}s")
         progresso_atual += 1
 
-        # Etapa 3: Validar Documentos CO e consolidar erros
         barra_progresso.progress(progresso_atual / total_etapas, text="Fase 3/3: A validar documentos CO...")
         tempo_inicio_etapa = time.time()
-        # Passar 'df' que contém as colunas '_clean'
         co_erros = validar_documentos_co(df)
         for idx, msg in co_erros:
-            if idx in df.index: # Verificar se o índice ainda é válido após filtros/reset
+            if idx in df.index:
                 if df.at[idx, 'Erro'] == "Sem erros":
                     df.at[idx, 'Erro'] = msg
                 else:
                     df.at[idx, 'Erro'] += f"; {msg}"
             else:
                 st.warning(f"Índice {idx} de erro CO não encontrado no DataFrame principal. O erro '{msg}' não foi atribuído.")
-
         st.write(f"Tempo Fase 3 (Validação CO e Consolidação): {time.time() - tempo_inicio_etapa:.2f}s")
         progresso_atual += 1
         barra_progresso.progress(progresso_atual / total_etapas, text="Validação concluída!")
 
         st.success(f"Validação concluída. Total de linhas: {len(df)}. Tempo total: {time.time() - tempo_inicio_total:.2f}s")
 
-        # MELHORIA: Remover colunas '_clean' antes de mostrar e descarregar, se não forem desejadas no output
         df_para_mostrar = df.copy()
         colunas_a_remover_do_output = [f'{c}_clean' for c in COLUNAS_A_PRE_LIMPAR if f'{c}_clean' in df_para_mostrar.columns]
         if colunas_a_remover_do_output:
@@ -215,7 +190,6 @@ if uploaded:
 
         with st.expander("📊 Resumo de Erros"):
             resumo = Counter()
-            # Usar a coluna 'Erro' do DataFrame 'df' original (que inclui os erros)
             for erros_linha in df['Erro']:
                 if erros_linha != "Sem erros":
                     for erro_msg in erros_linha.split("; "):
@@ -224,44 +198,60 @@ if uploaded:
             if resumo:
                 resumo_df = pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"])
                 st.table(resumo_df)
-
-                # Ajustar tamanho da figura dinamicamente
-                altura_grafico = max(5, len(resumo_df) * 0.35) # Mínimo de 5, 0.35 por barra
-                fig, ax = plt.subplots(figsize=(10, altura_grafico)) # Aumentar largura para melhor visualização
+                altura_grafico = max(5, len(resumo_df) * 0.35)
+                fig, ax = plt.subplots(figsize=(10, altura_grafico))
                 resumo_df.sort_values(by='Ocorrências', ascending=True).plot(
                     kind="barh", x="Regra", y="Ocorrências", ax=ax, legend=False,
                     title="Ocorrências de Erros por Regra"
                 )
-                plt.tight_layout() # Ajustar layout para evitar sobreposição
+                plt.tight_layout()
                 st.pyplot(fig)
             else:
                 st.info("🎉 Fantástico! Nenhum erro encontrado nas validações.")
 
-
         # --- Download ---
+        st.info("DEBUG: A iniciar preparação para download do relatório CSV...")
         buffer = io.BytesIO()
-        # Usar df_para_mostrar para o Excel (sem colunas _clean)
-        df_para_mostrar.to_excel(buffer, index=False, engine='openpyxl')
+        st.info("DEBUG: Buffer BytesIO criado.")
+
+        # Usar df_para_mostrar para o CSV (sem colunas _clean)
+        try:
+            st.info(f"DEBUG: A gerar CSV com {len(df_para_mostrar)} linhas e {len(df_para_mostrar.columns)} colunas...")
+            # Gerar CSV
+            df_para_mostrar.to_csv(
+                buffer,
+                index=False,        # Não escrever o índice do DataFrame
+                sep=';',            # Usar ponto e vírgula como separador
+                encoding='utf-8-sig' # utf-8-sig ajuda o Excel a abrir o CSV corretamente com acentos
+            )
+            st.info("DEBUG: Ficheiro CSV gerado com sucesso no buffer.")
+        except Exception as e_csv:
+            st.error(f"ERRO CRÍTICO ao gerar o ficheiro CSV: {e_csv}")
+            raise # Re-lança a excepção para parar e ver o erro nos logs do Streamlit
+
         buffer.seek(0)
+        st.info("DEBUG: Buffer seek(0) executado.")
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         nome_ficheiro_base = uploaded.name.split('.')[0].replace(' ', '_')
-        nome_ficheiro = f"{nome_ficheiro_base}_output_{ts}.xlsx"
+        # Alterar extensão para .csv
+        nome_ficheiro_csv = f"{nome_ficheiro_base}_output_{ts}.csv"
 
+        st.info(f"DEBUG: A preparar botão de download para '{nome_ficheiro_csv}'.")
         st.sidebar.download_button(
-            "⬇️ Descarregar Excel com Erros",
+            "⬇️ Descarregar CSV com Erros", # Texto do botão atualizado
             data=buffer,
-            file_name=nome_ficheiro,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            file_name=nome_ficheiro_csv,
+            mime="text/csv" # MIME type para CSV
         )
+        st.info("DEBUG: Botão de download CSV adicionado à barra lateral.")
 
-    except ValueError as ve: # Erros específicos como ZIP vazio ou CSV não encontrado
+    except ValueError as ve:
         st.error(f"Erro de Validação: {ve}")
-    except KeyError as ke: # Erros de coluna não encontrada
-        st.error(f"Erro de Processamento: Coluna não encontrada no ficheiro - {ke}. Verifique se o ficheiro CSV tem os cabeçalhos esperados ({', '.join(CABECALHOS)}).")
+    except KeyError as ke:
+        st.error(f"Erro de Processamento: Coluna não encontrada no ficheiro - {ke}. Verifique se o ficheiro CSV tem os cabeçalhos esperados.")
     except Exception as e:
         st.error(f"Ocorreu um erro inesperado durante o processamento: {e}")
-        # Para debugging, pode querer ver o traceback completo na consola onde o Streamlit corre
-        # import traceback
-        # st.error(traceback.format_exc())
+        # Para debugging mais aprofundado, pode descomentar a linha abaixo para ver o traceback na UI
+        # st.exception(e)
 else:
     st.info("👈 Por favor, carregue um ficheiro CSV ou ZIP para começar.")
