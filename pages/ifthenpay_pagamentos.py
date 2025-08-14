@@ -10,9 +10,9 @@ st.header("📥 Exportar Pagamentos Ifthenpay")
 
 # Formulário de entrada
 with st.form("form_pagamentos"):
-    chave = st.text_input("🔑 Chave Backoffice", type="password")
-    entidade = st.text_input("🏦 Entidade", value="12377")
-    subentidade = st.text_input("🏢 Subentidade", value="143")
+chave = st.secrets["ifthenpay"]["backoffice_key"]
+entidade = st.text_input("🏦 Entidade", value="12377")
+subentidade = st.text_input("🏢 Subentidade", value="143")
     dt_inicio = st.date_input("📅 Data Início", value=date(2025, 7, 1), format="DD-MM-YYYY")
     dt_fim = st.date_input("📅 Data Fim", value=date(2025, 7, 30), format="DD-MM-YYYY")
     submit = st.form_submit_button("🔄 Obter Pagamentos")
