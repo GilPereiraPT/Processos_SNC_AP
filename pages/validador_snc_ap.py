@@ -7,7 +7,7 @@ import io
 import matplotlib.pyplot as plt
 from collections import Counter
 from datetime import datetime
-import time # Adicionado para demonstração de tempo, pode ser removido
+import time
 
 # --- Configurações Iniciais ---
 CABECALHOS = [
@@ -27,7 +27,6 @@ ORG_POR_FONTE = {
     '415': '108904000'
 }
 
-# MELHORIA: Definir colunas que serão pré-limpas
 COLUNAS_A_PRE_LIMPAR = [
     'R/D', 'Fonte Finan.', 'Cl. Orgânica', 'Programa', 'Medida',
     'Projeto', 'Atividade', 'Cl. Funcional', 'Entidade', 'Tipo'
@@ -74,16 +73,35 @@ def validar_linha(row):
     entidade  = row['Entidade_clean']
     tipo      = row['Tipo_clean']
 
+    # --- Regras gerais ---
     if not fonte:
         erros.append("Fonte de Finan. não preenchida")
     elif fonte in ORG_POR_FONTE and org != ORG_POR_FONTE[fonte]:
         erros.append(f"Cl. Orgânica deve ser {ORG_POR_FONTE[fonte]} para fonte {fonte}")
 
+    # --- Regras para R ---
     if rd == 'R':
-        if entidade == '971010' and fonte != '511':
-            erros.append("Fonte Finan. deve ser 511 para entidade 971010")
+        # Fonte 511 só permite certas entidades
+        if fonte == '511' and entidade not in ['9999999', '971010']:
+            erros.append("Se R/D = R e Fonte Finan. = 511, então Entidade deve ser 9999999 ou 971010")
+
+        # Casos específicos para entidade 971010
+        if entidade == '971010':
+            if '07.02.05.01.78' in str(row['Conta']):
+                if fonte != '511':
+                    erros.append("Se Entidade = 971010 e Conta contém 07.02.05.01.78, então Fonte Finan. deve ser 511")
+            elif medida == '102':
+                if fonte != '483':
+                    erros.append("Se Entidade = 971010 e Medida = 102, então Fonte Finan. deve ser 483")
+            else:
+                if fonte != '513':
+                    erros.append("Se Entidade = 971010 e não se aplicam as exceções, então Fonte Finan. deve ser 513")
+
+        # Outras entidades específicas
         if entidade == '971007' and fonte != '541':
             erros.append("Fonte Finan. deve ser 541 para entidade 971007")
+
+        # Regras adicionais
         if programa != '011':
             erros.append("Programa deve ser '011'")
         if fonte not in ['483', '31H', '488'] and medida != '022':
@@ -91,6 +109,7 @@ def validar_linha(row):
         if tipo.upper() == 'PG' and fonte != '513':
             erros.append("Fonte Finan. deve ser 513 quando R/D = R e Tipo = PG")
 
+    # --- Regras para D ---
     elif rd == 'D':
         if fonte not in ['483', '31H', '488'] and medida != '022':
             erros.append("Medida deve ser '022' exceto para fontes 483, 31H ou 488")
@@ -146,6 +165,7 @@ if uploaded:
         barra_progresso = st.progress(0, text="A iniciar validação...")
         tempo_inicio_total = time.time()
 
+        # --- Fase 1: Pré-limpeza ---
         barra_progresso.progress(progresso_atual / total_etapas, text="Fase 1/3: A preparar dados (pré-limpeza)...")
         tempo_inicio_etapa = time.time()
         for col_original in COLUNAS_A_PRE_LIMPAR:
@@ -157,12 +177,14 @@ if uploaded:
         st.write(f"Tempo Fase 1 (Pré-limpeza): {time.time() - tempo_inicio_etapa:.2f}s")
         progresso_atual += 1
 
+        # --- Fase 2: Validação linha a linha ---
         barra_progresso.progress(progresso_atual / total_etapas, text="Fase 2/3: A validar lançamentos linha a linha...")
         tempo_inicio_etapa = time.time()
         df['Erro'] = df.apply(validar_linha, axis=1)
         st.write(f"Tempo Fase 2 (Validação de Linhas): {time.time() - tempo_inicio_etapa:.2f}s")
         progresso_atual += 1
 
+        # --- Fase 3: Validação CO ---
         barra_progresso.progress(progresso_atual / total_etapas, text="Fase 3/3: A validar documentos CO...")
         tempo_inicio_etapa = time.time()
         co_erros = validar_documentos_co(df)
@@ -180,6 +202,7 @@ if uploaded:
 
         st.success(f"Validação concluída. Total de linhas: {len(df)}. Tempo total: {time.time() - tempo_inicio_total:.2f}s")
 
+        # --- Output para visualização ---
         df_para_mostrar = df.copy()
         colunas_a_remover_do_output = [f'{c}_clean' for c in COLUNAS_A_PRE_LIMPAR if f'{c}_clean' in df_para_mostrar.columns]
         if colunas_a_remover_do_output:
@@ -210,40 +233,24 @@ if uploaded:
                 st.info("🎉 Fantástico! Nenhum erro encontrado nas validações.")
 
         # --- Download ---
-        st.info("DEBUG: A iniciar preparação para download do relatório CSV...")
         buffer = io.BytesIO()
-        st.info("DEBUG: Buffer BytesIO criado.")
-
-        # Usar df_para_mostrar para o CSV (sem colunas _clean)
-        try:
-            st.info(f"DEBUG: A gerar CSV com {len(df_para_mostrar)} linhas e {len(df_para_mostrar.columns)} colunas...")
-            # Gerar CSV
-            df_para_mostrar.to_csv(
-                buffer,
-                index=False,        # Não escrever o índice do DataFrame
-                sep=';',            # Usar ponto e vírgula como separador
-                encoding='utf-8-sig' # utf-8-sig ajuda o Excel a abrir o CSV corretamente com acentos
-            )
-            st.info("DEBUG: Ficheiro CSV gerado com sucesso no buffer.")
-        except Exception as e_csv:
-            st.error(f"ERRO CRÍTICO ao gerar o ficheiro CSV: {e_csv}")
-            raise # Re-lança a excepção para parar e ver o erro nos logs do Streamlit
-
+        df_para_mostrar.to_csv(
+            buffer,
+            index=False,
+            sep=';',
+            encoding='utf-8-sig'
+        )
         buffer.seek(0)
-        st.info("DEBUG: Buffer seek(0) executado.")
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         nome_ficheiro_base = uploaded.name.split('.')[0].replace(' ', '_')
-        # Alterar extensão para .csv
         nome_ficheiro_csv = f"{nome_ficheiro_base}_output_{ts}.csv"
 
-        st.info(f"DEBUG: A preparar botão de download para '{nome_ficheiro_csv}'.")
         st.sidebar.download_button(
-            "⬇️ Descarregar CSV com Erros", # Texto do botão atualizado
+            "⬇️ Descarregar CSV com Erros",
             data=buffer,
             file_name=nome_ficheiro_csv,
-            mime="text/csv" # MIME type para CSV
+            mime="text/csv"
         )
-        st.info("DEBUG: Botão de download CSV adicionado à barra lateral.")
 
     except ValueError as ve:
         st.error(f"Erro de Validação: {ve}")
@@ -251,7 +258,5 @@ if uploaded:
         st.error(f"Erro de Processamento: Coluna não encontrada no ficheiro - {ke}. Verifique se o ficheiro CSV tem os cabeçalhos esperados.")
     except Exception as e:
         st.error(f"Ocorreu um erro inesperado durante o processamento: {e}")
-        # Para debugging mais aprofundado, pode descomentar a linha abaixo para ver o traceback na UI
-        # st.exception(e)
 else:
     st.info("👈 Por favor, carregue um ficheiro CSV ou ZIP para começar.")
