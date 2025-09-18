@@ -243,10 +243,11 @@ def parse_pdf_descontos(files: List[bytes], log: List[str]) -> pd.DataFrame:
 # UI
 # -----------------------------
 st.header("1) Carregar ficheiros")
+st.caption("Se o seu TXT não tiver extensão, também funciona (o seletor aceita todos os tipos).")
 
 c1, c2 = st.columns(2)
 with c1:
-    txt_file = st.file_uploader("Carregar TXT (largura fixa)", type=["txt","dat","csv",""], accept_multiple_files=False, key="txt")
+    txt_file = st.file_uploader("Carregar TXT (largura fixa)", type=None, accept_multiple_files=False, key="txt")
 with c2:
     pdf_files = st.file_uploader("Carregar PDF(s) das listagens", type=["pdf"], accept_multiple_files=True, key="pdfs")
 
