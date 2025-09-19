@@ -10,16 +10,11 @@ from typing import List, Optional, Tuple
 import pandas as pd
 import streamlit as st
 
-# Backends PDF (opcionais)
+# Backends PDF
 try:
     import pdfplumber
 except Exception:
     pdfplumber = None
-
-try:
-    import camelot  # requer Ghostscript para 'lattice'
-except Exception:
-    camelot = None
 
 st.set_page_config(page_title="Comparador de Descontos (TXT vs PDF)", layout="wide")
 st.title("Comparador de Descontos — TXT vs PDF")
@@ -36,12 +31,13 @@ with st.expander("➕ Instruções (clique)"):
 - Somar **apenas** linhas com `Sinal = "+"`.
 
 **PDF**
-- Secção **Descontos** tem 3 subcolunas, mas agora usamos toda a coluna textual.
+- Apenas **páginas 1 e 2** são processadas.
+- Cada linha relevante tem formato:
+  - `101 Nome_do_desconto Valor`
 - Regras:
-  - Extrair todos os dígitos da coluna “Descontos”.
-  - Ignorar sempre os **3 primeiros dígitos** → o resto é o **Código de desconto**.
-  - Nome = texto sem dígitos.
-- Coluna **Desconto** (singular) = Valor.
+  - `CodigoDesconto` = **primeiros 3 dígitos**.
+  - `NomeDesconto` = **resto do texto**.
+  - `Valor_pdf` = número da última coluna.
 
 **Resultado**
 - Junta por **Código (numérico)** e calcula **Diferença = Total_txt − Valor_pdf**.
@@ -131,10 +127,9 @@ def aggregate_txt(df: pd.DataFrame) -> pd.DataFrame:
     return agg
 
 # ---------------------------
-# PDF parsing — pdfplumber (nova lógica)
+# PDF parsing — pdfplumber
 # ---------------------------
-def parse_pdf_plumber_words(pdf_files: List[bytes],
-                            y_tol: float, log: List[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def parse_pdf_plumber_words(pdf_files: List[bytes], y_tol: float, log: List[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     if pdfplumber is None:
         return pd.DataFrame(columns=["CodigoDesconto","NomeDesconto","Valor_pdf"]), pd.DataFrame()
 
@@ -144,11 +139,14 @@ def parse_pdf_plumber_words(pdf_files: List[bytes],
     for i, fb in enumerate(pdf_files, start=1):
         with pdfplumber.open(io.BytesIO(fb)) as pdf:
             for pi, page in enumerate(pdf.pages, start=1):
+                if pi > 2:  # só páginas 1 e 2
+                    continue
+
                 words = page.extract_words(use_text_flow=True, keep_blank_chars=False)
                 if not words:
                     continue
 
-                # Agrupar por linha (Y)
+                # Agrupar por linha
                 lines = {}
                 for w in words:
                     cy = (w["top"] + w["bottom"]) / 2
@@ -172,27 +170,18 @@ def parse_pdf_plumber_words(pdf_files: List[bytes],
                     val_w = max(nums, key=lambda k: k["x0"])
                     val = _to_float_pt(val_w["text"])
 
-                    # Texto da linha inteira (à esquerda do valor)
+                    # Texto da linha à esquerda do valor
                     bloco = [w for w in ws if w["x0"] < val_w["x0"] - 3]
                     linha_texto = " ".join([w["text"] for w in bloco]).strip()
 
-                    # Extrair dígitos e ignorar os 3 primeiros
-                    digitos = re.sub(r"\D", "", linha_texto)
-                    codigo = None
-                    if len(digitos) > 3:
-                        try:
-                            codigo = str(int(digitos[3:]))  # remove 3 primeiros dígitos
-                        except Exception:
-                            codigo = None
-
-                    if not codigo:
-                        log.append(f"[Linha PDF {i}-{pi}] Falhou código — '{linha_texto}'")
-                        preview.append({"PDF": i, "Pagina": pi, "y": y,
-                                        "linha_texto": linha_texto, "valor": val})
+                    # Extrair código (3 dígitos) + nome
+                    m = re.match(r"^(\d{3})\s+(.*)$", linha_texto)
+                    if not m:
+                        log.append(f"[Linha PDF {i}-{pi}] Ignorada — '{linha_texto}'")
                         continue
 
-                    # Nome = texto sem dígitos
-                    nome = re.sub(r"\d", "", linha_texto).strip()
+                    codigo = str(int(m.group(1)))
+                    nome = m.group(2).strip()
 
                     recs.append({"CodigoDesconto": codigo, "NomeDesconto": nome, "Valor_pdf": val})
                     preview.append({
