@@ -36,13 +36,12 @@ with st.expander("➕ Instruções (clique)"):
 - Somar **apenas** linhas com `Sinal = "+"`.
 
 **PDF**
-- Secção **Descontos** tem 3 subcolunas:
-  - 1.ª (por vezes vazia) ou **2.ª** = **Código** (configurável),
-  - **3.ª** = **Nome**,
-  - Coluna **Desconto** (singular) = **Valor**.
-- Modos de extração:
-  - **Camelot** (se instalado): bom para tabelas com grelha/linhas.
-  - **pdfplumber (Palavras x,y)**: **Automático (gaps)**, **Manual (cortes x)** ou **Manual (faixas X)**.
+- Secção **Descontos** tem 3 subcolunas, mas agora usamos toda a coluna textual.
+- Regras:
+  - Extrair todos os dígitos da coluna “Descontos”.
+  - Ignorar sempre os **3 primeiros dígitos** → o resto é o **Código de desconto**.
+  - Nome = texto sem dígitos.
+- Coluna **Desconto** (singular) = Valor.
 
 **Resultado**
 - Junta por **Código (numérico)** e calcula **Diferença = Total_txt − Valor_pdf**.
@@ -132,30 +131,15 @@ def aggregate_txt(df: pd.DataFrame) -> pd.DataFrame:
     return agg
 
 # ---------------------------
-# PDF parsing — Camelot
-# ---------------------------
-def parse_pdf_camelot(pdf_files: List[bytes], flavor: str, pages: str, strip_text: str,
-                      code_col_hint: Optional[int], name_col_hint: Optional[int],
-                      value_col_hint: Optional[int], log: List[str]) -> pd.DataFrame:
-    if camelot is None:
-        return pd.DataFrame(columns=["CodigoDesconto","NomeDesconto","Valor_pdf"])
-    # Mantém versão original sem alterações
-
-# ---------------------------
-# PDF parsing — pdfplumber (melhorado)
+# PDF parsing — pdfplumber (nova lógica)
 # ---------------------------
 def parse_pdf_plumber_words(pdf_files: List[bytes],
-                            mode: str,
-                            x_cut1: Optional[float], x_cut2: Optional[float],
-                            ranges: Optional[Tuple[float,float,float,float,float]],
-                            y_tol: float, code_pos_is_second: bool,
-                            codigo_digits: int, log: List[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
+                            y_tol: float, log: List[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     if pdfplumber is None:
         return pd.DataFrame(columns=["CodigoDesconto","NomeDesconto","Valor_pdf"]), pd.DataFrame()
 
     preview = []
     recs = []
-    patt_exact = re.compile(r"\d{2,5}")
 
     for i, fb in enumerate(pdf_files, start=1):
         with pdfplumber.open(io.BytesIO(fb)) as pdf:
@@ -164,11 +148,7 @@ def parse_pdf_plumber_words(pdf_files: List[bytes],
                 if not words:
                     continue
 
-                nums_all = [w for w in words if re.fullmatch(r"-?\d{1,3}(?:\.\d{3})*,\d{2}", w["text"].strip())]
-                if not nums_all:
-                    continue
-                x_val_guess = max(nums_all, key=lambda k: k["x0"])["x0"]
-
+                # Agrupar por linha (Y)
                 lines = {}
                 for w in words:
                     cy = (w["top"] + w["bottom"]) / 2
@@ -185,76 +165,40 @@ def parse_pdf_plumber_words(pdf_files: List[bytes],
                 for y, ws in sorted(lines.items()):
                     ws = sorted(ws, key=lambda w: w["x0"])
 
+                    # Valor = número PT mais à direita
                     nums = [w for w in ws if re.fullmatch(r"-?\d{1,3}(?:\.\d{3})*,\d{2}", w["text"].strip())]
-                    if mode == "ranges" and ranges:
-                        cand_nums = [w for w in nums if w["x0"] >= ranges[4]-1]
-                        if not cand_nums:
-                            continue
-                        val_w = max(cand_nums, key=lambda k: k["x0"])
-                    else:
-                        if not nums:
-                            continue
-                        val_w = max(nums, key=lambda k: k["x0"])
-                        if val_w["x0"] < x_val_guess - 3:
-                            continue
-
-                    val = _to_float_pt(val_w["text"])
-                    bloco = [w for w in ws if w["x0"] < (ranges[4]-3 if (mode == "ranges" and ranges) else (x_val_guess - 3))]
-                    if not bloco:
+                    if not nums:
                         continue
+                    val_w = max(nums, key=lambda k: k["x0"])
+                    val = _to_float_pt(val_w["text"])
 
-                    if mode == "ranges" and ranges:
-                        x_code_min, x_code_max, x_name_min, x_name_max, _ = ranges
-                        col_codigo = [w for w in bloco if x_code_min <= w["x0"] < x_code_max]
-                        col_nome   = [w for w in bloco if x_name_min <= w["x0"] < x_name_max]
-                    else:
-                        xs = sorted(set([w["x0"] for w in bloco]))
-                        if mode == "auto":
-                            if len(xs) < 3:
-                                continue
-                            gaps = [(xs[i+1]-xs[i], xs[i], xs[i+1]) for i in range(len(xs)-1)]
-                            gaps = sorted(gaps, key=lambda g: g[0], reverse=True)
-                            if len(gaps) < 2:
-                                continue
-                            cut1, cut2 = gaps[0][2], gaps[1][2]
-                            c1, c2 = sorted([cut1, cut2])
-                        else:
-                            if x_cut1 is None or x_cut2 is None:
-                                continue
-                            c1, c2 = sorted([x_cut1, x_cut2])
+                    # Texto da linha inteira (à esquerda do valor)
+                    bloco = [w for w in ws if w["x0"] < val_w["x0"] - 3]
+                    linha_texto = " ".join([w["text"] for w in bloco]).strip()
 
-                        col1 = [w for w in bloco if w["x0"] < c1]
-                        col2 = [w for w in bloco if c1 <= w["x0"] < c2]
-                        col3 = [w for w in bloco if w["x0"] >= c2]
-                        col_codigo = col2 if code_pos_is_second else col1
-                        col_nome   = col3 if code_pos_is_second else (col2 if col2 else col3)
-
-                    codigo_raw = "".join([w["text"] for w in col_codigo]).strip()
-                    m = patt_exact.search(codigo_raw)
-                    if m:
-                        codigo = m.group(0)
-                    else:
-                        codigo = re.sub(r"\D", "", codigo_raw)
+                    # Extrair dígitos e ignorar os 3 primeiros
+                    digitos = re.sub(r"\D", "", linha_texto)
+                    codigo = None
+                    if len(digitos) > 3:
+                        try:
+                            codigo = str(int(digitos[3:]))  # remove 3 primeiros dígitos
+                        except Exception:
+                            codigo = None
 
                     if not codigo:
-                        log.append(f"[Linha PDF {i}-{pi}] Falhou código — '{codigo_raw}'")
-                        preview.append({"PDF": i, "Pagina": pi, "y": y, "linha_texto": " ".join([w['text'] for w in bloco])})
+                        log.append(f"[Linha PDF {i}-{pi}] Falhou código — '{linha_texto}'")
+                        preview.append({"PDF": i, "Pagina": pi, "y": y,
+                                        "linha_texto": linha_texto, "valor": val})
                         continue
 
-                    try:
-                        codigo = str(int(codigo))
-                    except Exception:
-                        continue
-
-                    nome = " ".join([w["text"] for w in col_nome]).strip()
+                    # Nome = texto sem dígitos
+                    nome = re.sub(r"\d", "", linha_texto).strip()
 
                     recs.append({"CodigoDesconto": codigo, "NomeDesconto": nome, "Valor_pdf": val})
                     preview.append({
                         "PDF": i, "Pagina": pi, "y": y,
-                        "codigo_raw": codigo_raw, "codigo": codigo,
-                        "nome": nome, "valor": val,
-                        "linha_texto": " ".join([w["text"] for w in bloco]),
-                        "coords": str([(w["text"], round(w["x0"],1)) for w in bloco])  # <- string, não lista
+                        "codigo": codigo, "nome": nome, "valor": val,
+                        "linha_texto": linha_texto
                     })
 
     df_prev = pd.DataFrame(preview)
@@ -280,71 +224,10 @@ with c2:
     pdf_files = st.file_uploader("PDF(s) das listagens", type=["pdf"], accept_multiple_files=True)
 
 # ---------------------------
-# UI — PDF Backend e parâmetros
+# Parâmetros PDF
 # ---------------------------
-st.header("2) PDF — Backend e parâmetros")
-
-available_backends = []
-if camelot is not None:
-    available_backends.append("Camelot (recomendado se tiver Ghostscript)")
-if pdfplumber is not None:
-    available_backends.append("pdfplumber (Palavras x,y)")
-
-if not available_backends:
-    st.error("Nenhum backend PDF disponível.")
-    st.stop()
-
-if camelot is None:
-    st.info("⚠️ Camelot não disponível neste ambiente (requer Ghostscript). A usar pdfplumber.")
-
-backend = st.radio("Backend PDF", options=available_backends, index=0)
-log_msgs: List[str] = []
-
-if backend.startswith("Camelot"):
-    cA, cB, cC = st.columns(3)
-    with cA:
-        flavor = st.selectbox("flavor", options=["lattice", "stream"], index=0)
-    with cB:
-        pages = st.text_input("pages", value="all")
-    with cC:
-        strip_text = st.text_input("strip_text", value=" \n")
-    cD, cE, cF = st.columns(3)
-    with cD:
-        code_col_hint = st.number_input("col CÓDIGO (hint)", min_value=-1, value=-1, step=1)
-    with cE:
-        name_col_hint = st.number_input("col NOME (hint)", min_value=-1, value=-1, step=1)
-    with cF:
-        value_col_hint = st.number_input("col VALOR (hint)", min_value=-1, value=-1, step=1)
-else:
-    st.write("**pdfplumber (Palavras x,y)** — escolha um dos modos abaixo:")
-    mode = st.radio("Modo", options=["Automático (gaps)", "Manual (cortes x)", "Manual (faixas X)"], index=0)
-    mode_key = "auto" if mode.startswith("Auto") else ("cuts" if "cortes" in mode else "ranges")
-    cA, cB, cC = st.columns(3)
-    with cA:
-        y_tol = st.number_input("Tolerância Y", min_value=0.5, value=2.0, step=0.5)
-    with cB:
-        code_pos = st.radio("Subcoluna com CÓDIGO", options=["1ª", "2ª"], index=0)
-    with cC:
-        codigo_digits = st.selectbox("Dígitos do código", options=[3, 4], index=0)
-
-    cD, cE = st.columns(2)
-    with cD:
-        x_cut1 = st.number_input("x-cut1", min_value=0.0, value=100.0, step=5.0)
-    with cE:
-        x_cut2 = st.number_input("x-cut2", min_value=0.0, value=200.0, step=5.0)
-
-    cF, cG, cH = st.columns(3)
-    with cF:
-        x_code_min = st.number_input("X mín. CÓDIGO", min_value=0.0, value=40.0, step=5.0)
-    with cG:
-        x_code_max = st.number_input("X máx. CÓDIGO", min_value=0.0, value=110.0, step=5.0)
-    with cH:
-        x_name_min = st.number_input("X mín. NOME", min_value=0.0, value=115.0, step=5.0)
-    cI, cJ = st.columns(2)
-    with cI:
-        x_name_max = st.number_input("X máx. NOME", min_value=0.0, value=360.0, step=5.0)
-    with cJ:
-        x_val_min = st.number_input("X mín. VALOR", min_value=0.0, value=380.0, step=5.0)
+st.header("2) PDF — Parâmetros")
+y_tol = st.number_input("Tolerância Y (agrupamento de linhas)", min_value=0.5, value=2.0, step=0.5)
 
 # ---------------------------
 # Processar
@@ -364,37 +247,13 @@ if st.button("Processar e Comparar", type="primary"):
         st.stop()
 
     pdf_bytes = [f.getvalue() for f in pdf_files]
-
-    if backend.startswith("Camelot"):
-        pdf_agg = parse_pdf_camelot(
-            pdf_bytes,
-            flavor=flavor,
-            pages=pages,
-            strip_text=strip_text,
-            code_col_hint=(None if code_col_hint < 0 else int(code_col_hint)),
-            name_col_hint=(None if name_col_hint < 0 else int(name_col_hint)),
-            value_col_hint=(None if value_col_hint < 0 else int(value_col_hint)),
-            log=log_msgs
-        )
-        df_preview = pd.DataFrame()
-    else:
-        ranges = (x_code_min, x_code_max, x_name_min, x_name_max, x_val_min)
-        pdf_agg, df_preview = parse_pdf_plumber_words(
-            pdf_bytes,
-            mode=mode_key,
-            x_cut1=(x_cut1 if mode_key == "cuts" else None),
-            x_cut2=(x_cut2 if mode_key == "cuts" else None),
-            ranges=(ranges if mode_key == "ranges" else None),
-            y_tol=y_tol,
-            code_pos_is_second=(code_pos.startswith("2ª")),
-            codigo_digits=codigo_digits,
-            log=log_msgs
-        )
+    log_msgs: List[str] = []
+    pdf_agg, df_preview = parse_pdf_plumber_words(pdf_bytes, y_tol=y_tol, log=log_msgs)
 
     if pdf_agg.empty:
         st.error("Não foi possível extrair dados úteis dos PDFs.")
         if not df_preview.empty:
-            st.subheader("Pré-visualização (palavras por linha)")
+            st.subheader("Pré-visualização (linhas extraídas)")
             st.dataframe(df_preview.head(200), use_container_width=True)
         if log_msgs:
             st.subheader("Logs")
@@ -423,7 +282,7 @@ if st.button("Processar e Comparar", type="primary"):
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     if not df_preview.empty:
-        with st.expander("📋 Pré-visualização (palavras por linha)"):
+        with st.expander("📋 Pré-visualização (linhas extraídas)"):
             st.dataframe(df_preview, use_container_width=True)
 
     if log_msgs:
