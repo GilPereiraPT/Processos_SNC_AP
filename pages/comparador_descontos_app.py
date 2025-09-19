@@ -326,3 +326,83 @@ log_msgs: List[str] = []
 
 # ... (mantém a tua lógica original de UI e processamento)
 # Diferença é que a função parse_pdf_plumber_words já está melhorada
+# ---------------------------
+# Processar
+# ---------------------------
+st.header("3) Executar comparação")
+
+if st.button("Processar e Comparar", type="primary"):
+    if not txt_file or not pdf_files:
+        st.error("Carregue o TXT e pelo menos um PDF.")
+        st.stop()
+
+    # --- TXT ---
+    try:
+        df_txt = parse_txt_fixed_width(txt_file.getvalue())
+        txt_agg = aggregate_txt(df_txt)
+    except Exception as e:
+        st.exception(e)
+        st.stop()
+
+    # --- PDF ---
+    pdf_bytes = [f.getvalue() for f in pdf_files]
+
+    if backend.startswith("Camelot"):
+        pdf_agg = parse_pdf_camelot(
+            pdf_bytes,
+            flavor=flavor,
+            pages=pages,
+            strip_text=strip_text,
+            code_col_hint=(None if code_col_hint < 0 else int(code_col_hint)),
+            name_col_hint=(None if name_col_hint < 0 else int(name_col_hint)),
+            value_col_hint=(None if value_col_hint < 0 else int(value_col_hint)),
+            log=log_msgs
+        )
+        df_preview = pd.DataFrame()
+    else:
+        ranges = (x_code_min, x_code_max, x_name_min, x_name_max, x_val_min)
+        pdf_agg, df_preview = parse_pdf_plumber_words(
+            pdf_bytes,
+            mode=mode_key,
+            x_cut1=(x_cut1 if mode_key == "cuts" else None),
+            x_cut2=(x_cut2 if mode_key == "cuts" else None),
+            ranges=(ranges if mode_key == "ranges" else None),
+            y_tol=y_tol,
+            code_pos_is_second=(code_pos.startswith("2ª")),
+            codigo_digits=codigo_digits,
+            log=log_msgs
+        )
+
+    # --- Comparação ---
+    if pdf_agg.empty:
+        st.error("Não foi possível extrair dados úteis dos PDFs.")
+        if not df_preview.empty:
+            st.subheader("Pré-visualização (palavras por linha)")
+            st.dataframe(df_preview.head(200), use_container_width=True)
+        if log_msgs:
+            st.subheader("Logs")
+            st.code("\n".join(log_msgs))
+        st.stop()
+
+    pdf_agg["CodigoDesconto"] = pdf_agg["CodigoDesconto"].astype(str)
+    comp = pd.merge(txt_agg, pdf_agg, on="CodigoDesconto", how="outer")
+    comp["Total_txt"] = comp["Total_txt"].fillna(0.0)
+    comp["Valor_pdf"] = comp["Valor_pdf"].fillna(0.0)
+    comp["NomeDesconto"] = comp.get("NomeDesconto", "").fillna("")
+    comp["Diferenca"] = comp["Total_txt"] - comp["Valor_pdf"]
+
+    st.success("Processamento concluído.")
+    st.subheader("Resumo por Código de Desconto")
+    st.dataframe(comp.sort_values("CodigoDesconto").reset_index(drop=True), use_container_width=True)
+
+    # Excel download
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
+        txt_agg.sort_values("CodigoDesconto").to_excel(writer, sheet_name="TXT_aggregado", index=False)
+        pdf_agg.sort_values("CodigoDesconto").to_excel(writer, sheet_name="PDF_aggregado", index=False)
+        comp.sort_values("CodigoDesconto").to_excel(writer, sheet_name="Comparacao", index=False)
+    out.seek(0)
+    st.download_button("📥 Descarregar relatório (Excel)", data=out,
+                       file_name="comparacao_descontos.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
