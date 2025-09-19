@@ -139,7 +139,7 @@ def parse_pdf_camelot(pdf_files: List[bytes], flavor: str, pages: str, strip_tex
                       value_col_hint: Optional[int], log: List[str]) -> pd.DataFrame:
     if camelot is None:
         return pd.DataFrame(columns=["CodigoDesconto","NomeDesconto","Valor_pdf"])
-    # (Mantém versão original sem alterações)
+    # Mantém versão original sem alterações
 
 # ---------------------------
 # PDF parsing — pdfplumber (melhorado)
@@ -254,7 +254,7 @@ def parse_pdf_plumber_words(pdf_files: List[bytes],
                         "codigo_raw": codigo_raw, "codigo": codigo,
                         "nome": nome, "valor": val,
                         "linha_texto": " ".join([w["text"] for w in bloco]),
-                        "coords": [(w["text"], round(w["x0"],1)) for w in bloco]
+                        "coords": str([(w["text"], round(w["x0"],1)) for w in bloco])  # <- string, não lista
                     })
 
     df_prev = pd.DataFrame(preview)
