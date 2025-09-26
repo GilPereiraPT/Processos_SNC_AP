@@ -313,6 +313,19 @@ filtros = {
 
 df = df_all(session, filtros)
 
+# --- Robustez: garantir colunas necessárias para evitar KeyError ---
+REQUIRED_COLS = [
+    "Estado","Data receção NC","Data envio fornecedor","Data ND","Criado",
+    "Motivo","Produto","ID","Fornecedor","N.º Nota Devolução"
+]
+for col in REQUIRED_COLS:
+    if col not in df.columns:
+        # datas vs texto
+        if "Data" in col or col == "Criado":
+            df[col] = pd.NaT
+        else:
+            df[col] = None
+
 st.dataframe(
     df,
     use_container_width=True,
@@ -340,27 +353,35 @@ st.subheader("Alertas")
 
 hoje = dt.date.today()
 
-# Pendentes há mais de 60 dias sem NC
-pendentes_sem_nc = df[(df["Estado"].isin(["Em curso", "Enviado fornecedor", "A aguardar crédito"])) & (df["Data receção NC"].isna())]
-if not pendentes_sem_nc.empty:
-    # calcular dias desde ND ou envio fornecedor
-    def dias_abertos(row):
-        base = row["Data envio fornecedor"] or row["Data ND"] or row["Criado"].date()
-        if isinstance(base, pd.Timestamp):
-            base = base.date()
-        return (hoje - base).days
-    pendentes_sem_nc = pendentes_sem_nc.copy()
-    pendentes_sem_nc["Dias abertos"] = pendentes_sem_nc.apply(dias_abertos, axis=1)
-    criticos = pendentes_sem_nc[pendentes_sem_nc["Dias abertos"] > 60]
-    if not criticos.empty:
-        st.warning("Há devoluções pendentes há mais de 60 dias sem Nota de Crédito.")
-        st.dataframe(criticos[["ID","Fornecedor","N.º Nota Devolução","Data ND","Data envio fornecedor","Dias abertos","Motivo","Produto"]], use_container_width=True)
+if df.empty:
+    st.info("Sem registos para analisar alertas.")
 else:
-    st.info("Sem pendentes sem NC no momento.")
+    # Pendentes há mais de 60 dias sem NC (só se coluna existir)
+    if "Estado" in df.columns and "Data receção NC" in df.columns:
+        pendentes_sem_nc = df[(df["Estado"].isin(["Em curso", "Enviado fornecedor", "A aguardar crédito"])) & (df["Data receção NC"].isna())]
+        if not pendentes_sem_nc.empty:
+            def dias_abertos(row):
+                base = row.get("Data envio fornecedor") or row.get("Data ND") or (row.get("Criado").date() if isinstance(row.get("Criado"), pd.Timestamp) else None)
+                # fallback: hoje
+                if base is None:
+                    return 0
+                if isinstance(base, pd.Timestamp):
+                    base = base.date()
+                return (hoje - base).days
+            pendentes_sem_nc = pendentes_sem_nc.copy()
+            pendentes_sem_nc["Dias abertos"] = pendentes_sem_nc.apply(dias_abertos, axis=1)
+            criticos = pendentes_sem_nc[pendentes_sem_nc["Dias abertos"] > 60]
+            if not criticos.empty:
+                st.warning("Há devoluções pendentes há mais de 60 dias sem Nota de Crédito.")
+                cols_show = [c for c in ["ID","Fornecedor","N.º Nota Devolução","Data ND","Data envio fornecedor","Dias abertos","Motivo","Produto"] if c in criticos.columns]
+                st.dataframe(criticos[cols_show], use_container_width=True)
+        else:
+            st.info("Sem pendentes sem NC no momento.")
+    else:
+        st.info("Colunas necessárias para alertas não encontradas (Estado / Data receção NC).")
 
 # =====================
 # Secção: Modelos de e-mail
-# =====================
 st.subheader("Modelos de e-mail")
 
 col_a, col_b = st.columns(2)
