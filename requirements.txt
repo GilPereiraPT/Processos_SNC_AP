@@ -6,3 +6,4 @@ camelot-py[cv]
 requests>=2.31.0
 pdfplumber>=0.11
 XlsxWriter>=3.2
+SQLAlchemy>=2.0
