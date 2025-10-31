@@ -1,15 +1,37 @@
 import streamlit as st
-st.set_page_config(page_title="Ferramenta Integrada", page_icon="🛠️", layout="wide")
-st.title("🛠️ Ferramenta Integrada: Receita Alheia + Validador SNC-AP")
-st.write("Utiliza o menu à esquerda ou os atalhos abaixo:")
 
-cols = st.columns(3)
-with cols[0]:
-    st.page_link("pages/3_🔁_Converte_CM.py", label="Converte CM", icon="🔁")
-    st.page_link("pages/2_🧭_Conversor_Centros_Custo.py", label="Conversor Centros Custo", icon="🧭")
-with cols[1]:
-    st.page_link("pages/7_✅_Validador_SNC_AP.py", label="Validador SNC-AP", icon="✅")
-    st.page_link("pages/1_📊_Balancete_BA.py", label="Balancete BA", icon="📊")
-with cols[2]:
-    st.page_link("pages/5_🧾_Criador_RA.py", label="Criador RA", icon="🧾")
-    st.page_link("pages/6_💳_Ifthenpay_Pagamentos.py", label="Ifthenpay Pagamentos", icon="💳")
+# Configuração da página
+st.set_page_config(
+    page_title="Ferramenta Integrada — ULSLA",
+    page_icon="🛠️",
+    layout="wide"
+)
+
+# Título principal
+st.title("🛠️ Ferramenta Integrada: Receita Alheia + Validador SNC-AP")
+
+st.markdown("""
+Bem-vindo!
+
+Esta aplicação integra várias ferramentas do **Serviço de Gestão Financeira e Patrimonial da ULSLA**, 
+permitindo processar e validar ficheiros contabilísticos no formato **SNC-AP** e outras rotinas internas.
+
+Utiliza o **menu lateral à esquerda 👉** para aceder à funcionalidade pretendida.
+""")
+
+st.divider()
+
+st.subheader("📂 Módulos disponíveis")
+st.markdown("""
+- **📊 Balancete BA** — valida balancetes BA em formato SNC-AP  
+- **🧭 Conversor de Centros de Custo** — converte mapas de custos para SNC-AP  
+- **🔁 Converte CM** — transforma ficheiros *INFOCB* em *FicheiroCMYYYYMMDD.csv*  
+- **📅 Converte Vencimentos** — gera mapas de vencimentos no formato SNC-AP  
+- **🧾 Criador de Receita Alheia (RA)** — produz ficheiros de Receita Alheia a partir das listagens internas  
+- **💳 Ifthenpay Pagamentos** — extrai informação de recebimentos Ifthenpay  
+- **✅ Validador SNC-AP** — verifica estrutura e coerência de ficheiros SNC-AP
+""")
+
+st.divider()
+
+st.caption("Versão 2025 — Unidade Local de Saúde do Litoral Alentejano, E.P.E.")
