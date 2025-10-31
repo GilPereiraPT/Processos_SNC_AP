@@ -9,7 +9,7 @@ st.set_page_config(page_title="Ficheiro CM — ULSLA", page_icon="📄", layout=
 st.title("📄 Gerar Ficheiro CM a partir de INFOCB* (upload)")
 st.caption("Carrega um CSV cujo nome começa por **INFOCB** (separador ';', codificação cp1252) e gera o FicheiroCMYYYYMMDD.csv.")
 
-# ---------- utilidades ----------
+# ---------- Funções auxiliares ----------
 def normalize(txt: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFKD", txt) if not unicodedata.combining(ch)).casefold()
 
@@ -35,55 +35,46 @@ def to_yyyymmdd_from_ddmmyyyy(s: str) -> str:
     d = pd.to_datetime(s, dayfirst=True, errors="coerce")
     return "" if pd.isna(d) else d.strftime("%Y%m%d")
 
-def parse_money_pt_to_str_with_comma(v: str) -> str:
+def parse_valor_pt(v: str) -> str:
     """
-    Converte valores em formato PT/variantes para string com vírgula e 2 casas.
-    Exemplos aceites: '1.234,56', '1234,56', '1 234,56', '€ 1.234,56', '1234.56', '1234,56-', '(1.234,56)'
+    Converte valores PT em string com vírgula e 2 casas, sem pontos de milhar.
+    Ex.: '1.234,56' -> '1234,56'; '€ 2 345,70-' -> '-2345,70'
     """
     s = str(v).strip().replace("\xa0", " ")
     if not s:
         return ""
-    # negativo com parênteses ou traço no fim
+    # negativo com parênteses ou traço
     neg = False
     if s.endswith("-"):
-        neg, s = True, s[:-1].strip()
+        neg, s = True, s[:-1]
     if s.startswith("(") and s.endswith(")"):
-        neg, s = True, s[1:-1].strip()
-    # remover moeda e quaisquer caracteres não dígitos/.,,/
-    s = s.replace("€", "").replace("EUR", "").strip()
-    # remover espaços de milhar
-    s = s.replace(" ", "")
-    # se houver vírgula, assume vírgula decimal → remove pontos como milhar
+        neg, s = True, s[1:-1]
+    # remover moeda e espaços
+    s = s.replace("€", "").replace("EUR", "").replace(" ", "")
+    # normalizar decimal
     if "," in s:
-        s = s.replace(".", "")
+        s = s.replace(".", "")  # remover pontos de milhar
         s = s.replace(",", ".")
-    # senão, já estará com ponto decimal (ou inteiro)
-    # remover quaisquer coisas extra
+    # retirar qualquer resto não numérico
     s = re.sub(r"[^0-9.\-]", "", s)
-    if s.count(".") > 1:
-        # fallback: manter apenas a última como decimal
-        parts = s.split(".")
-        s = "".join(parts[:-1]) + "." + parts[-1]
     try:
         n = float(s)
         if neg:
             n = -n
-        # formatar com vírgula decimal e 2 casas
-        return f"{n:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        # sem separador de milhar e com vírgula decimal
+        return f"{n:.2f}".replace(".", ",")
     except Exception:
         return ""
 
 def build_output(df: pd.DataFrame) -> pd.DataFrame:
-    # garantir texto + vazios
     df = df.astype(str).fillna("")
 
-    # mapear colunas
     src_num_proc = find_col(df, "Num Proc. Aquisicao", "Num Proc. Aquisição", "Nº Proc. Aquisicao")
     src_data     = find_col(df, "Data", "Data documento", "Data Doc.")
     src_class_e  = find_col(df, "Classificador", "Classif. Economico", "Classif. Económico")
     src_class_f  = find_col(df, "Class Funcional", "Classificador funcional", "Classif. Funcional")
-    src_ff       = find_col(df, "Fonte de financiamento", "Fonte de financiamento ")
-    src_prog     = find_col(df, "Programa", "Programa ")
+    src_ff       = find_col(df, "Fonte de financiamento")
+    src_prog     = find_col(df, "Programa")
     src_medida   = find_col(df, "Medida")
     src_proj     = find_col(df, "Projeto")
     src_reg      = find_col(df, "Regionalização", "Regionalizacao")
@@ -91,9 +82,8 @@ def build_output(df: pd.DataFrame) -> pd.DataFrame:
     src_nat      = find_col(df, "Natureza")
     src_dept     = find_col(df, "Departamento/ Atividade", "Departamento/Atividade")
     src_conta    = find_col(df, "Conta")
-    # valor — tentar várias hipóteses
     src_valor    = find_col(df, "Valor", "Valor lançamento", "Valor lancamento", "Valor lan‡amento")
-    src_class_o  = find_col(df, "Classificação orgânica", "Classificacao organica", "Classificação orgânica ")
+    src_class_o  = find_col(df, "Classificação orgânica", "Classificacao organica")
 
     today_str = datetime.now().strftime("%Y%m%d")
     ano_cb = today_str[:4]
@@ -102,7 +92,7 @@ def build_output(df: pd.DataFrame) -> pd.DataFrame:
         "CM","N§ Processo de Aquisi‡Æo (CB)","Data documento","Data Contabilistica","Ano CB",
         "classificador economico ","Classificador funcional ","Fonte de financiamento ","Programa ","Medida","Projeto",
         "Regionaliza‡Æo","Atividade","Natureza","Departamento/ Atividade","Conta","Valor lan‡amento",
-        "Observa‡äes Documento ","Observa‡oes lan‡amento","Classifica‡Æo Orgƒnica","Referencia Grupo","Projeto Documento","S‚rie (CB)",
+        "Observa‡äes Documento ","Observa‡oes lan‡amento","Classifica‡Æo Orgƒnica","Referencia Grupo","Projeto Documento","S‚rie (CB)"
     ]
 
     out = pd.DataFrame(index=df.index)
@@ -123,11 +113,8 @@ def build_output(df: pd.DataFrame) -> pd.DataFrame:
     out["Departamento/ Atividade"] = df[src_dept] if src_dept else ""
     out["Conta"] = df[src_conta] if src_conta else ""
 
-    # Valor lan‡amento — agora robusto
-    if src_valor:
-        out["Valor lan‡amento"] = df[src_valor].map(parse_money_pt_to_str_with_comma)
-    else:
-        out["Valor lan‡amento"] = ""
+    # Valor lan‡amento → agora SEM pontos de milhar
+    out["Valor lan‡amento"] = df[src_valor].map(parse_valor_pt) if src_valor else ""
 
     out["Observa‡äes Documento "] = ""
     out["Observa‡oes lan‡amento"] = ""
@@ -138,13 +125,13 @@ def build_output(df: pd.DataFrame) -> pd.DataFrame:
 
     return out[desired_cols]
 
-# ---------- upload ----------
+# ---------- Upload ----------
 uploaded = st.file_uploader("Carregar ficheiro INFOCB*.CSV", type=["csv"])
 if not uploaded:
     st.stop()
 
-if not uploaded.name.upper().startswith("INFOCB") or not uploaded.name.upper().endswith(".CSV"):
-    st.error("O nome do ficheiro deve começar por 'INFOCB' e terminar em '.CSV'.")
+if not uploaded.name.upper().startswith("INFOCB"):
+    st.error("O nome do ficheiro deve começar por 'INFOCB'.")
     st.stop()
 
 try:
@@ -163,7 +150,7 @@ st.subheader("Resultado")
 with st.expander("Pré-visualização do resultado (100 linhas)", expanded=True):
     st.dataframe(out_df.head(100), use_container_width=True, height=320)
 
-# nome de saída — apenas download (upload não permite gravar na pasta local)
+# nome de saída
 output_name = f"FicheiroCM{datetime.now().strftime('%Y%m%d')}.csv"
 csv_buf = io.StringIO()
 out_df.to_csv(csv_buf, sep=";", index=False, encoding="cp1252")
