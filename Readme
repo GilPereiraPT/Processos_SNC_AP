@@ -1,2 +1,15 @@
-# Receita Alheia App
-Aplicação em Streamlit para geração de ficheiros Receita Alheia.
+⚙️ Funcionalidades disponíveis
+
+📊 Balancete BA – Valida balancetes BA no formato SNC-AP.
+
+🧭 Conversor de Centros de Custo – Converte mapas de custos para o formato SNC-AP.
+
+🔁 Converte CM – Transforma ficheiros INFOCB em FicheiroCMYYYYMMDD.csv.
+
+📅 Converte Vencimentos – Gera mapas de vencimentos no formato SNC-AP.
+
+🧾 Criador RA – Cria ficheiros de Receita Alheia a partir de listagens internas.
+
+💳 Ifthenpay Pagamentos – Extrai informação de recebimentos da IfThenPay.
+
+✅ Validador SNC-AP – Confere a estrutura e coerência de ficheiros SNC-AP.
