@@ -28,7 +28,6 @@ def fmt_ddmmyyyy_hhmmss(d: date, t: time) -> str:
     return datetime.combine(d, t).strftime("%d-%m-%Y %H:%M:%S")
 
 def try_parse_json(text: str):
-    """Tenta interpretar JSON mesmo quando vem embrulhado em XML/HTML."""
     try:
         return json.loads(text)
     except Exception:
@@ -39,7 +38,6 @@ def try_parse_json(text: str):
             return json.loads(m.group(1))
         except Exception:
             pass
-    # remover tags XML/HTML
     no_xml = re.sub(r"<[^>]+>", "", text).strip()
     try:
         return json.loads(no_xml)
@@ -47,13 +45,11 @@ def try_parse_json(text: str):
         return None
 
 def ensure_rows(data):
-    """Devolve sempre uma lista de registos a partir de vários formatos possíveis."""
     if data is None:
         return []
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
-        # camadas comuns
         for k in ["payments", "result", "Results", "data", "Data", "Table", "Rows", "value", "Value"]:
             if k in data:
                 v = data[k]
@@ -67,10 +63,7 @@ def ensure_rows(data):
 def _to_float_pt(x):
     if x is None or (isinstance(x, float) and math.isnan(x)):
         return None
-    s = str(x).strip().replace(" ", "")
-    # remover separadores de milhar comuns
-    s = s.replace(".", "").replace("\u00A0", "")
-    # vírgula decimal -> ponto
+    s = str(x).strip().replace(" ", "").replace(".", "").replace("\u00A0", "")
     s = s.replace(",", ".")
     try:
         return float(s)
@@ -78,11 +71,10 @@ def _to_float_pt(x):
         return None
 
 def beautify_cols(df: pd.DataFrame) -> pd.DataFrame:
-    # Normalização de nomes
     ren = {
         "Entidade": "Entidade", "entidade": "Entidade", "Entity": "Entidade",
-        "SubEntidade": "Subentidade", "Subentidade": "Subentidade",
-        "subentidade": "Subentidade", "Subentity": "Subentidade",
+        "SubEntidade": "Subentidade", "Subentidade": "Subentidade", "subentidade": "Subentidade",
+        "Subentity": "Subentidade",
         "Referencia": "Referência", "referencia": "Referência", "ReferenciaMB": "Referência",
         "Valor": "Valor", "valor": "Valor", "amount": "Valor", "Amount": "Valor",
         "Estado": "Estado", "estado": "Estado", "Status": "Estado",
@@ -90,7 +82,6 @@ def beautify_cols(df: pd.DataFrame) -> pd.DataFrame:
     }
     df = df.rename(columns=ren)
 
-    # DataHora – vários candidatos
     cand_dt = [
         "DataHora","datahora","DataHoraPagamento","dataHoraPagamento",
         "DataPagamento","dataPagamento","dtHr","dtHrPagamento","data_hora","datetime"
@@ -101,19 +92,15 @@ def beautify_cols(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["DataHora"] = pd.NaT
 
-    # Valor – aceitar vírgula/ponto e remover milhar
     if "Valor" in df.columns:
         df["Valor"] = df["Valor"].apply(_to_float_pt)
 
-    # Estado – normalização simples
     if "Estado" in df.columns:
         df["Estado"] = df["Estado"].astype(str).str.strip().str.upper()
 
-    # Referência – manter como texto e preservar zeros à esquerda
     if "Referência" in df.columns:
         df["Referência"] = df["Referência"].astype(str).str.replace(r"\.0$", "", regex=True).str.strip()
 
-    # Ordenação por DataHora se existir algo válido
     if "DataHora" in df.columns and df["DataHora"].notna().any():
         df = df.sort_values("DataHora")
 
@@ -121,12 +108,14 @@ def beautify_cols(df: pd.DataFrame) -> pd.DataFrame:
     cols = [c for c in preferred if c in df.columns] + [c for c in df.columns if c not in preferred]
     return df[cols]
 
-def export_excel_bytes(detalhe: pd.DataFrame, resumo_mes_ent: pd.DataFrame, resumo_ent: pd.DataFrame) -> BytesIO:
+def export_excel_bytes(detalhe: pd.DataFrame, resumo_mes: pd.DataFrame,
+                       resumo_chave: pd.DataFrame | None) -> BytesIO:
     bio = BytesIO()
     with pd.ExcelWriter(bio, engine="openpyxl") as xlw:
         detalhe.to_excel(xlw, index=False, sheet_name="Detalhe")
-        resumo_mes_ent.to_excel(xlw, index=True, sheet_name="Resumo_Mes_Entidade")
-        resumo_ent.to_excel(xlw, index=True, sheet_name="Resumo_Entidade")
+        resumo_mes.to_excel(xlw, index=True, sheet_name="Resumo_Mensal")
+        if resumo_chave is not None and not resumo_chave.empty:
+            resumo_chave.to_excel(xlw, index=True, sheet_name="Resumo_Chave")
     bio.seek(0)
     return bio
 
@@ -142,9 +131,9 @@ def export_csv_bytes(df: pd.DataFrame) -> BytesIO:
 with st.form("form_pagamentos"):
     col1, col2, col3 = st.columns(3)
     with col1:
-        entidade = st.text_input("🏦 Entidade", value="12377")
+        entidade = st.text_input("🏦 Entidade (opcional)", value="")
     with col2:
-        subentidade = st.text_input("🏢 Subentidade", value="143")
+        subentidade = st.text_input("🏢 Subentidade (opcional)", value="")
     with col3:
         sandbox = st.selectbox("🧪 Sandbox", options=["Não", "Sim"], index=0)
 
@@ -165,25 +154,24 @@ with st.form("form_pagamentos"):
     submit = st.form_submit_button("🔄 Obter Pagamentos")
 
 # ======================================================
-# 🔒 Validações rápidas
+# 🔒 Validações rápidas (permitir vazio em Entidade/Subentidade)
 # ======================================================
 def _is_num(s: str) -> bool:
     return bool(re.fullmatch(r"\d+", s.strip()))
 
 if submit:
-    if not _is_num(entidade):
-        st.error("A *Entidade* deve ser numérica.")
+    if entidade.strip() and not _is_num(entidade):
+        st.error("A *Entidade* deve ser numérica (ou deixa em branco).")
         st.stop()
-    if subentidade and not _is_num(subentidade):
-        st.error("A *Subentidade* deve ser numérica.")
+    if subentidade.strip() and not _is_num(subentidade):
+        st.error("A *Subentidade* deve ser numérica (ou deixa em branco).")
         st.stop()
     if datetime.combine(dt_inicio_d, hora_inicio) > datetime.combine(dt_fim_d, hora_fim):
         st.error("A *Data/Hora Início* não pode ser posterior à *Data/Hora Fim*.")
         st.stop()
-    if valor.strip():
-        if _to_float_pt(valor) is None:
-            st.error("O campo *Valor* (opcional) não é numérico válido.")
-            st.stop()
+    if valor.strip() and _to_float_pt(valor) is None:
+        st.error("O campo *Valor* (opcional) não é numérico válido.")
+        st.stop()
 
 # ======================================================
 # 🚀 Chamada API + Resumos
@@ -212,8 +200,8 @@ if submit:
 
     payload = {
         "chavebackoffice": CHAVE,
-        "entidade": entidade.strip(),
-        "subentidade": subentidade.strip(),
+        "entidade": entidade.strip() or "",
+        "subentidade": subentidade.strip() or "",
         "dtHrInicio": fmt_ddmmyyyy_hhmmss(dt_inicio_d, hora_inicio),
         "dtHrFim": fmt_ddmmyyyy_hhmmss(dt_fim_d, hora_fim),
         "referencia": referencia.strip(),
@@ -231,7 +219,6 @@ if submit:
             st.error(f"Erro de ligação à API: {e}")
             st.stop()
 
-    # Interpretar a resposta
     try:
         data = resp.json()
     except Exception:
@@ -250,7 +237,7 @@ if submit:
     df_raw = pd.json_normalize(rows)
     df = beautify_cols(df_raw)
 
-    # ---- Filtro local por intervalo
+    # ---- Filtro local por intervalo (datas funcionam sempre)
     removed = 0
     if "DataHora" in df.columns and df["DataHora"].notna().any():
         before = len(df)
@@ -287,51 +274,72 @@ if submit:
     st.dataframe(df, use_container_width=True)
 
     # ==================================================
-    # 📊 Resumos por Mês e por Entidade
+    # 📊 Resumos (mesmo sem Entidade/Subentidade)
     # ==================================================
-    if "Valor" in df.columns and df["Valor"].notna().any() and "Entidade" in df.columns:
-        # ignorar linhas sem DataHora para o resumo mensal
-        df_res = df.copy()
-        if "DataHora" in df_res.columns:
-            df_res = df_res[df_res["DataHora"].notna()].copy()
+    resumo_chave_df = None
 
-        if not df_res.empty:
-            df_res["AnoMes"] = df_res["DataHora"].dt.to_period("M").astype(str)
-
-            # 1) Resumo Mês × Entidade
-            grp_mes_ent = df_res.groupby(["AnoMes", "Entidade"], dropna=False, as_index=False)["Valor"].sum()
-            tabela_mes_ent = grp_mes_ent.pivot(index="AnoMes", columns="Entidade", values="Valor").fillna(0.0)
-            tabela_mes_ent = tabela_mes_ent.sort_index()
-
-            st.subheader("📅 Resumo por Mês × Entidade (soma de Valor)")
-            st.dataframe(tabela_mes_ent, use_container_width=True)
-
-            st.subheader("📈 Gráfico mensal (todas as entidades)")
-            st.bar_chart(tabela_mes_ent)
-
-        # 2) Resumo por Entidade (total no período)
-        resumo_ent = df.groupby("Entidade", dropna=False)["Valor"].sum().sort_values(ascending=False)
-        st.subheader("🏦 Total por Entidade (período selecionado)")
-        st.dataframe(resumo_ent.to_frame("Valor"), use_container_width=True)
-
-        st.subheader("📊 Top Entidades")
-        st.bar_chart(resumo_ent.head(15))
-
-        # ===== Export =====
-        fname_base = f"pagamentos_ifthenpay_{dt_inicio_sel:%Y%m%d%H%M%S}_{dt_fim_sel:%Y%m%d%H%M%S}"
-        bio_xlsx = export_excel_bytes(df, tabela_mes_ent if 'tabela_mes_ent' in locals() else pd.DataFrame(),
-                                      resumo_ent.to_frame("Valor"))
-        st.download_button(
-            "💾 Descarregar Excel (Detalhe + Resumos)",
-            bio_xlsx,
-            file_name=fname_base + ".xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        st.download_button(
-            "⬇️ Descarregar CSV (Detalhe)",
-            export_csv_bytes(df),
-            file_name=fname_base + ".csv",
-            mime="text/csv",
-        )
+    # Resumo mensal total (funciona sempre que haja DataHora e Valor)
+    if "Valor" in df.columns and df["Valor"].notna().any():
+        df_mes = df.copy()
+        if "DataHora" in df_mes.columns:
+            df_mes = df_mes[df_mes["DataHora"].notna()].copy()
+        if not df_mes.empty and "DataHora" in df_mes.columns:
+            df_mes["AnoMes"] = df_mes["DataHora"].dt.to_period("M").astype(str)
+            resumo_mensal = df_mes.groupby("AnoMes", as_index=True)["Valor"].sum().to_frame("Valor")
+            st.subheader("📅 Resumo mensal (Total)")
+            st.dataframe(resumo_mensal, use_container_width=True)
+            st.subheader("📈 Gráfico mensal (Total)")
+            st.bar_chart(resumo_mensal)
+        else:
+            resumo_mensal = pd.DataFrame()
     else:
-        st.warning("Não foi possível criar resumos: faltam colunas 'Entidade' e/ou 'Valor'.")
+        st.warning("Sem coluna 'Valor' válida para gerar resumos.")
+        resumo_mensal = pd.DataFrame()
+
+    # Escolher a melhor 'chave' disponível para agrupar (Entidade > Subentidade > Terminal)
+    chave = next((c for c in ["Entidade", "Subentidade", "Terminal"] if c in df.columns and df[c].notna().any()), None)
+
+    if chave and "Valor" in df.columns and df["Valor"].notna().any():
+        # Resumo por chave no período
+        resumo_chave = df.groupby(chave, dropna=False)["Valor"].sum().sort_values(ascending=False)
+        st.subheader(f"🏦 Total por {chave} (período selecionado)")
+        st.dataframe(resumo_chave.to_frame("Valor"), use_container_width=True)
+
+        st.subheader(f"📊 Top {chave}")
+        st.bar_chart(resumo_chave.head(15))
+
+        # Resumo mensal × chave (se houver datas)
+        if "DataHora" in df.columns and df["DataHora"].notna().any():
+            df_res = df[df["DataHora"].notna()].copy()
+            df_res["AnoMes"] = df_res["DataHora"].dt.to_period("M").astype(str)
+            grp = df_res.groupby(["AnoMes", chave], as_index=False)["Valor"].sum()
+            tabela = grp.pivot(index="AnoMes", columns=chave, values="Valor").fillna(0.0).sort_index()
+            st.subheader(f"📅 Resumo por Mês × {chave}")
+            st.dataframe(tabela, use_container_width=True)
+            st.subheader(f"📈 Gráfico mensal por {chave}")
+            st.bar_chart(tabela)
+            resumo_chave_df = tabela
+        else:
+            resumo_chave_df = resumo_chave.to_frame("Valor")
+    else:
+        st.info("Não há 'Entidade' nem 'Subentidade' (nem 'Terminal') com dados para agrupar por chave. Mostrei apenas o resumo mensal total.")
+
+    # ===== Exportações =====
+    fname_base = f"pagamentos_ifthenpay_{dt_inicio_sel:%Y%m%d%H%M%S}_{dt_fim_sel:%Y%m%d%H%M%S}"
+    bio_xlsx = export_excel_bytes(
+        detalhe=df,
+        resumo_mes=(resumo_mensal if not resumo_mensal.empty else pd.DataFrame()),
+        resumo_chave=resumo_chave_df if resumo_chave_df is not None else pd.DataFrame()
+    )
+    st.download_button(
+        "💾 Descarregar Excel (Detalhe + Resumos)",
+        bio_xlsx,
+        file_name=fname_base + ".xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    st.download_button(
+        "⬇️ Descarregar CSV (Detalhe)",
+        export_csv_bytes(df),
+        file_name=fname_base + ".csv",
+        mime="text/csv",
+    )
