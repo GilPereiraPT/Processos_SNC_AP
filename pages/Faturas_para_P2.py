@@ -24,11 +24,9 @@ def formatar_data_ddmmaaaa(valor: str) -> str:
         return ""
     valor = valor.strip()
     
-    # Formato específico do QR Code AT: YYYYMMDD (8 digitos seguidos)
     if re.fullmatch(r"\d{8}", valor):
         return f"{valor[6:8]}/{valor[4:6]}/{valor[0:4]}"
 
-    # Outros formatos comuns no texto
     formatos = ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"]
     for fmt in formatos:
         try:
@@ -37,7 +35,6 @@ def formatar_data_ddmmaaaa(valor: str) -> str:
         except ValueError:
             continue
             
-    # Tentar regex genérica se o parse direto falhar
     m = re.search(r"(\d{2})[./-](\d{2})[./-](\d{4})", valor)
     if m:
         return f"{m.group(1)}/{m.group(2)}/{m.group(3)}"
@@ -53,7 +50,6 @@ def normalizar_monetario(valor: str) -> str:
     """Devolve sempre formato PT: 1234,56."""
     if not valor:
         return ""
-    # Remove símbolos de moeda e espaços
     v = re.sub(r"[^\d.,]", "", valor)
     
     if "," in v and "." not in v:
@@ -102,16 +98,13 @@ def ler_qr_imagem(doc) -> Optional[str]:
 
     detector = cv2.QRCodeDetector()
     
-    # 1. Tentativa normal
     data, _, _ = detector.detectAndDecode(img_cv2)
     if data: return data.strip()
     
-    # 2. Tentativa com escala de cinzentos
     gray = cv2.cvtColor(img_cv2, cv2.COLOR_BGR2GRAY)
     data, _, _ = detector.detectAndDecode(gray)
     if data: return data.strip()
     
-    # 3. Tentativa com binarização
     _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY)
     data, _, _ = detector.detectAndDecode(thresh)
     if data: return data.strip()
@@ -136,7 +129,6 @@ def parse_qr_at(data: str) -> dict:
     if not data:
         return {}
     
-    # Regex: Letra Maiúscula + Dois Pontos + (Qualquer coisa exceto * ou |)
     pattern = r"([A-Z]):([^*|]+)"
     matches = re.findall(pattern, data)
     
@@ -217,21 +209,33 @@ def extrair_numero_fatura_texto(texto: str, nif: str) -> str:
     
     if candidatos:
         melhor_candidato = max(candidatos, key=len)
-        # NOVO: Remove todos os carateres que não são dígitos
         return re.sub(r'\D', '', melhor_candidato)
     return ""
 
 
 def extrair_nota_encomenda(texto: str) -> str:
+    """
+    Extrai a Nota de Encomenda, priorizando o padrão específico de 7 algarismos.
+    """
     texto_norm = texto.replace("\n", " ")
-    padroes = [
+    
+    # 1. NOVO PADRÃO: 7 algarismos, começa por [1,2,3,4,7,8], acaba em 25
+    # Regex: (um dos 6 algarismos) + (4 algarismos quaisquer) + ('25')
+    novo_padrao = r"([123478]\d{4}25)"
+    m_especifico = re.search(novo_padrao, texto_norm)
+    if m_especifico:
+        return m_especifico.group(1)
+    
+    # 2. PADRÕES ANTIGOS (Fallback, se o novo não for encontrado)
+    padroes_antigos = [
         r"(?:Vossa\s+)?Encomenda[:\s\.]*(\d{3,15})",
         r"(?:Vossa\s+)?Requisi[cç][aã]o[:\s\.]*(\d{3,15})",
         r"O\/Ref[:\s\.]*(\d{3,15})",
     ]
-    for p in padroes:
+    for p in padroes_antigos:
         m = re.search(p, texto_norm, flags=re.IGNORECASE)
         if m: return m.group(1)
+        
     return ""
 
 def detetar_tipo_texto(texto: str, filename: str) -> str:
@@ -285,12 +289,9 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
         data = formatar_data_ddmmaaaa(campos_qr.get("F", ""))
         total = normalizar_monetario(campos_qr.get("O", "") or campos_qr.get("M", ""))
         
-        # G: Identificação única (ex: FT 2023/1)
         campo_g = campos_qr.get("G", "")
-        # NOVO: Limpeza rigorosa para APENAS ALGARISMOS
         num_fatura = re.sub(r'\D', '', campo_g)
 
-        # D: Tipo de Documento
         tipo_code = campos_qr.get("D", "")
         mapa_tipos = {
             "FT": "Fatura", "FR": "Fatura-Recibo", "NC": "Nota de Crédito",
@@ -298,19 +299,16 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
         }
         tipo_doc = mapa_tipos.get(tipo_code, tipo_code)
         
-        nota_enc = extrair_nota_encomenda(texto)
+        nota_enc = extrair_nota_encomenda(texto) # Usa a função atualizada
 
     else:
         # --- FALLBACK TEXTO ---
         nif = extrair_nif_texto(texto, nome_ficheiro)
         data = extrair_data_texto(texto)
         total = extrair_total_texto(texto)
-        
-        # A extração já limpa para apenas dígitos
         num_fatura = extrair_numero_fatura_texto(texto, nif) 
-        
         tipo_doc = detetar_tipo_texto(texto, nome_ficheiro)
-        nota_enc = extrair_nota_encomenda(texto)
+        nota_enc = extrair_nota_encomenda(texto) # Usa a função atualizada
 
     return {
         "Ficheiro": nome_ficheiro,
@@ -334,7 +332,7 @@ st.set_page_config(page_title="Processar Faturas P2", layout="wide")
 st.title("📄 Processador de Faturas (AT Portugal)")
 st.markdown("""
 Esta ferramenta extrai dados de faturas PDF para contabilidade.  
-**O Número da Fatura agora é devolvido APENAS com algarismos.**
+O campo **Encomenda** agora prioriza o padrão de 7 algarismos que começa por **1, 2, 3, 4, 7 ou 8** e termina em **25**.
 """)
 
 col1, col2 = st.columns([2, 1])
