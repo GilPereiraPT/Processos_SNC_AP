@@ -56,11 +56,9 @@ def normalizar_monetario(valor: str) -> str:
     # Remove símbolos de moeda e espaços
     v = re.sub(r"[^\d.,]", "", valor)
     
-    # Se já estiver limpo (ex: 100 ou 10,50)
     if "," in v and "." not in v:
         return v
     
-    # Se tiver pontos e virgulas, assumimos que o último separador é o decimal
     if "." in v or "," in v:
         last_sep_index = max(v.rfind('.'), v.rfind(','))
         inteiro = v[:last_sep_index].replace(".", "").replace(",", "")
@@ -82,7 +80,6 @@ def primeira_pagina_para_cv2(doc) -> np.ndarray:
     Renderiza a primeira página com ZOOM (2.0x) para melhorar a leitura do QR.
     """
     page = doc.load_page(0)
-    # AUMENTO DE RESOLUÇÃO: zoom de 200% é crucial para QRs densos
     matriz = fitz.Matrix(2.0, 2.0) 
     pix = page.get_pixmap(matrix=matriz)
     
@@ -114,7 +111,7 @@ def ler_qr_imagem(doc) -> Optional[str]:
     data, _, _ = detector.detectAndDecode(gray)
     if data: return data.strip()
     
-    # 3. Tentativa com binarização (alto contraste)
+    # 3. Tentativa com binarização
     _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY)
     data, _, _ = detector.detectAndDecode(thresh)
     if data: return data.strip()
@@ -124,7 +121,6 @@ def ler_qr_imagem(doc) -> Optional[str]:
 
 def extrair_qr_string_do_texto(texto: str) -> Optional[str]:
     """Procura string AT (A:PT*B:...) diretamente no texto do PDF."""
-    # Regex flexível para encontrar o início do padrão AT
     pattern = r"A:(PT)?\s*[\|*]\s*B:[^\r\n]+"
     m = re.search(pattern, texto)
     if m:
@@ -161,14 +157,12 @@ def extrair_texto_doc(doc) -> str:
 
 
 def extrair_nif_texto(texto: str, filename: str) -> str:
-    # 1. Tentar filename primeiro
     base = Path(filename).stem
     m = re.search(r"(?:NIF)?\s*([1235689][0-9]{8})", base, flags=re.IGNORECASE)
     if m: return m.group(1)
 
     texto_norm = texto.replace("\n", " ")
     
-    # 2. Padrões com label
     padroes = [
         r"Contribuinte:?\s*([1235689][0-9]{8})",
         r"NIF:?\s*PT\s*([1235689][0-9]{8})",
@@ -178,7 +172,6 @@ def extrair_nif_texto(texto: str, filename: str) -> str:
         m = re.search(p, texto_norm, flags=re.IGNORECASE)
         if m: return m.group(1)
 
-    # 3. Procura "selvagem" (excluindo telemóveis 91/92/93/96)
     todos = re.findall(r"\b([1256][0-9]{8})\b", texto_norm)
     return todos[0] if todos else ""
 
@@ -210,17 +203,23 @@ def extrair_total_texto(texto: str) -> str:
 
 
 def extrair_numero_fatura_texto(texto: str, nif: str) -> str:
+    """Extrai o número da fatura e remove carateres não-dígitos no final."""
     linhas = texto.splitlines()
     candidatos = []
+    
     for linha in linhas:
         if re.search(r"fatura|factura|invoice|FT|FS|FR", linha, flags=re.IGNORECASE):
             m = re.search(r"([a-zA-Z0-9]+)\s*[/\-]\s*(\d+)", linha)
             if m:
                 cand = m.group(1) + m.group(2)
-                # Filtros básicos
                 if len(cand) > 3 and cand != nif and not re.match(r"^202[0-9]$", cand):
                     candidatos.append(cand)
-    return max(candidatos, key=len) if candidatos else ""
+    
+    if candidatos:
+        melhor_candidato = max(candidatos, key=len)
+        # NOVO: Remove todos os carateres que não são dígitos
+        return re.sub(r'\D', '', melhor_candidato)
+    return ""
 
 
 def extrair_nota_encomenda(texto: str) -> str:
@@ -258,24 +257,20 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
     campos_qr = {}
     qr_raw = ""
 
-    # 1. Tentar QR String no texto
     qr_str = extrair_qr_string_do_texto(texto)
     if qr_str:
         campos_qr = parse_qr_at(qr_str)
         origem = "QR (Texto Oculto)"
         qr_raw = qr_str
     
-    # 2. Se falhar, tentar QR via Imagem
     if not campos_qr:
         qr_img = ler_qr_imagem(doc)
         if qr_img:
-            # Validação simples
             if "A:" in qr_img and ("B:" in qr_img or "H:" in qr_img):
                 campos_qr = parse_qr_at(qr_img)
                 origem = "QR (Imagem)"
                 qr_raw = qr_img
 
-    # Inicializar variáveis
     nif = ""
     data = ""
     total = ""
@@ -285,22 +280,15 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
 
     # 3. Mapeamento de Dados
     if campos_qr:
-        # --- MAPEAMENTO OFICIAL AT ---
-        
-        # A: NIF do Emitente (Quem passa a fatura)
+        # --- DADOS QR ---
         nif = campos_qr.get("A", "").upper().replace("PT", "").replace(" ", "")
-        
-        # F: Data do documento (YYYYMMDD)
         data = formatar_data_ddmmaaaa(campos_qr.get("F", ""))
-        
-        # O: Total Bruto (Se não houver, tenta M ou N+I)
         total = normalizar_monetario(campos_qr.get("O", "") or campos_qr.get("M", ""))
         
-        # G: Identificação única (ex: FT 2023/1) -> Número da fatura
+        # G: Identificação única (ex: FT 2023/1)
         campo_g = campos_qr.get("G", "")
-        # Tentar limpar apenas para ter numero/serie
-        m_num = re.search(r"(?:FT|FR|NC|FS|VD)\s*([A-Za-z0-9\/\-]+)", campo_g, re.IGNORECASE)
-        num_fatura = m_num.group(1) if m_num else campo_g
+        # NOVO: Limpeza rigorosa para APENAS ALGARISMOS
+        num_fatura = re.sub(r'\D', '', campo_g)
 
         # D: Tipo de Documento
         tipo_code = campos_qr.get("D", "")
@@ -310,7 +298,6 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
         }
         tipo_doc = mapa_tipos.get(tipo_code, tipo_code)
         
-        # Nota de encomenda não vem no QR
         nota_enc = extrair_nota_encomenda(texto)
 
     else:
@@ -318,7 +305,10 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
         nif = extrair_nif_texto(texto, nome_ficheiro)
         data = extrair_data_texto(texto)
         total = extrair_total_texto(texto)
-        num_fatura = extrair_numero_fatura_texto(texto, nif)
+        
+        # A extração já limpa para apenas dígitos
+        num_fatura = extrair_numero_fatura_texto(texto, nif) 
+        
         tipo_doc = detetar_tipo_texto(texto, nome_ficheiro)
         nota_enc = extrair_nota_encomenda(texto)
 
@@ -331,7 +321,7 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
         "Total": total,
         "Num. Fatura": num_fatura,
         "Encomenda": nota_enc,
-        "Debug QR": qr_raw  # Campo oculto útil para debug
+        "Debug QR": qr_raw
     }
 
 
@@ -344,7 +334,7 @@ st.set_page_config(page_title="Processar Faturas P2", layout="wide")
 st.title("📄 Processador de Faturas (AT Portugal)")
 st.markdown("""
 Esta ferramenta extrai dados de faturas PDF para contabilidade.  
-Prioridade de leitura: **QR Code (AT)** > **Texto do PDF**.
+**O Número da Fatura agora é devolvido APENAS com algarismos.**
 """)
 
 col1, col2 = st.columns([2, 1])
@@ -374,14 +364,12 @@ if uploaded_files:
         if registos:
             df = pd.DataFrame(registos)
             
-            # Seleção e ordem de colunas
             cols = ["Ficheiro", "NIF Emissor", "Data", "Total", "Num. Fatura", "Tipo", "Encomenda", "Origem", "Debug QR"]
             cols = [c for c in cols if c in df.columns]
             df = df[cols]
 
             st.success(f"{len(registos)} documentos processados com sucesso.")
             
-            # Métricas
             c1, c2 = st.columns(2)
             com_qr = df[df["Origem"].str.contains("QR", na=False)].shape[0]
             c1.metric("Lidos via QR (Alta precisão)", com_qr)
@@ -389,7 +377,6 @@ if uploaded_files:
             
             st.dataframe(df, use_container_width=True)
 
-            # Debug Expander
             with st.expander("🛠️ Ver detalhes do último QR lido (Debug)"):
                 if registos:
                     ultimo = registos[-1]
@@ -400,7 +387,6 @@ if uploaded_files:
                     else:
                         st.write("O último documento não foi lido via QR.")
 
-            # Downloads
             col_d1, col_d2 = st.columns(2)
             
             buffer_xlsx = io.BytesIO()
