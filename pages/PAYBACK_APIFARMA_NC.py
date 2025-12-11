@@ -10,10 +10,9 @@ import streamlit as st
 
 # =====================================================
 # 1. Caminho do CSV de mapeamento Empresa → Entidade
-#    (ajusta o nome conforme o ficheiro no teu repo)
 # =====================================================
 
-MAPPING_CSV_PATH = "EMPRESA_ENTIDADE_NC.csv"  # <-- garante que este nome bate certo no GitHub
+MAPPING_CSV_PATH = "EMPRESA_ENTIDADE_NC.csv"  # ajusta se o ficheiro estiver noutra pasta
 
 
 # =====================================================
@@ -143,81 +142,84 @@ def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) ->
 
 def ler_notas_credito(file) -> pd.DataFrame:
     """
-    Lê o ficheiro de notas de crédito tentando, por ordem:
-      - UTF-16
-      - UTF-8 (com ou sem BOM)
-      - Latin-1
+    Lê ficheiros de Notas de Crédito em Excel (xlsx/xls) ou CSV/TXT.
 
-    Se a primeira linha começar por 'sep=' (case-insensitive),
-    é ignorada (skiprows=1).
+    - Se a extensão for .xls/.xlsx → usa read_excel.
+    - Caso contrário → tenta decodificar como texto e detetar separador.
 
-    Devolve apenas as linhas do tipo 'NOTA DE CRÉDITO'.
+    Devolve apenas as linhas onde Tipo contém 'NOTA DE CRÉDITO'.
     """
-    # Garantir que começamos do início do ficheiro
-    file.seek(0)
-    raw = file.read()
+    fname = file.name.lower()
 
-    last_exc: Optional[Exception] = None
-    df: Optional[pd.DataFrame] = None
+    # -----------------------------
+    # 1) Ficheiros Excel
+    # -----------------------------
+    if fname.endswith((".xlsx", ".xls")):
+        file.seek(0)
+        df = pd.read_excel(file)
 
-    for enc in ["utf-16", "utf-8-sig", "latin-1"]:
-        try:
-            text = raw.decode(enc)
-        except UnicodeError as e:
-            last_exc = e
-            continue
+    # -----------------------------
+    # 2) CSV / TXT com autodetecção
+    # -----------------------------
+    else:
+        file.seek(0)
+        raw = file.read()
 
-        # detetar se a primeira linha é 'sep='
+        last_exc: Optional[Exception] = None
+        text: Optional[str] = None
+
+        # Detectar encoding
+        for enc in ["utf-16", "utf-8-sig", "latin-1"]:
+            try:
+                text = raw.decode(enc)
+                break
+            except Exception as e:
+                last_exc = e
+
+        if text is None:
+            raise ValueError(
+                "Não foi possível decodificar o ficheiro (utf-16, utf-8-sig, latin-1). "
+                f"Último erro: {last_exc}"
+            )
+
         lines = text.splitlines()
         first_line = lines[0] if lines else ""
         skip = 1 if first_line.lower().startswith("sep=") else 0
+
+        # detetar automaticamente separador
+        try:
+            dialect = csv.Sniffer().sniff(text, delimiters=";,")
+            sep = dialect.delimiter
+        except Exception:
+            sep = ";"
 
         from io import StringIO
         buf = StringIO(text)
 
         try:
-            df = pd.read_csv(buf, sep=";", skiprows=skip)
+            df = pd.read_csv(buf, sep=sep, skiprows=skip)
         except Exception as e:
-            last_exc = e
-            df = None
-            continue
+            raise ValueError(f"Erro ao ler CSV com separador '{sep}': {e}")
 
-        # se chegámos aqui com sucesso, saímos do ciclo
-        break
-
-    if df is None:
-        raise ValueError(
-            "Não foi possível ler o ficheiro de notas de crédito com as codificações "
-            "utf-16, utf-8-sig ou latin-1. "
-            f"Último erro: {last_exc}"
-        )
-
-    obrig = [
-        "Data",
-        "Empresa",
-        "Instituição",
-        "Tipo",
-        "N.º / Ref.ª",
-        "Valor (com IVA)",
-    ]
+    # -----------------------------
+    # 3) Validar colunas
+    # -----------------------------
+    obrig = ["Data", "Empresa", "Instituição", "Tipo", "N.º / Ref.ª", "Valor (com IVA)"]
     for c in obrig:
         if c not in df.columns:
-            raise ValueError(f"Coluna obrigatória '{c}' não encontrada: {c}")
+            raise ValueError(f"Coluna obrigatória '{c}' não encontrada no ficheiro.")
 
-    # Só NOTAS DE CRÉDITO
+    # Apenas NOTAS DE CRÉDITO
     df_nc = df[df["Tipo"].astype(str).str.upper().str.contains("NOTA DE CRÉDITO")].copy()
-
     if df_nc.empty:
         raise ValueError("Nenhuma linha com 'NOTA DE CRÉDITO' encontrada no ficheiro.")
 
     # Converter valor
     def parse_valor(v):
         s = str(v).strip()
-        if s == "" or s.lower() in ("nan", "none"):
+        if not s or s.lower() in ("nan", "none"):
             return 0.0
-        # remover separadores de milhar e usar ponto como decimal
-        s = s.replace(".", "").replace(",", ".")
-        return float(s)
+        return float(s.replace(".", "").replace(",", "."))
 
     df_nc["ValorNum"] = df_nc["Valor (com IVA)"].apply(parse_valor)
 
@@ -234,6 +236,12 @@ def format_yyyymmdd(data_str: str) -> str:
         partes = s.split("-")
         if len(partes) == 3:
             return partes[0] + partes[1] + partes[2]
+    if "/" in s:
+        # tratar datas tipo DD/MM/AAAA
+        partes = s.split("/")
+        if len(partes) == 3:
+            dia, mes, ano = partes
+            return ano + mes.zfill(2) + dia.zfill(2)
     return s  # assume já no formato correto / AAAAMMDD
 
 
@@ -268,10 +276,10 @@ def gerar_linhas_importacao_para_ficheiro(
     Gera as linhas do CSV de importação, no formato do ficheiro modelo,
     para UM ficheiro de origem.
 
-    Regras:
+    Regras fixas:
       - NC fixo = "NC"
       - Entidade obtida do CSV Empresa→Entidade
-      - Data doc = coluna Data
+      - Data doc = coluna Data (AAAAMMDD)
       - Data contabilística = data do dia
       - Nº NC = só algarismos de N.º / Ref.ª
       - Série vazia
@@ -391,7 +399,7 @@ st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK para ficheiro de imp
 
 st.markdown(
     """
-Esta página converte ficheiros de **Notas de Crédito** (exportação tipo Excel/CSV, com `sep=;`)  
+Esta página converte ficheiros de **Notas de Crédito** (Excel ou CSV)  
 num ficheiro **CSV pronto a importar na contabilidade**, com o layout oficial.
 
 O mapeamento **Empresa → Entidade** é lido automaticamente do ficheiro
@@ -426,8 +434,8 @@ tipo_nc_prefix = "APIFARMA" if tipo_nc == "APIFARMA" else "PAYBACK"
 st.header("2️⃣ Carregar ficheiros de Notas de Crédito")
 
 uploaded_files = st.file_uploader(
-    "Ficheiros CSV de Notas de Crédito (com ou sem linha 'sep=;')",
-    type=["csv", "txt"],
+    "Ficheiros de Notas de Crédito (Excel: xlsx/xls ou CSV/TXT)",
+    type=["xlsx", "xls", "csv", "txt"],
     accept_multiple_files=True,
     key="nc_files_uploader",
 )
