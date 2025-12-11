@@ -1,7 +1,7 @@
 import csv
-import os
 import re
 from datetime import date
+from io import StringIO, BytesIO
 from typing import List, Dict, Optional
 
 import pandas as pd
@@ -52,7 +52,7 @@ HEADER = [
 
 
 # =====================================================
-# 2. Funções base
+# 2. Funções de base
 # =====================================================
 
 def get_entidade_from_filename(file_name: str, mapping_df: pd.DataFrame) -> str:
@@ -66,8 +66,8 @@ def get_entidade_from_filename(file_name: str, mapping_df: pd.DataFrame) -> str:
     fname = file_name.upper()
 
     for _, row in mapping_df.iterrows():
-        padrao = str(row["Padrao_nome_ficheiro"]).strip()
-        entidade = str(row["Entidade"]).strip()
+        padrao = str(row.get("Padrao_nome_ficheiro", "")).strip()
+        entidade = str(row.get("Entidade", "")).strip()
         if not padrao or not entidade or entidade.lower() in ("nan", "none"):
             continue
         if padrao.upper() in fname:
@@ -161,12 +161,14 @@ def apenas_algarismos(texto: str) -> str:
 def gerar_linhas_importacao_para_ficheiro(
     df_nc: pd.DataFrame,
     entidade: str,
-) -> list[list[str]]:
+    tipo_nc_prefix: str,
+) -> List[List[str]]:
     """
     Gera as linhas do CSV de importação, no formato do ficheiro modelo,
     para UM ficheiro de origem.
-    Aplica as regras acordadas:
-      - NC fixo
+
+    Regras:
+      - NC fixo = "NC"
       - Entidade obtida por mapeamento
       - Data doc = coluna Data
       - Data contabilística = data do dia
@@ -182,9 +184,9 @@ def gerar_linhas_importacao_para_ficheiro(
       - Conta Debito = 21111
       - Conta a Credito = 3186111
       - Valor Lançamento = Valor (com IVA) em 1234,56
-      - Observações Documento = concat col H + col I (Ano + Tranche)
+      - Observações Documento = "<tipo_nc_prefix> " + (Ano + Tranche)
     """
-    linhas: list[list[str]] = []
+    linhas: List[List[str]] = []
 
     # Coluna H e I (Ano e Tranche)
     col_h_candidates = [c for c in df_nc.columns if "Ano" in c]
@@ -200,13 +202,18 @@ def gerar_linhas_importacao_para_ficheiro(
 
         numero_nc = apenas_algarismos(ref)
 
-        # Observações: H + I
+        # Observações: Ano (col H) + Tranche (col I)
         obs_parts = []
         if col_h and pd.notna(row[col_h]):
             obs_parts.append(str(row[col_h]))
         if col_i and pd.notna(row[col_i]):
             obs_parts.append(str(row[col_i]))
-        observacoes = " ".join(obs_parts).strip()
+        observacoes_base = " ".join(obs_parts).strip()
+
+        if observacoes_base:
+            observacoes_doc = f"{tipo_nc_prefix} {observacoes_base}".strip()
+        else:
+            observacoes_doc = tipo_nc_prefix
 
         linha: Dict[str, str] = {col: "" for col in HEADER}
 
@@ -228,12 +235,12 @@ def gerar_linhas_importacao_para_ficheiro(
         linha["Atividade"] = "130"
         linha["Natureza"] = ""
 
-        linha["Departamento/Atividade"] = ""
+        linha["Departamento/Atividade"] = "1"
         linha["Conta Debito"] = "21111"
         linha["Conta a Credito "] = "3186111"
         linha["Valor Lançamento"] = format_valor_port(valor)
         linha["Centro de custo"] = ""
-        linha["Observações Documento "] = observacoes
+        linha["Observações Documento "] = observacoes_doc
         linha["Observaçoes lançamento"] = ""
         linha["Classificação Orgânica"] = "101904000"
 
@@ -256,13 +263,11 @@ def gerar_linhas_importacao_para_ficheiro(
     return linhas
 
 
-def escrever_csv_bytes(linhas: list[list[str]]) -> bytes:
+def escrever_csv_bytes(linhas: List[List[str]]) -> bytes:
     """
     Escreve as linhas num CSV (em memória) e devolve bytes.
     Encoding latin-1, separador ';'.
     """
-    from io import StringIO, BytesIO
-
     buffer_text = StringIO()
     writer = csv.writer(buffer_text, delimiter=";")
     writer.writerow(HEADER)
@@ -276,27 +281,28 @@ def escrever_csv_bytes(linhas: list[list[str]]) -> bytes:
 
 
 # =====================================================
-# 8. Interface Streamlit
+# 3. Interface Streamlit
 # =====================================================
 
-st.set_page_config(page_title="Conversor Notas de Crédito → Importação", layout="wide")
+st.set_page_config(page_title="NC APIFARMA / PAYBACK → Importação", layout="wide")
 
-st.title("Conversor de Notas de Crédito para ficheiro de importação contabilística")
+st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK para ficheiro de importação contabilística")
 
 st.markdown(
     """
 Esta página converte ficheiros de **Notas de Crédito** (exportação tipo Excel/CSV, com `sep=;` e UTF-16)  
-num ficheiro **CSV pronto a importar na contabilidade**, com o layout que forneceste.
+num ficheiro **CSV pronto a importar na contabilidade**, com o layout oficial.
 
-**Regras aplicadas:**
+**Regras principais:**
 
 - `NC` fica sempre **NC**  
 - `Entidade` é obtida por **mapeamento do nome do ficheiro**  
-- `Data documento` vem da coluna **Data** (formato AAAAMMDD)  
+- `Data documento` vem da coluna **Data** (AAAAMMDD)  
 - `Data Contabilistica` é a **data de hoje** (AAAAMMDD)  
 - `Nº NC` = apenas algarismos da coluna **N.º / Ref.ª**  
 - `Série` fica em branco  
-- Classificadores e contas:
+
+- Classificadores e contas (fixos):
   - `classificador economico` → `02.01.09.C0.00`
   - `Classificador funcional` → `0730`
   - `Fonte de financiamento` → `511`
@@ -306,14 +312,26 @@ num ficheiro **CSV pronto a importar na contabilidade**, com o layout que fornec
   - `Classificação Orgânica` → `101904000`
   - `Conta Debito` → `21111`
   - `Conta a Credito` → `3186111`
+
 - `Valor Lançamento` vem de **Valor (com IVA)**, no formato `1234,56`  
-- `Observações Documento` = concatenação das colunas **Ano** (coluna H) e **Tranche** (coluna I), quando existirem.
+- `Observações Documento` =  
+  - `"APIFARMA "` ou `"PAYBACK "` (consoante a opção escolhida)  
+  - seguido de **Ano + Tranche** (colunas H e I), quando existirem.
 """
 )
 
 st.divider()
 
-st.header("1️⃣ Mapeamento de Entidade por nome de ficheiro")
+# Tipo de NC (prefixo para as observações)
+st.header("1️⃣ Tipo de Nota de Crédito")
+tipo_nc = st.radio(
+    "Seleciona o tipo de NC:",
+    ["APIFARMA", "PAYBACK"],
+    horizontal=True,
+)
+tipo_nc_prefix = "APIFARMA" if tipo_nc == "APIFARMA" else "PAYBACK"
+
+st.header("2️⃣ Mapeamento de Entidade por nome de ficheiro")
 
 st.write(
     """
@@ -329,8 +347,8 @@ Se o padrão aparecer no nome do ficheiro, será usada a Entidade correspondente
 
 default_mapping_df = pd.DataFrame(
     {
-        "Padrao_nome_ficheiro": [],
-        "Entidade": [],
+        "Padrao_nome_ficheiro": pd.Series([], dtype="string"),
+        "Entidade": pd.Series([], dtype="string"),
     }
 )
 
@@ -341,7 +359,7 @@ mapping_df = st.data_editor(
     key="mapping_editor_nc",
 )
 
-st.header("2️⃣ Carregar ficheiros de Notas de Crédito")
+st.header("3️⃣ Carregar ficheiros de Notas de Crédito")
 
 uploaded_files = st.file_uploader(
     "Ficheiros CSV de Notas de Crédito (UTF-16, com linha 'sep=;')",
@@ -355,53 +373,67 @@ process_button = st.button("▶️ Converter para ficheiro de importação")
 if process_button:
     if not uploaded_files:
         st.error("Carrega pelo menos um ficheiro de notas de crédito.")
-    elif mapping_df.empty or mapping_df["Padrao_nome_ficheiro"].fillna("").str.strip().eq("").all():
-        st.error("Preenche pelo menos uma linha no mapeamento de Entidade (padrão → código).")
     else:
-        todas_linhas: list[list[str]] = []
-        erros: list[str] = []
-        total_notas = 0
-
-        for file in uploaded_files:
-            fname = file.name
-            try:
-                entidade = get_entidade_from_filename(fname, mapping_df)
-            except ValueError as e:
-                erros.append(str(e))
-                continue
-
-            try:
-                df_nc = ler_notas_credito(file)
-            except Exception as e:
-                erros.append(f"Erro ao ler/filtrar '{fname}': {e}")
-                continue
-
-            total_notas += len(df_nc)
-
-            linhas = gerar_linhas_importacao_para_ficheiro(
-                df_nc=df_nc,
-                entidade=entidade,
-            )
-            todas_linhas.extend(linhas)
-
-        if erros:
-            st.error("Ocorreram os seguintes problemas:")
-            for e in erros:
-                st.write(f"- {e}")
-
-        if not todas_linhas:
-            st.warning("Não foi gerada qualquer linha de importação. Verifique os erros acima.")
+        # garantir que a coluna existe e tratar como string
+        if "Padrao_nome_ficheiro" not in mapping_df.columns:
+            st.error("A tabela de mapeamento tem de ter a coluna 'Padrao_nome_ficheiro'.")
         else:
-            st.success(
-                f"Ficheiro(s) processados com sucesso. Notas de crédito total: {total_notas}. "
-                f"Linhas de importação geradas: {len(todas_linhas)}."
+            col_padroes = (
+                mapping_df["Padrao_nome_ficheiro"]
+                .astype("string")
+                .fillna("")
+                .str.strip()
             )
+            if mapping_df.empty or col_padroes.eq("").all():
+                st.error("Preenche pelo menos uma linha no mapeamento de Entidade (padrão → código).")
+            else:
+                todas_linhas: List[List[str]] = []
+                erros: List[str] = []
+                total_notas = 0
 
-            csv_bytes = escrever_csv_bytes(todas_linhas)
+                for file in uploaded_files:
+                    fname = file.name
+                    try:
+                        entidade = get_entidade_from_filename(fname, mapping_df)
+                    except ValueError as e:
+                        erros.append(str(e))
+                        continue
 
-            st.download_button(
-                label="⬇️ Descarregar ficheiro de importação (CSV)",
-                data=csv_bytes,
-                file_name="NC_importacao_contabilidade.csv",
-                mime="text/csv",
-            )
+                    try:
+                        df_nc = ler_notas_credito(file)
+                    except Exception as e:
+                        erros.append(f"Erro ao ler/filtrar '{fname}': {e}")
+                        continue
+
+                    total_notas += len(df_nc)
+
+                    linhas = gerar_linhas_importacao_para_ficheiro(
+                        df_nc=df_nc,
+                        entidade=entidade,
+                        tipo_nc_prefix=tipo_nc_prefix,
+                    )
+                    todas_linhas.extend(linhas)
+
+                if erros:
+                    st.error("Ocorreram os seguintes problemas:")
+                    for e in erros:
+                        st.write(f"- {e}")
+
+                if not todas_linhas:
+                    st.warning("Não foi gerada qualquer linha de importação. Verifique os erros acima.")
+                else:
+                    st.success(
+                        f"Ficheiro(s) processados com sucesso.\n"
+                        f"- Notas de crédito total: {total_notas}\n"
+                        f"- Linhas de importação geradas: {len(todas_linhas)}\n"
+                        f"- Tipo de NC aplicado: {tipo_nc_prefix}"
+                    )
+
+                    csv_bytes = escrever_csv_bytes(todas_linhas)
+
+                    st.download_button(
+                        label="⬇️ Descarregar ficheiro de importação (CSV)",
+                        data=csv_bytes,
+                        file_name=f"NC_{tipo_nc_prefix}_importacao_contabilidade.csv",
+                        mime="text/csv",
+                    )
