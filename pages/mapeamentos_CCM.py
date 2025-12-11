@@ -81,6 +81,7 @@ def load_mapping_file(file) -> Tuple[Dict[str, str], pd.DataFrame]:
 def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]:
     """
     Aplica a lógica de conversão a uma linha:
+      - corrige CC mal formatado: "+93  " → "+9197"
       - altera o 2.º campo (15 dígitos) com base no mapeamento
       - remove o último bloco de 9 dígitos no fim da linha
 
@@ -91,7 +92,13 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
     changed = False
     mapping_missing = False
 
-    # Atualizar o 2.º campo (posições fixas 13–27 se contarmos a partir de 1)
+    # 1) Corrigir CC mal formatado: "+93  " (ou +93 seguido de ≥2 espaços)
+    fixed_line = re.sub(r"\+93\s{2,}", "+9197", original_line)
+    if fixed_line != original_line:
+        changed = True
+        original_line = fixed_line
+
+    # 2) Atualizar o 2.º campo (posições fixas 13–27 se contarmos a partir de 1)
     if len(original_line) >= 27:
         second_field = original_line[12:27]  # index 12 inclusive, 27 exclusive
         if second_field.isdigit() and len(second_field) == 15:
@@ -115,7 +122,7 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
                 # Não existe mapeamento para este código de convenção
                 mapping_missing = True
 
-    # Remover o último bloco de 9 dígitos no fim da linha (mantendo espaços antes)
+    # 3) Remover o último bloco de 9 dígitos no fim da linha (mantendo espaços antes)
     new_line = re.sub(r"(\s)\d{9}$", r"\1", original_line)
     if new_line != original_line:
         changed = True
@@ -189,9 +196,10 @@ st.write(
     """
     Esta aplicação:
     1. Usa um **mapeamento Cod. Convenção → Cod. Entidade** (CSV no repositório ou ficheiro carregado);  
-    2. Atualiza o **2.º campo (15 dígitos)** dos ficheiros;  
-    3. Remove o último código de 9 dígitos no fim de cada linha;  
-    4. Gera, por ficheiro, um *_ERROS.txt* com as linhas cujo código não tem mapeamento.
+    2. Corrige CC com `+93` mal formatado para `+9197`;  
+    3. Atualiza o **2.º campo (15 dígitos)** dos ficheiros;  
+    4. Remove o último código de 9 dígitos no fim de cada linha;  
+    5. Gera, por ficheiro, um *_ERROS.txt* com as linhas cujo código não tem mapeamento.
     """
 )
 
