@@ -9,7 +9,15 @@ import streamlit as st
 
 
 # =====================================================
-# 1. Cabeçalhos EXACTOS do ficheiro de importação
+# 1. Caminho do CSV de mapeamento Empresa → Entidade
+#    (ajusta o nome conforme o ficheiro no teu repo)
+# =====================================================
+
+MAPPING_CSV_PATH = "EMPRESA_ENTIDADE_NC.csv"  # <-- garante que este nome bate certo no GitHub
+
+
+# =====================================================
+# 2. Cabeçalhos EXACTOS do ficheiro de importação
 # =====================================================
 
 HEADER = [
@@ -52,31 +60,84 @@ HEADER = [
 
 
 # =====================================================
-# 2. Funções de base
+# 3. Funções de base
 # =====================================================
 
-def get_entidade_from_filename(file_name: str, mapping_df: pd.DataFrame) -> str:
+def load_empresa_mapping(path: str = MAPPING_CSV_PATH) -> pd.DataFrame:
     """
-    Determina o código de Entidade a partir do nome do ficheiro,
-    usando um DataFrame de mapeamento:
-      colunas: 'Padrao_nome_ficheiro', 'Entidade'
-
-    Procura cada padrão como substring no nome do ficheiro (case-insensitive).
+    Lê o CSV de mapeamento Empresa;Entidade do repositório.
     """
-    fname = file_name.upper()
+    df = pd.read_csv(path, sep=";", encoding="latin-1")
+    obrig = ["Empresa", "Entidade"]
+    for c in obrig:
+        if c not in df.columns:
+            raise ValueError(f"O ficheiro de mapeamento tem de ter as colunas: {obrig}")
+    return df
 
-    for _, row in mapping_df.iterrows():
-        padrao = str(row.get("Padrao_nome_ficheiro", "")).strip()
-        entidade = str(row.get("Entidade", "")).strip()
-        if not padrao or not entidade or entidade.lower() in ("nan", "none"):
-            continue
-        if padrao.upper() in fname:
-            return entidade
 
-    raise ValueError(
-        f"Não foi possível determinar o código de Entidade a partir do nome do ficheiro "
-        f"'{file_name}'. Verifique/atualize o mapeamento."
+def normalizar_texto(s: str) -> str:
+    """
+    Normaliza texto para comparação:
+    - strip
+    - colapsa espaços
+    - upper
+    """
+    s = str(s).strip()
+    s = re.sub(r"\s+", " ", s)
+    return s.upper()
+
+
+def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) -> str:
+    """
+    Determina o código de Entidade a partir da(s) Empresa(s) presentes no ficheiro,
+    usando o CSV de mapeamento.
+
+    - Se houver várias empresas diferentes com entidades diferentes → erro
+    - Se houver empresa sem mapeamento → erro
+    - Se todas as empresas mapeiam para a mesma entidade → devolve essa entidade
+    """
+    empresas_file = (
+        df_nc["Empresa"]
+        .dropna()
+        .map(normalizar_texto)
+        .unique()
     )
+
+    if len(empresas_file) == 0:
+        raise ValueError("Nenhuma 'Empresa' válida encontrada no ficheiro de notas de crédito.")
+
+    # Construir dicionário Empresa_normalizada → Entidade
+    map_dict: Dict[str, str] = {}
+    for _, row in mapping_df.iterrows():
+        emp = normalizar_texto(row["Empresa"])
+        ent = str(row["Entidade"]).strip()
+        if not emp or not ent or ent.lower() in ("nan", "none"):
+            continue
+        map_dict[emp] = ent
+
+    entidades_encontradas = set()
+    empresas_sem_mapa = []
+
+    for emp in empresas_file:
+        if emp in map_dict:
+            entidades_encontradas.add(map_dict[emp])
+        else:
+            empresas_sem_mapa.append(emp)
+
+    if empresas_sem_mapa:
+        raise ValueError(
+            "As seguintes empresas não têm mapeamento no CSV de entidades: "
+            + "; ".join(empresas_sem_mapa)
+        )
+
+    if len(entidades_encontradas) > 1:
+        raise ValueError(
+            "Foram encontradas várias entidades diferentes no mesmo ficheiro: "
+            + "; ".join(sorted(entidades_encontradas))
+        )
+
+    # neste ponto há exatamente uma entidade
+    return entidades_encontradas.pop()
 
 
 def ler_notas_credito(file) -> pd.DataFrame:
@@ -169,7 +230,7 @@ def gerar_linhas_importacao_para_ficheiro(
 
     Regras:
       - NC fixo = "NC"
-      - Entidade obtida por mapeamento
+      - Entidade obtida do CSV Empresa→Entidade
       - Data doc = coluna Data
       - Data contabilística = data do dia
       - Nº NC = só algarismos de N.º / Ref.ª
@@ -235,7 +296,7 @@ def gerar_linhas_importacao_para_ficheiro(
         linha["Atividade"] = "130"
         linha["Natureza"] = ""
 
-        linha["Departamento/Atividade"] = "1"
+        linha["Departamento/Atividade"] = ""
         linha["Conta Debito"] = "21111"
         linha["Conta a Credito "] = "3186111"
         linha["Valor Lançamento"] = format_valor_port(valor)
@@ -281,7 +342,7 @@ def escrever_csv_bytes(linhas: List[List[str]]) -> bytes:
 
 
 # =====================================================
-# 3. Interface Streamlit
+# 4. Interface Streamlit
 # =====================================================
 
 st.set_page_config(page_title="NC APIFARMA / PAYBACK → Importação", layout="wide")
@@ -293,32 +354,20 @@ st.markdown(
 Esta página converte ficheiros de **Notas de Crédito** (exportação tipo Excel/CSV, com `sep=;` e UTF-16)  
 num ficheiro **CSV pronto a importar na contabilidade**, com o layout oficial.
 
-**Regras principais:**
-
-- `NC` fica sempre **NC**  
-- `Entidade` é obtida por **mapeamento do nome do ficheiro**  
-- `Data documento` vem da coluna **Data** (AAAAMMDD)  
-- `Data Contabilistica` é a **data de hoje** (AAAAMMDD)  
-- `Nº NC` = apenas algarismos da coluna **N.º / Ref.ª**  
-- `Série` fica em branco  
-
-- Classificadores e contas (fixos):
-  - `classificador economico` → `02.01.09.C0.00`
-  - `Classificador funcional` → `0730`
-  - `Fonte de financiamento` → `511`
-  - `Programa` → `011`
-  - `Medida` → `022`
-  - `Atividade` → `130`
-  - `Classificação Orgânica` → `101904000`
-  - `Conta Debito` → `21111`
-  - `Conta a Credito` → `3186111`
-
-- `Valor Lançamento` vem de **Valor (com IVA)**, no formato `1234,56`  
-- `Observações Documento` =  
-  - `"APIFARMA "` ou `"PAYBACK "` (consoante a opção escolhida)  
-  - seguido de **Ano + Tranche** (colunas H e I), quando existirem.
+O mapeamento **Empresa → Entidade** é lido automaticamente do ficheiro
+`EMPRESA_ENTIDADE_NC.csv` existente no repositório.
 """
 )
+
+# Tentar carregar o CSV de mapeamento
+try:
+    mapping_df = load_empresa_mapping(MAPPING_CSV_PATH)
+    st.success(f"Mapa Empresa → Entidade carregado de `{MAPPING_CSV_PATH}` "
+               f"({len(mapping_df)} linhas).")
+    st.expander("Ver mapeamento Empresa → Entidade").dataframe(mapping_df, use_container_width=True)
+except Exception as e:
+    st.error(f"Erro ao carregar o ficheiro de mapeamento `{MAPPING_CSV_PATH}`: {e}")
+    st.stop()
 
 st.divider()
 
@@ -331,35 +380,7 @@ tipo_nc = st.radio(
 )
 tipo_nc_prefix = "APIFARMA" if tipo_nc == "APIFARMA" else "PAYBACK"
 
-st.header("2️⃣ Mapeamento de Entidade por nome de ficheiro")
-
-st.write(
-    """
-Preenche abaixo o mapeamento entre **padrões do nome do ficheiro** e o código de **Entidade**.
-O padrão é uma parte do nome do ficheiro (sem caminho), por exemplo:
-
-- `GLAXOSMITHKLINE` → `1`  
-- `PFIZER` → `2`  
-
-Se o padrão aparecer no nome do ficheiro, será usada a Entidade correspondente.
-"""
-)
-
-default_mapping_df = pd.DataFrame(
-    {
-        "Padrao_nome_ficheiro": pd.Series([], dtype="string"),
-        "Entidade": pd.Series([], dtype="string"),
-    }
-)
-
-mapping_df = st.data_editor(
-    default_mapping_df,
-    num_rows="dynamic",
-    use_container_width=True,
-    key="mapping_editor_nc",
-)
-
-st.header("3️⃣ Carregar ficheiros de Notas de Crédito")
+st.header("2️⃣ Carregar ficheiros de Notas de Crédito")
 
 uploaded_files = st.file_uploader(
     "Ficheiros CSV de Notas de Crédito (UTF-16, com linha 'sep=;')",
@@ -368,72 +389,93 @@ uploaded_files = st.file_uploader(
     key="nc_files_uploader",
 )
 
+# Pré-visualização do mapeamento Empresa → Entidade por ficheiro
+if uploaded_files:
+    preview_rows = []
+    for file in uploaded_files:
+        fname = file.name
+        try:
+            file.seek(0)
+            df_nc_preview = ler_notas_credito(file)
+            entidade_preview = get_entidade_from_empresas(df_nc_preview, mapping_df)
+            empresas_preview = ", ".join(
+                sorted(
+                    df_nc_preview["Empresa"]
+                    .dropna()
+                    .map(normalizar_texto)
+                    .unique()
+                )
+            )
+            preview_rows.append(
+                {
+                    "Ficheiro": fname,
+                    "Empresas no ficheiro": empresas_preview,
+                    "Entidade mapeada": entidade_preview,
+                    "Estado": "OK",
+                }
+            )
+        except Exception as e:
+            preview_rows.append(
+                {
+                    "Ficheiro": fname,
+                    "Empresas no ficheiro": "",
+                    "Entidade mapeada": "",
+                    "Estado": f"Erro: {e}",
+                }
+            )
+
+    st.subheader("Pré-visualização: Empresa(s) e Entidade por ficheiro")
+    st.dataframe(pd.DataFrame(preview_rows), use_container_width=True)
+
 process_button = st.button("▶️ Converter para ficheiro de importação")
 
 if process_button:
     if not uploaded_files:
         st.error("Carrega pelo menos um ficheiro de notas de crédito.")
     else:
-        # garantir que a coluna existe e tratar como string
-        if "Padrao_nome_ficheiro" not in mapping_df.columns:
-            st.error("A tabela de mapeamento tem de ter a coluna 'Padrao_nome_ficheiro'.")
-        else:
-            col_padroes = (
-                mapping_df["Padrao_nome_ficheiro"]
-                .astype("string")
-                .fillna("")
-                .str.strip()
+        todas_linhas: List[List[str]] = []
+        erros: List[str] = []
+        total_notas = 0
+
+        for file in uploaded_files:
+            fname = file.name
+            try:
+                file.seek(0)
+                df_nc = ler_notas_credito(file)
+                entidade = get_entidade_from_empresas(df_nc, mapping_df)
+            except Exception as e:
+                erros.append(f"[{fname}] {e}")
+                continue
+
+            total_notas += len(df_nc)
+
+            linhas = gerar_linhas_importacao_para_ficheiro(
+                df_nc=df_nc,
+                entidade=entidade,
+                tipo_nc_prefix=tipo_nc_prefix,
             )
-            if mapping_df.empty or col_padroes.eq("").all():
-                st.error("Preenche pelo menos uma linha no mapeamento de Entidade (padrão → código).")
-            else:
-                todas_linhas: List[List[str]] = []
-                erros: List[str] = []
-                total_notas = 0
+            todas_linhas.extend(linhas)
 
-                for file in uploaded_files:
-                    fname = file.name
-                    try:
-                        entidade = get_entidade_from_filename(fname, mapping_df)
-                    except ValueError as e:
-                        erros.append(str(e))
-                        continue
+        if erros:
+            st.error("Ocorreram os seguintes problemas:")
+            for e in erros:
+                st.write(f"- {e}")
 
-                    try:
-                        df_nc = ler_notas_credito(file)
-                    except Exception as e:
-                        erros.append(f"Erro ao ler/filtrar '{fname}': {e}")
-                        continue
+        if not todas_linhas:
+            st.warning("Não foi gerada qualquer linha de importação. Verifique os erros acima.")
+        else:
+            st.success(
+                f"Ficheiro(s) processados com sucesso.\n"
+                f"- Notas de crédito total: {total_notas}\n"
+                f"- Linhas de importação geradas: {len(todas_linhas)}\n"
+                f"- Tipo de NC aplicado: {tipo_nc_prefix}"
+            )
 
-                    total_notas += len(df_nc)
+            csv_bytes = escrever_csv_bytes(todas_linhas)
 
-                    linhas = gerar_linhas_importacao_para_ficheiro(
-                        df_nc=df_nc,
-                        entidade=entidade,
-                        tipo_nc_prefix=tipo_nc_prefix,
-                    )
-                    todas_linhas.extend(linhas)
-
-                if erros:
-                    st.error("Ocorreram os seguintes problemas:")
-                    for e in erros:
-                        st.write(f"- {e}")
-
-                if not todas_linhas:
-                    st.warning("Não foi gerada qualquer linha de importação. Verifique os erros acima.")
-                else:
-                    st.success(
-                        f"Ficheiro(s) processados com sucesso.\n"
-                        f"- Notas de crédito total: {total_notas}\n"
-                        f"- Linhas de importação geradas: {len(todas_linhas)}\n"
-                        f"- Tipo de NC aplicado: {tipo_nc_prefix}"
-                    )
-
-                    csv_bytes = escrever_csv_bytes(todas_linhas)
-
-                    st.download_button(
-                        label="⬇️ Descarregar ficheiro de importação (CSV)",
-                        data=csv_bytes,
-                        file_name=f"NC_{tipo_nc_prefix}_importacao_contabilidade.csv",
-                        mime="text/csv",
-                    )
+            st.download_button(
+                label="⬇️ Descarregar ficheiro de importação (CSV)",
+                data=csv_bytes,
+                file_name=f"NC_{tipo_nc_prefix}_importacao_contabilidade.csv",
+                mime="text/csv",
+            )
