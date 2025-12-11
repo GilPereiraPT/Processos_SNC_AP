@@ -1,7 +1,7 @@
 import io
 import re
 import zipfile
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import pandas as pd
 import streamlit as st
@@ -45,7 +45,7 @@ def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
     return mapping
 
 
-def load_default_mapping(path: str = "mapeamentos.csv"):
+def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
     """
     Tenta carregar o mapeamento 'de base' a partir de um CSV do repositório.
     Devolve (mapping_dict, dataframe) ou ({}, None) se não existir.
@@ -81,7 +81,7 @@ def load_mapping_file(file) -> Tuple[Dict[str, str], pd.DataFrame]:
 def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]:
     """
     Aplica a lógica de conversão a uma linha:
-      - corrige CC mal formatado: "+93  " → "+9197"
+      - corrige CC mal formatado: "+93  " (ou +93 com >=2 espaços) → "+9197"
       - altera o 2.º campo (15 dígitos) com base no mapeamento
       - remove o último bloco de 9 dígitos no fim da linha
 
@@ -92,7 +92,7 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
     changed = False
     mapping_missing = False
 
-    # 1) Corrigir CC mal formatado: "+93  " (ou +93 seguido de ≥2 espaços)
+    # 1) Corrigir CC mal formatado: "+93  " (ou +93 seguido de ≥2 espaços) → "+9197"
     fixed_line = re.sub(r"\+93\s{2,}", "+9197", original_line)
     if fixed_line != original_line:
         changed = True
@@ -199,7 +199,9 @@ st.write(
     2. Corrige CC com `+93` mal formatado para `+9197`;  
     3. Atualiza o **2.º campo (15 dígitos)** dos ficheiros;  
     4. Remove o último código de 9 dígitos no fim de cada linha;  
-    5. Gera, por ficheiro, um *_ERROS.txt* com as linhas cujo código não tem mapeamento.
+    5. Gera, por ficheiro:
+       - apenas *_CONVERTIDO.txt* se estiver tudo mapeado;
+       - apenas *_ERROS.txt* se existirem códigos sem mapeamento.
     """
 )
 
@@ -208,9 +210,9 @@ default_mapping, default_df = load_default_mapping()
 
 st.sidebar.header("Fonte do mapeamento")
 
-mapping_source = None
+mapping_source: Optional[str] = None
 mapping: Dict[str, str] = {}
-mapping_df: pd.DataFrame | None = None
+mapping_df: Optional[pd.DataFrame] = None
 
 if default_mapping:
     mapping_source = st.sidebar.radio(
@@ -302,33 +304,23 @@ if data_files and mapping:
             out_name = f"{base_name}_CONVERTIDO.txt"
             err_name = f"{base_name}_ERROS.txt"
 
-            # Guardar ficheiro convertido no ZIP
-            zipf.writestr(out_name, converted_bytes)
+            st.markdown(f"### {uploaded_file.name}")
 
-            # Guardar ficheiro de erros no ZIP (se tiver linhas)
+            # ---- CASO 1: existem erros de mapeamento -> só ficheiro de ERROS ----
             if mapping_error_count > 0:
+                # guardar apenas o ficheiro de erros no ZIP
                 zipf.writestr(err_name, error_bytes)
 
-            all_results.append(
-                {
-                    "Ficheiro original": uploaded_file.name,
-                    "Ficheiro convertido": out_name,
-                    "Linhas alteradas": changed_count,
-                    "Total de linhas": total_lines,
-                    "Linhas com código sem mapeamento": mapping_error_count,
-                }
-            )
+                all_results.append(
+                    {
+                        "Ficheiro original": uploaded_file.name,
+                        "Ficheiro convertido": "",
+                        "Linhas alteradas": changed_count,
+                        "Total de linhas": total_lines,
+                        "Linhas com código sem mapeamento": mapping_error_count,
+                    }
+                )
 
-            st.markdown(f"### {uploaded_file.name}")
-            st.markdown(f"**Convertido → {out_name}**")
-            st.download_button(
-                label=f"⬇️ Descarregar {out_name}",
-                data=converted_bytes,
-                file_name=out_name,
-                mime="text/plain",
-            )
-
-            if mapping_error_count > 0:
                 st.markdown(f"**Erros de mapeamento → {err_name}**")
                 st.download_button(
                     label=f"⬇️ Descarregar {err_name}",
@@ -338,9 +330,31 @@ if data_files and mapping:
                 )
                 st.warning(
                     f"{mapping_error_count} linha(s) sem mapeamento para o código de convenção. "
-                    f"Ver o ficheiro {err_name}."
+                    f"Apenas foi gerado o ficheiro de erros ({err_name})."
                 )
+
+            # ---- CASO 2: sem erros -> só ficheiro CONVERTIDO ----
             else:
+                # guardar apenas o convertido no ZIP
+                zipf.writestr(out_name, converted_bytes)
+
+                all_results.append(
+                    {
+                        "Ficheiro original": uploaded_file.name,
+                        "Ficheiro convertido": out_name,
+                        "Linhas alteradas": changed_count,
+                        "Total de linhas": total_lines,
+                        "Linhas com código sem mapeamento": mapping_error_count,
+                    }
+                )
+
+                st.markdown(f"**Convertido → {out_name}**")
+                st.download_button(
+                    label=f"⬇️ Descarregar {out_name}",
+                    data=converted_bytes,
+                    file_name=out_name,
+                    mime="text/plain",
+                )
                 st.success("Nenhuma linha com código de convenção em falta no mapeamento.")
 
             st.write(f"- Linhas alteradas: {changed_count} / {total_lines}")
