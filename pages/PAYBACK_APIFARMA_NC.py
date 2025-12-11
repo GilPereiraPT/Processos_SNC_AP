@@ -66,6 +66,7 @@ HEADER = [
 def load_empresa_mapping(path: str = MAPPING_CSV_PATH) -> pd.DataFrame:
     """
     Lê o CSV de mapeamento Empresa;Entidade do repositório.
+    Espera colunas: 'Empresa' e 'Entidade'.
     """
     df = pd.read_csv(path, sep=";", encoding="latin-1")
     obrig = ["Empresa", "Entidade"]
@@ -90,7 +91,7 @@ def normalizar_texto(s: str) -> str:
 def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) -> str:
     """
     Determina o código de Entidade a partir da(s) Empresa(s) presentes no ficheiro,
-    usando o CSV de mapeamento.
+    usando o CSV de mapeamento Empresa → Entidade.
 
     - Se houver várias empresas diferentes com entidades diferentes → erro
     - Se houver empresa sem mapeamento → erro
@@ -142,15 +143,54 @@ def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) ->
 
 def ler_notas_credito(file) -> pd.DataFrame:
     """
-    Lê o ficheiro CSV de notas de crédito (UTF-16, com linha 'sep=;')
-    e devolve apenas as linhas do tipo 'NOTA DE CRÉDITO'.
+    Lê o ficheiro de notas de crédito tentando, por ordem:
+      - UTF-16
+      - UTF-8 (com ou sem BOM)
+      - Latin-1
+
+    Se a primeira linha começar por 'sep=' (case-insensitive),
+    é ignorada (skiprows=1).
+
+    Devolve apenas as linhas do tipo 'NOTA DE CRÉDITO'.
     """
-    df = pd.read_csv(
-        file,
-        sep=";",
-        encoding="utf-16",
-        skiprows=1,  # ignora a linha 'sep=;'
-    )
+    # Garantir que começamos do início do ficheiro
+    file.seek(0)
+    raw = file.read()
+
+    last_exc: Optional[Exception] = None
+    df: Optional[pd.DataFrame] = None
+
+    for enc in ["utf-16", "utf-8-sig", "latin-1"]:
+        try:
+            text = raw.decode(enc)
+        except UnicodeError as e:
+            last_exc = e
+            continue
+
+        # detetar se a primeira linha é 'sep='
+        lines = text.splitlines()
+        first_line = lines[0] if lines else ""
+        skip = 1 if first_line.lower().startswith("sep=") else 0
+
+        from io import StringIO
+        buf = StringIO(text)
+
+        try:
+            df = pd.read_csv(buf, sep=";", skiprows=skip)
+        except Exception as e:
+            last_exc = e
+            df = None
+            continue
+
+        # se chegámos aqui com sucesso, saímos do ciclo
+        break
+
+    if df is None:
+        raise ValueError(
+            "Não foi possível ler o ficheiro de notas de crédito com as codificações "
+            "utf-16, utf-8-sig ou latin-1. "
+            f"Último erro: {last_exc}"
+        )
 
     obrig = [
         "Data",
@@ -165,7 +205,7 @@ def ler_notas_credito(file) -> pd.DataFrame:
             raise ValueError(f"Coluna obrigatória '{c}' não encontrada: {c}")
 
     # Só NOTAS DE CRÉDITO
-    df_nc = df[df["Tipo"].str.upper().str.contains("NOTA DE CRÉDITO")].copy()
+    df_nc = df[df["Tipo"].astype(str).str.upper().str.contains("NOTA DE CRÉDITO")].copy()
 
     if df_nc.empty:
         raise ValueError("Nenhuma linha com 'NOTA DE CRÉDITO' encontrada no ficheiro.")
@@ -249,7 +289,7 @@ def gerar_linhas_importacao_para_ficheiro(
     """
     linhas: List[List[str]] = []
 
-    # Coluna H e I (Ano e Tranche)
+    # Coluna H e I (Ano e Tranche) – procura 'Ano' em qualquer header
     col_h_candidates = [c for c in df_nc.columns if "Ano" in c]
     col_h: Optional[str] = col_h_candidates[0] if col_h_candidates else None
     col_i = "Tranche" if "Tranche" in df_nc.columns else None
@@ -351,7 +391,7 @@ st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK para ficheiro de imp
 
 st.markdown(
     """
-Esta página converte ficheiros de **Notas de Crédito** (exportação tipo Excel/CSV, com `sep=;` e UTF-16)  
+Esta página converte ficheiros de **Notas de Crédito** (exportação tipo Excel/CSV, com `sep=;`)  
 num ficheiro **CSV pronto a importar na contabilidade**, com o layout oficial.
 
 O mapeamento **Empresa → Entidade** é lido automaticamente do ficheiro
@@ -362,9 +402,12 @@ O mapeamento **Empresa → Entidade** é lido automaticamente do ficheiro
 # Tentar carregar o CSV de mapeamento
 try:
     mapping_df = load_empresa_mapping(MAPPING_CSV_PATH)
-    st.success(f"Mapa Empresa → Entidade carregado de `{MAPPING_CSV_PATH}` "
-               f"({len(mapping_df)} linhas).")
-    st.expander("Ver mapeamento Empresa → Entidade").dataframe(mapping_df, use_container_width=True)
+    st.success(
+        f"Mapa Empresa → Entidade carregado de `{MAPPING_CSV_PATH}` "
+        f"({len(mapping_df)} linhas)."
+    )
+    with st.expander("Ver mapeamento Empresa → Entidade"):
+        st.dataframe(mapping_df, use_container_width=True)
 except Exception as e:
     st.error(f"Erro ao carregar o ficheiro de mapeamento `{MAPPING_CSV_PATH}`: {e}")
     st.stop()
@@ -383,7 +426,7 @@ tipo_nc_prefix = "APIFARMA" if tipo_nc == "APIFARMA" else "PAYBACK"
 st.header("2️⃣ Carregar ficheiros de Notas de Crédito")
 
 uploaded_files = st.file_uploader(
-    "Ficheiros CSV de Notas de Crédito (UTF-16, com linha 'sep=;')",
+    "Ficheiros CSV de Notas de Crédito (com ou sem linha 'sep=;')",
     type=["csv", "txt"],
     accept_multiple_files=True,
     key="nc_files_uploader",
@@ -395,7 +438,6 @@ if uploaded_files:
     for file in uploaded_files:
         fname = file.name
         try:
-            file.seek(0)
             df_nc_preview = ler_notas_credito(file)
             entidade_preview = get_entidade_from_empresas(df_nc_preview, mapping_df)
             empresas_preview = ", ".join(
@@ -440,7 +482,6 @@ if process_button:
         for file in uploaded_files:
             fname = file.name
             try:
-                file.seek(0)
                 df_nc = ler_notas_credito(file)
                 entidade = get_entidade_from_empresas(df_nc, mapping_df)
             except Exception as e:
