@@ -13,12 +13,9 @@ import streamlit as st
 
 def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
     """
-    Converte um DataFrame (>=2 colunas: convenção / entidade)
-    num dicionário {Cod_Convencao_6digitos: Cod_Entidade_str}.
-
-    Correção:
-    - Normaliza convenção para 6 dígitos (preserva zeros à esquerda)
-      Ex.: 30400 / 30400.0 -> 030400
+    Converte DataFrame (>=2 colunas: convenção / entidade)
+    para dict {conv6: entidade}.
+    Normaliza convenção para 6 dígitos (30400/30400.0 -> 030400).
     """
     if df.shape[1] < 2:
         raise ValueError("O ficheiro de mapeamento tem de ter pelo menos duas colunas.")
@@ -36,11 +33,9 @@ def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
         if not ent_raw or ent_raw.lower() in ("nan", "none"):
             continue
 
-        # ---- NORMALIZAÇÃO DA CONVENÇÃO (6 dígitos) ----
-        conv_digits = re.sub(r"\D", "", conv_raw)  # remove tudo o que não é dígito
+        conv_digits = re.sub(r"\D", "", conv_raw)
         conv_code = conv_digits.zfill(6) if conv_digits else conv_raw
 
-        # ---- NORMALIZAÇÃO DA ENTIDADE ----
         try:
             ent_int = int(str(ent_raw).replace(" ", ""))
             ent_code = str(ent_int)
@@ -53,10 +48,6 @@ def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
 
 
 def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
-    """
-    Tenta carregar o mapeamento 'de base' a partir de um CSV do repositório.
-    Devolve (mapping_dict, dataframe) ou ({}, None) se não existir.
-    """
     try:
         df = pd.read_csv(path, sep=None, engine="python")
         return df_to_mapping(df), df
@@ -65,186 +56,100 @@ def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str],
 
 
 def load_mapping_file(file) -> Tuple[Dict[str, str], pd.DataFrame]:
-    """
-    Lê um ficheiro de mapeamento enviado pelo utilizador (CSV/TXT/XLSX)
-    e devolve (mapping_dict, dataframe).
-    """
     filename = file.name.lower()
-
     if filename.endswith((".xlsx", ".xls")):
         df = pd.read_excel(file)
     else:
         df = pd.read_csv(file, sep=None, engine="python")
-
     return df_to_mapping(df), df
-
-
-# ==============================
-# Regras por tipo (3 primeiras colunas)
-# ==============================
-# Começa vazio. Só adicionas exceções quando encontrares um tipo "esquisito".
-# Métodos:
-# - fixed: usa slice [start:end]
-# - token: usa token N (1=primeiro token, 2=segundo token, ...)
-TYPE_RULES = {
-    # Exemplo:
-    # "MCD": {"method": "fixed", "start": 12, "end": 27},
-    # "TRM": {"method": "token", "token_index": 2},
-}
 
 
 # ==============================
 # Helpers de transformação
 # ==============================
 
-# padrão EXATO do campo de 15 dígitos: 0 + conv(6) + 91 + sufixo(6)
-SECOND_FIELD_FULL_RE = re.compile(r"^0(?P<conv>\d{6})91(?P<suffix>\d{6})$")
+# Formato “antigo” (15 dígitos): 0 + conv(6) + 91 + sufixo(6)
+FIELD15_RE = re.compile(r"^0(?P<conv>\d{6})91(?P<suffix>\d{6})$")
 
-# para extrair token1 + espaços + token2 + resto (quando há separadores por espaços)
+# Linha -> token1 + espaços + token2 + resto (para manter espaçamento)
 SECOND_TOKEN_RE = re.compile(r"^(\S+)(\s+)(\S+)(.*)$")
 
 
-def replace_field(field15: str, mapping: Dict[str, str]) -> Tuple[Optional[str], bool]:
-    """
-    Se field15 corresponder ao padrão e houver mapeamento: devolve (novo_field, False)
-    Se corresponder ao padrão mas NÃO houver mapeamento: devolve (None, True)
-    Se NÃO corresponder ao padrão: devolve (None, False)
-    """
-    m = SECOND_FIELD_FULL_RE.match(field15)
-    if not m:
-        return None, False
-
-    conv_code = m.group("conv")
-    suffix = m.group("suffix")
-    ent_code = mapping.get(conv_code)
-
-    if ent_code is None:
-        return None, True
-
+def ent7_from_mapping(ent_code: str) -> str:
+    """Entidade com 7 dígitos (padding se numérica)."""
     try:
-        ent7 = f"{int(ent_code):07d}"
+        return f"{int(ent_code):07d}"
     except ValueError:
-        ent7 = ent_code
-
-    return ent7 + "91" + suffix, False
+        return ent_code
 
 
 # ==============================
-# Funções de transformação
+# Transformação por linha
 # ==============================
 
 def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]:
-    """
-    Aplica a lógica de conversão a uma linha:
-      - corrige CC mal formatado: "+93  " (ou +93 com >=2 espaços) → "+9197"
-      - atualiza o campo de 15 dígitos (0 + conv(6) + 91 + sufixo(6))
-        com estratégia por tipo (3 primeiras colunas) ou universal híbrida
-      - remove o último bloco de 9 dígitos no fim da linha
-
-    Devolve:
-      (linha_convertida, houve_substituicao_bool, mapping_em_falta_bool)
-    """
-    original_line = line.rstrip("\n")
+    s = line.rstrip("\n")
     changed = False
     mapping_missing = False
 
-    # Tipo (3 primeiras colunas)
-    file_type = original_line[:3] if len(original_line) >= 3 else ""
-
-    # 1) Corrigir CC mal formatado
-    fixed_line = re.sub(r"\+93\s{2,}", "+9197", original_line)
-    if fixed_line != original_line:
+    # 1) Corrigir CC mal formatado: "+93  " (>=2 espaços) → "+9197"
+    s2 = re.sub(r"\+93\s{2,}", "+9197", s)
+    if s2 != s:
+        s = s2
         changed = True
-        original_line = fixed_line
 
-    # 2) Estratégia por tipo (se existir), caso contrário universal
-    rule = TYPE_RULES.get(file_type)
+    # 2) Trabalhar APENAS no 2.º campo (token2), mantendo espaços originais
+    m = SECOND_TOKEN_RE.match(s)
+    if m:
+        token1, sep, token2, rest = m.group(1), m.group(2), m.group(3), m.group(4)
 
-    if rule:
-        # ---- regra específica por tipo ----
-        if rule.get("method") == "fixed":
-            start, end = int(rule["start"]), int(rule["end"])
-            if len(original_line) >= end:
-                candidate = original_line[start:end]
-                new_field, miss = replace_field(candidate, mapping)
-                if miss:
-                    mapping_missing = True
-                elif new_field is not None and new_field != candidate:
-                    original_line = original_line[:start] + new_field + original_line[end:]
-                    changed = True
+        # 2A) NOVO formato (14 dígitos): conv(6) + last8(token1)
+        # Ex.: 800892 + 91908697  -> 9809183 + 91908697
+        if token2.isdigit() and len(token2) == 14:
+            conv6 = token2[:6]
+            tail8 = token2[6:]  # 8 dígitos
 
-        elif rule.get("method") == "token":
-            idx = int(rule["token_index"])  # 1=primeiro token, 2=segundo, ...
-            parts = re.split(r"(\s+)", original_line)  # mantém separadores
-            tokens = [parts[i] for i in range(0, len(parts), 2)]
-            seps = [parts[i] for i in range(1, len(parts), 2)]
-
-            if 1 <= idx <= len(tokens):
-                token = tokens[idx - 1]
-                new_field, miss = replace_field(token, mapping)
-                if miss:
-                    mapping_missing = True
-                elif new_field is not None and new_field != token:
-                    tokens[idx - 1] = new_field
-                    rebuilt = []
-                    for i, t in enumerate(tokens):
-                        rebuilt.append(t)
-                        if i < len(seps):
-                            rebuilt.append(seps[i])
-                    original_line = "".join(rebuilt)
-                    changed = True
-
-    else:
-        # ---- regra universal híbrida (mais segura para ficheiros "parecidos mas diferentes") ----
-        substituted = False
-        used_missing = False
-
-        # 2A) tentar por posição fixa (compatível com o teu script original)
-        if len(original_line) >= 27:
-            candidate = original_line[12:27]
-            new_field, miss = replace_field(candidate, mapping)
-            if miss:
+            ent_code = mapping.get(conv6)
+            if ent_code is None:
                 mapping_missing = True
-                used_missing = True
-            elif new_field is not None and new_field != candidate:
-                original_line = original_line[:12] + new_field + original_line[27:]
-                changed = True
-                substituted = True
-
-        # 2B) se não substituiu e não marcou falta, tentar pelo 2.º token
-        if not substituted and not used_missing:
-            mtoken = SECOND_TOKEN_RE.match(original_line)
-            if mtoken:
-                token1, sep, token2, rest = mtoken.group(1), mtoken.group(2), mtoken.group(3), mtoken.group(4)
-                new_field, miss = replace_field(token2, mapping)
-                if miss:
-                    mapping_missing = True
-                elif new_field is not None and new_field != token2:
-                    original_line = token1 + sep + new_field + rest
+            else:
+                new_token2 = ent7_from_mapping(ent_code) + tail8  # 7 + 8 = 15
+                if new_token2 != token2:
+                    s = token1 + sep + new_token2 + rest
                     changed = True
 
-    # 3) Remover o último bloco de 9 dígitos no fim da linha (mantendo espaços antes)
-    new_line = re.sub(r"(\s)\d{9}$", r"\1", original_line)
-    if new_line != original_line:
+        # 2B) Formato antigo (15 dígitos): 0 + conv(6) + 91 + sufixo(6)
+        elif token2.isdigit() and len(token2) == 15:
+            m15 = FIELD15_RE.match(token2)
+            if m15:
+                conv6 = m15.group("conv")
+                suffix6 = m15.group("suffix")
+                ent_code = mapping.get(conv6)
+
+                if ent_code is None:
+                    mapping_missing = True
+                else:
+                    new_token2 = ent7_from_mapping(ent_code) + "91" + suffix6
+                    if new_token2 != token2:
+                        s = token1 + sep + new_token2 + rest
+                        changed = True
+
+    # 3) Remover o último bloco de 9 dígitos no fim da linha (mantendo o espaço anterior)
+    s2 = re.sub(r"(\s)\d{9}$", r"\1", s)
+    if s2 != s:
+        s = s2
         changed = True
-        original_line = new_line
 
-    return original_line, changed, mapping_missing
+    return s, changed, mapping_missing
 
+
+# ==============================
+# Transformação por ficheiro
+# ==============================
 
 def transform_file_bytes(
     file_bytes: bytes, mapping: Dict[str, str], encoding: str = "utf-8"
 ) -> Tuple[bytes, bytes, int, int, int]:
-    """
-    Aplica a transformação a um ficheiro completo (em bytes).
-
-    Devolve:
-      - bytes_resultantes (ficheiro convertido)
-      - bytes_erros (linhas com códigos sem mapeamento, se existirem)
-      - num_linhas_alteradas
-      - num_linhas_totais
-      - num_linhas_com_erro_mapeamento
-    """
     try:
         text = file_bytes.decode(encoding)
     except UnicodeDecodeError:
@@ -262,21 +167,21 @@ def transform_file_bytes(
             out_lines.append(line)
             continue
 
-        new_line, changed, mapping_missing = transform_line(line, mapping)
+        new_line, changed, missing = transform_line(line, mapping)
         out_lines.append(new_line)
 
         if changed:
             changed_count += 1
-        if mapping_missing:
+        if missing:
             mapping_error_count += 1
-            error_lines.append(line)  # guardar a linha original no ficheiro de erros
+            error_lines.append(line)
 
     out_text = "\n".join(out_lines) + "\n"
-    error_text = "\n".join(error_lines) + "\n" if error_lines else ""
+    err_text = "\n".join(error_lines) + "\n" if error_lines else ""
 
     return (
         out_text.encode(encoding),
-        error_text.encode(encoding),
+        err_text.encode(encoding),
         changed_count,
         len(lines),
         mapping_error_count,
@@ -284,11 +189,10 @@ def transform_file_bytes(
 
 
 # ==============================
-# Interface Streamlit
+# UI Streamlit
 # ==============================
 
 st.set_page_config(page_title="Conversor de Ficheiros MCDT/Termas", layout="wide")
-
 st.title("Conversor de ficheiros MCDT/Termas")
 
 st.write(
@@ -296,7 +200,9 @@ st.write(
     Esta aplicação:
     1. Usa um **mapeamento Cod. Convenção → Cod. Entidade** (CSV no repositório ou ficheiro carregado);  
     2. Corrige CC com `+93` mal formatado para `+9197`;  
-    3. Atualiza o campo **0 + convenção(6) + 91 + sufixo(6)** (15 dígitos) usando regra universal híbrida e/ou regras por tipo (3 primeiras colunas);  
+    3. Atualiza o **2.º campo**, suportando:
+       - formato **14 dígitos**: `conv(6)+tail(8)` → `ent(7)+tail(8)`
+       - formato **15 dígitos**: `0+conv(6)+91+sufixo(6)` → `ent(7)+91+sufixo(6)`  
     4. Remove o último código de 9 dígitos no fim de cada linha;  
     5. Gera, por ficheiro:
        - apenas *_CONVERTIDO.txt* se estiver tudo mapeado;
@@ -304,12 +210,10 @@ st.write(
     """
 )
 
-# ---- carregar mapeamento "base de dados" do repositório ----
 default_mapping, default_df = load_default_mapping()
 
 st.sidebar.header("Fonte do mapeamento")
 
-mapping_source: Optional[str] = None
 mapping: Dict[str, str] = {}
 mapping_df: Optional[pd.DataFrame] = None
 
@@ -321,19 +225,13 @@ if default_mapping:
     )
 else:
     st.sidebar.info("Nenhum 'mapeamentos.csv' encontrado no repositório.")
-    mapping_source = st.sidebar.radio(
-        "Escolher fonte do mapeamento",
-        ["Carregar outro ficheiro"],
-        index=0,
-    )
+    mapping_source = "Carregar outro ficheiro"
 
-# ---- caso 1: usar CSV do repositório ----
 if mapping_source == "CSV do repositório (mapeamentos.csv)" and default_mapping:
     mapping = default_mapping
     mapping_df = default_df
     st.success(f"Mapeamento carregado de 'mapeamentos.csv' ({len(mapping)} entradas).")
 
-# ---- caso 2: carregar ficheiro de mapeamento ----
 if mapping_source == "Carregar outro ficheiro":
     st.header("1️⃣ Carregar ficheiro de mapeamento")
     mapping_file = st.file_uploader(
@@ -348,7 +246,6 @@ if mapping_source == "Carregar outro ficheiro":
         except Exception as e:
             st.error(f"Erro ao ler ficheiro de mapeamento: {e}")
 
-# ---- secção de “base de dados” / edição do mapeamento ----
 if mapping_df is not None:
     st.header("📚 Base de dados de mapeamentos")
     st.write("Podes editar a tabela abaixo e descarregar um CSV atualizado.")
@@ -370,7 +267,6 @@ if mapping_df is not None:
 else:
     st.info("Ainda não há mapeamento carregado/selecionado.")
 
-# ---- carregamento de ficheiros de dados ----
 st.header("2️⃣ Carregar ficheiros a converter")
 data_files = st.file_uploader(
     "Ficheiros de texto a converter",
@@ -391,6 +287,7 @@ if data_files and mapping:
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
         for uploaded_file in data_files:
             file_bytes = uploaded_file.read()
+
             converted_bytes, error_bytes, changed_count, total_lines, mapping_error_count = transform_file_bytes(
                 file_bytes, mapping
             )
@@ -401,10 +298,8 @@ if data_files and mapping:
 
             st.markdown(f"### {uploaded_file.name}")
 
-            # ---- CASO 1: existem erros de mapeamento -> só ficheiro de ERROS ----
             if mapping_error_count > 0:
                 zipf.writestr(err_name, error_bytes)
-
                 all_results.append(
                     {
                         "Ficheiro original": uploaded_file.name,
@@ -414,7 +309,6 @@ if data_files and mapping:
                         "Linhas com código sem mapeamento": mapping_error_count,
                     }
                 )
-
                 st.markdown(f"**Erros de mapeamento → {err_name}**")
                 st.download_button(
                     label=f"⬇️ Descarregar {err_name}",
@@ -426,11 +320,8 @@ if data_files and mapping:
                     f"{mapping_error_count} linha(s) sem mapeamento para o código de convenção. "
                     f"Apenas foi gerado o ficheiro de erros ({err_name})."
                 )
-
-            # ---- CASO 2: sem erros -> só ficheiro CONVERTIDO ----
             else:
                 zipf.writestr(out_name, converted_bytes)
-
                 all_results.append(
                     {
                         "Ficheiro original": uploaded_file.name,
@@ -440,7 +331,6 @@ if data_files and mapping:
                         "Linhas com código sem mapeamento": mapping_error_count,
                     }
                 )
-
                 st.markdown(f"**Convertido → {out_name}**")
                 st.download_button(
                     label=f"⬇️ Descarregar {out_name}",
