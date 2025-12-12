@@ -15,6 +15,10 @@ def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
     """
     Converte um DataFrame (pelo menos 2 colunas: convenção / entidade)
     num dicionário {Cod_Convencao_6digitos: Cod_Entidade_str}.
+
+    Correção importante:
+    - Normaliza o código de convenção para 6 dígitos (preserva zeros à esquerda),
+      cobrindo casos de Excel tipo 30400 / 30400.0 -> 030400
     """
     if df.shape[1] < 2:
         raise ValueError("O ficheiro de mapeamento tem de ter pelo menos duas colunas.")
@@ -32,8 +36,14 @@ def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
         if not ent_raw or ent_raw.lower() in ("nan", "none"):
             continue
 
-        conv_code = conv_raw
+        # ---- NORMALIZAÇÃO DA CONVENÇÃO (6 dígitos) ----
+        conv_digits = re.sub(r"\D", "", conv_raw)  # remove tudo o que não é dígito
+        if conv_digits:
+            conv_code = conv_digits.zfill(6)  # 30400 -> 030400
+        else:
+            conv_code = conv_raw
 
+        # ---- NORMALIZAÇÃO DA ENTIDADE ----
         try:
             ent_int = int(str(ent_raw).replace(" ", ""))
             ent_code = str(ent_int)
@@ -308,7 +318,6 @@ if data_files and mapping:
 
             # ---- CASO 1: existem erros de mapeamento -> só ficheiro de ERROS ----
             if mapping_error_count > 0:
-                # guardar apenas o ficheiro de erros no ZIP
                 zipf.writestr(err_name, error_bytes)
 
                 all_results.append(
@@ -335,7 +344,6 @@ if data_files and mapping:
 
             # ---- CASO 2: sem erros -> só ficheiro CONVERTIDO ----
             else:
-                # guardar apenas o convertido no ZIP
                 zipf.writestr(out_name, converted_bytes)
 
                 all_results.append(
