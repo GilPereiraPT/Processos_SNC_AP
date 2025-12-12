@@ -13,11 +13,8 @@ import streamlit as st
 
 def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
     """
-    Converte DataFrame (>=2 colunas: convenção / entidade)
-    para dict {conv6: entidade}.
-
-    Normaliza convenção para 6 dígitos (preserva zeros à esquerda):
-      Ex.: 30400 / 30400.0 -> 030400
+    Converte DataFrame (>=2 colunas: convenção / entidade) para dict {conv6: entidade}.
+    Normaliza convenção para 6 dígitos (30400/30400.0 -> 030400).
     """
     if df.shape[1] < 2:
         raise ValueError("O ficheiro de mapeamento tem de ter pelo menos duas colunas.")
@@ -35,23 +32,22 @@ def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
         if not ent_raw or ent_raw.lower() in ("nan", "none"):
             continue
 
-        # Convenção sempre com 6 dígitos (se houver dígitos)
         conv_digits = re.sub(r"\D", "", conv_raw)
         conv_code = conv_digits.zfill(6) if conv_digits else conv_raw
 
-        # Entidade (normalizar)
-        try:
-            ent_int = int(str(ent_raw).replace(" ", ""))
-            ent_code = str(ent_int)
-        except ValueError:
-            ent_code = ent_raw.replace(" ", "")
+        ent_raw2 = str(ent_raw).replace(" ", "")
+        if ent_raw2.endswith(".0"):
+            ent_raw2 = ent_raw2[:-2]
 
-        mapping[conv_code] = ent_code
+        mapping[conv_code] = ent_raw2
 
     return mapping
 
 
 def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
+    """
+    Carrega mapeamentos.csv do repositório (se existir).
+    """
     try:
         df = pd.read_csv(path, sep=None, engine="python")
         return df_to_mapping(df), df
@@ -60,27 +56,76 @@ def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str],
 
 
 def load_mapping_file(file) -> Tuple[Dict[str, str], pd.DataFrame]:
+    """
+    Lê um ficheiro de mapeamento enviado (CSV/TXT/XLSX).
+    """
     filename = file.name.lower()
     if filename.endswith((".xlsx", ".xls")):
         df = pd.read_excel(file)
     else:
         df = pd.read_csv(file, sep=None, engine="python")
+
     return df_to_mapping(df), df
 
 
 # ==============================
-# Helpers / Regex
+# CSV "em condições" (PT/Excel)
+# ==============================
+
+def clean_mapping_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normaliza e limpa o DF para exportar:
+    - 1ª coluna: convenção -> 6 dígitos, remove .0, remove não dígitos
+    - 2ª coluna: entidade -> remove .0, remove espaços
+    """
+    df2 = df.copy()
+
+    # Convenção
+    df2.iloc[:, 0] = (
+        df2.iloc[:, 0]
+        .astype(str)
+        .str.strip()
+        .str.replace(r"\.0$", "", regex=True)
+        .str.replace(r"\D", "", regex=True)
+        .str.zfill(6)
+    )
+
+    # Entidade
+    df2.iloc[:, 1] = (
+        df2.iloc[:, 1]
+        .astype(str)
+        .str.strip()
+        .str.replace(r"\.0$", "", regex=True)
+        .str.replace(" ", "", regex=False)
+    )
+
+    # Remover linhas vazias / nan
+    df2 = df2[(df2.iloc[:, 0] != "") & (df2.iloc[:, 0].str.lower() != "nan")]
+    df2 = df2[(df2.iloc[:, 1] != "") & (df2.iloc[:, 1].str.lower() != "nan")]
+
+    return df2
+
+
+def df_to_csv_bytes_pt(df: pd.DataFrame) -> bytes:
+    """
+    Exporta CSV com ; e UTF-8 com BOM (utf-8-sig) para abrir bem no Excel PT.
+    """
+    return df.to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig")
+
+
+# ==============================
+# Helpers / Regex transformação
 # ==============================
 
 # Formato “antigo” (15 dígitos): 0 + conv(6) + 91 + sufixo(6)
 FIELD15_RE = re.compile(r"^0(?P<conv>\d{6})91(?P<suffix>\d{6})$")
 
-# Linha -> token1 + espaços + token2 + resto
+# token1 + espaços + token2 + resto
 SECOND_TOKEN_RE = re.compile(r"^(\S+)(\s+)(\S+)(.*)$")
 
 
 def ent7_from_mapping(ent_code: str) -> str:
-    """Entidade com 7 dígitos (padding se for numérica)."""
+    """Entidade com 7 dígitos (padding se numérica)."""
     try:
         return f"{int(ent_code):07d}"
     except ValueError:
@@ -88,17 +133,16 @@ def ent7_from_mapping(ent_code: str) -> str:
 
 
 # ==============================
-# Transformação por linha
+# Transformação
 # ==============================
 
 def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]:
     """
-    Regras:
-      - corrige +93 com >=2 espaços -> +9197
-      - atualiza APENAS o 2.º campo (token2), suportando:
-          A) 14 dígitos: conv(6)+tail(8) -> ent(7)+tail(8)   (força 1 espaço entre campo1 e campo2 quando substitui)
-          B) 15 dígitos: 0+conv(6)+91+sufixo(6) -> ent(7)+91+sufixo(6) (força 1 espaço quando substitui)
-      - remove o último bloco de 9 dígitos no fim da linha
+    - corrige +93 com >=2 espaços -> +9197
+    - atualiza APENAS o 2.º campo (token2), suportando:
+        A) 14 dígitos: conv(6)+tail(8) -> ent(7)+tail(8) (força 1 espaço entre campo1 e campo2 quando substitui)
+        B) 15 dígitos: 0+conv(6)+91+sufixo(6) -> ent(7)+91+sufixo(6) (força 1 espaço quando substitui)
+    - remove o último bloco de 9 dígitos no fim da linha
     """
     s = line.rstrip("\n")
     changed = False
@@ -118,7 +162,7 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
         # 2A) Formato 14 dígitos: conv(6)+tail(8) -> ent(7)+tail(8)
         if token2.isdigit() and len(token2) == 14:
             conv6 = token2[:6]
-            tail8 = token2[6:]  # 8 dígitos
+            tail8 = token2[6:]
 
             ent_code = mapping.get(conv6)
             if ent_code is None:
@@ -155,10 +199,6 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
 
     return s, changed, mapping_missing
 
-
-# ==============================
-# Transformação por ficheiro
-# ==============================
 
 def transform_file_bytes(
     file_bytes: bytes, mapping: Dict[str, str], encoding: str = "utf-8"
@@ -228,6 +268,7 @@ st.write(
     """
 )
 
+# ---- carregar mapeamento "base" do repositório ----
 default_mapping, default_df = load_default_mapping()
 
 st.sidebar.header("Fonte do mapeamento")
@@ -245,11 +286,13 @@ else:
     st.sidebar.info("Nenhum 'mapeamentos.csv' encontrado no repositório.")
     mapping_source = "Carregar outro ficheiro"
 
+# ---- caso 1: usar CSV do repositório ----
 if mapping_source == "CSV do repositório (mapeamentos.csv)" and default_mapping:
     mapping = default_mapping
     mapping_df = default_df
     st.success(f"Mapeamento carregado de 'mapeamentos.csv' ({len(mapping)} entradas).")
 
+# ---- caso 2: carregar ficheiro de mapeamento ----
 if mapping_source == "Carregar outro ficheiro":
     st.header("1️⃣ Carregar ficheiro de mapeamento")
     mapping_file = st.file_uploader(
@@ -264,9 +307,10 @@ if mapping_source == "Carregar outro ficheiro":
         except Exception as e:
             st.error(f"Erro ao ler ficheiro de mapeamento: {e}")
 
+# ---- editor + download "em condições" ----
 if mapping_df is not None:
     st.header("📚 Base de dados de mapeamentos")
-    st.write("Podes editar a tabela abaixo e descarregar um CSV atualizado.")
+    st.write("Edita a tabela e descarrega um CSV pronto para substituir o `mapeamentos.csv` no GitHub.")
 
     edited_df = st.data_editor(
         mapping_df,
@@ -275,16 +319,19 @@ if mapping_df is not None:
         key="mapping_editor",
     )
 
-    csv_bytes = edited_df.to_csv(index=False).encode("utf-8")
+    cleaned_df = clean_mapping_df(edited_df)
+    csv_bytes = df_to_csv_bytes_pt(cleaned_df)
+
     st.download_button(
-        label="⬇️ Descarregar CSV atualizado (para substituir o mapeamentos.csv no GitHub)",
+        label="⬇️ Descarregar mapeamentos.csv (pronto para Excel/PT)",
         data=csv_bytes,
-        file_name="mapeamentos_atualizado.csv",
+        file_name="mapeamentos.csv",
         mime="text/csv",
     )
 else:
     st.info("Ainda não há mapeamento carregado/selecionado.")
 
+# ---- carregamento de ficheiros de dados ----
 st.header("2️⃣ Carregar ficheiros a converter")
 data_files = st.file_uploader(
     "Ficheiros de texto a converter",
@@ -316,6 +363,7 @@ if data_files and mapping:
 
             st.markdown(f"### {uploaded_file.name}")
 
+            # ---- CASO 1: existem erros de mapeamento -> só ficheiro ERROS ----
             if mapping_error_count > 0:
                 zipf.writestr(err_name, error_bytes)
 
@@ -341,6 +389,7 @@ if data_files and mapping:
                     f"Apenas foi gerado o ficheiro de erros ({err_name})."
                 )
 
+            # ---- CASO 2: sem erros -> só ficheiro CONVERTIDO ----
             else:
                 zipf.writestr(out_name, converted_bytes)
 
