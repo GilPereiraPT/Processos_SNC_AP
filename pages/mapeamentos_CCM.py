@@ -15,7 +15,9 @@ def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
     """
     Converte DataFrame (>=2 colunas: convenção / entidade)
     para dict {conv6: entidade}.
-    Normaliza convenção para 6 dígitos (30400/30400.0 -> 030400).
+
+    Normaliza convenção para 6 dígitos (preserva zeros à esquerda):
+      Ex.: 30400 / 30400.0 -> 030400
     """
     if df.shape[1] < 2:
         raise ValueError("O ficheiro de mapeamento tem de ter pelo menos duas colunas.")
@@ -33,9 +35,11 @@ def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
         if not ent_raw or ent_raw.lower() in ("nan", "none"):
             continue
 
+        # Convenção sempre com 6 dígitos (se houver dígitos)
         conv_digits = re.sub(r"\D", "", conv_raw)
         conv_code = conv_digits.zfill(6) if conv_digits else conv_raw
 
+        # Entidade (normalizar)
         try:
             ent_int = int(str(ent_raw).replace(" ", ""))
             ent_code = str(ent_int)
@@ -65,18 +69,18 @@ def load_mapping_file(file) -> Tuple[Dict[str, str], pd.DataFrame]:
 
 
 # ==============================
-# Helpers de transformação
+# Helpers / Regex
 # ==============================
 
 # Formato “antigo” (15 dígitos): 0 + conv(6) + 91 + sufixo(6)
 FIELD15_RE = re.compile(r"^0(?P<conv>\d{6})91(?P<suffix>\d{6})$")
 
-# Linha -> token1 + espaços + token2 + resto (para manter espaçamento)
+# Linha -> token1 + espaços + token2 + resto
 SECOND_TOKEN_RE = re.compile(r"^(\S+)(\s+)(\S+)(.*)$")
 
 
 def ent7_from_mapping(ent_code: str) -> str:
-    """Entidade com 7 dígitos (padding se numérica)."""
+    """Entidade com 7 dígitos (padding se for numérica)."""
     try:
         return f"{int(ent_code):07d}"
     except ValueError:
@@ -88,6 +92,14 @@ def ent7_from_mapping(ent_code: str) -> str:
 # ==============================
 
 def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]:
+    """
+    Regras:
+      - corrige +93 com >=2 espaços -> +9197
+      - atualiza APENAS o 2.º campo (token2), suportando:
+          A) 14 dígitos: conv(6)+tail(8) -> ent(7)+tail(8)   (força 1 espaço entre campo1 e campo2 quando substitui)
+          B) 15 dígitos: 0+conv(6)+91+sufixo(6) -> ent(7)+91+sufixo(6) (força 1 espaço quando substitui)
+      - remove o último bloco de 9 dígitos no fim da linha
+    """
     s = line.rstrip("\n")
     changed = False
     mapping_missing = False
@@ -98,13 +110,12 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
         s = s2
         changed = True
 
-    # 2) Trabalhar APENAS no 2.º campo (token2), mantendo espaços originais
+    # 2) Atualizar apenas o 2.º token
     m = SECOND_TOKEN_RE.match(s)
     if m:
         token1, sep, token2, rest = m.group(1), m.group(2), m.group(3), m.group(4)
 
-        # 2A) NOVO formato (14 dígitos): conv(6) + last8(token1)
-        # Ex.: 800892 + 91908697  -> 9809183 + 91908697
+        # 2A) Formato 14 dígitos: conv(6)+tail(8) -> ent(7)+tail(8)
         if token2.isdigit() and len(token2) == 14:
             conv6 = token2[:6]
             tail8 = token2[6:]  # 8 dígitos
@@ -113,25 +124,27 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
             if ent_code is None:
                 mapping_missing = True
             else:
-                new_token2 = ent7_from_mapping(ent_code) + tail8  # 7 + 8 = 15
+                new_token2 = ent7_from_mapping(ent_code) + tail8  # 15 dígitos
                 if new_token2 != token2:
-                    s = token1 + sep + new_token2 + rest
+                    # Forçar 1 espaço entre 1.º e 2.º campo
+                    s = token1 + " " + new_token2 + rest
                     changed = True
 
-        # 2B) Formato antigo (15 dígitos): 0 + conv(6) + 91 + sufixo(6)
+        # 2B) Formato antigo 15 dígitos: 0+conv(6)+91+sufixo(6) -> ent(7)+91+sufixo(6)
         elif token2.isdigit() and len(token2) == 15:
             m15 = FIELD15_RE.match(token2)
             if m15:
                 conv6 = m15.group("conv")
                 suffix6 = m15.group("suffix")
-                ent_code = mapping.get(conv6)
 
+                ent_code = mapping.get(conv6)
                 if ent_code is None:
                     mapping_missing = True
                 else:
                     new_token2 = ent7_from_mapping(ent_code) + "91" + suffix6
                     if new_token2 != token2:
-                        s = token1 + sep + new_token2 + rest
+                        # Forçar 1 espaço entre 1.º e 2.º campo
+                        s = token1 + " " + new_token2 + rest
                         changed = True
 
     # 3) Remover o último bloco de 9 dígitos no fim da linha (mantendo o espaço anterior)
@@ -150,6 +163,10 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
 def transform_file_bytes(
     file_bytes: bytes, mapping: Dict[str, str], encoding: str = "utf-8"
 ) -> Tuple[bytes, bytes, int, int, int]:
+    """
+    Devolve:
+      converted_bytes, error_bytes, changed_count, total_lines, mapping_error_count
+    """
     try:
         text = file_bytes.decode(encoding)
     except UnicodeDecodeError:
@@ -174,7 +191,7 @@ def transform_file_bytes(
             changed_count += 1
         if missing:
             mapping_error_count += 1
-            error_lines.append(line)
+            error_lines.append(line)  # linha ORIGINAL
 
     out_text = "\n".join(out_lines) + "\n"
     err_text = "\n".join(error_lines) + "\n" if error_lines else ""
@@ -201,8 +218,9 @@ st.write(
     1. Usa um **mapeamento Cod. Convenção → Cod. Entidade** (CSV no repositório ou ficheiro carregado);  
     2. Corrige CC com `+93` mal formatado para `+9197`;  
     3. Atualiza o **2.º campo**, suportando:
-       - formato **14 dígitos**: `conv(6)+tail(8)` → `ent(7)+tail(8)`
+       - formato **14 dígitos**: `conv(6)+tail(8)` → `ent(7)+tail(8)`  
        - formato **15 dígitos**: `0+conv(6)+91+sufixo(6)` → `ent(7)+91+sufixo(6)`  
+       (ao substituir, força **1 espaço** entre o 1.º e 2.º campo)  
     4. Remove o último código de 9 dígitos no fim de cada linha;  
     5. Gera, por ficheiro:
        - apenas *_CONVERTIDO.txt* se estiver tudo mapeado;
@@ -300,6 +318,7 @@ if data_files and mapping:
 
             if mapping_error_count > 0:
                 zipf.writestr(err_name, error_bytes)
+
                 all_results.append(
                     {
                         "Ficheiro original": uploaded_file.name,
@@ -309,6 +328,7 @@ if data_files and mapping:
                         "Linhas com código sem mapeamento": mapping_error_count,
                     }
                 )
+
                 st.markdown(f"**Erros de mapeamento → {err_name}**")
                 st.download_button(
                     label=f"⬇️ Descarregar {err_name}",
@@ -320,8 +340,10 @@ if data_files and mapping:
                     f"{mapping_error_count} linha(s) sem mapeamento para o código de convenção. "
                     f"Apenas foi gerado o ficheiro de erros ({err_name})."
                 )
+
             else:
                 zipf.writestr(out_name, converted_bytes)
+
                 all_results.append(
                     {
                         "Ficheiro original": uploaded_file.name,
@@ -331,6 +353,7 @@ if data_files and mapping:
                         "Linhas com código sem mapeamento": mapping_error_count,
                     }
                 )
+
                 st.markdown(f"**Convertido → {out_name}**")
                 st.download_button(
                     label=f"⬇️ Descarregar {out_name}",
