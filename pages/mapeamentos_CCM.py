@@ -13,12 +13,11 @@ import streamlit as st
 
 def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
     """
-    Converte um DataFrame (pelo menos 2 colunas: convenção / entidade)
+    Converte um DataFrame (>=2 colunas: convenção / entidade)
     num dicionário {Cod_Convencao_6digitos: Cod_Entidade_str}.
 
-    Correção importante:
-    - Normaliza o código de convenção para 6 dígitos (preserva zeros à esquerda),
-      cobrindo casos de Excel tipo 30400 / 30400.0 -> 030400
+    - Normaliza convenção para 6 dígitos (preserva zeros à esquerda)
+      Ex.: 30400 / 30400.0 -> 030400
     """
     if df.shape[1] < 2:
         raise ValueError("O ficheiro de mapeamento tem de ter pelo menos duas colunas.")
@@ -39,7 +38,7 @@ def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
         # ---- NORMALIZAÇÃO DA CONVENÇÃO (6 dígitos) ----
         conv_digits = re.sub(r"\D", "", conv_raw)  # remove tudo o que não é dígito
         if conv_digits:
-            conv_code = conv_digits.zfill(6)  # 30400 -> 030400
+            conv_code = conv_digits.zfill(6)
         else:
             conv_code = conv_raw
 
@@ -88,11 +87,17 @@ def load_mapping_file(file) -> Tuple[Dict[str, str], pd.DataFrame]:
 # Funções de transformação
 # ==============================
 
+# Padrão do "campo-alvo" de 15 dígitos:
+# 0 + convenção(6) + '91' + sufixo(6)
+SECOND_FIELD_RE = re.compile(r"0(?P<conv>\d{6})91(?P<suffix>\d{6})")
+
+
 def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]:
     """
     Aplica a lógica de conversão a uma linha:
       - corrige CC mal formatado: "+93  " (ou +93 com >=2 espaços) → "+9197"
-      - altera o 2.º campo (15 dígitos) com base no mapeamento
+      - altera o campo '0 + convenção(6) + 91 + sufixo(6)' (15 dígitos) com base no mapeamento
+        (detetado por REGEX, não por posições fixas)
       - remove o último bloco de 9 dígitos no fim da linha
 
     Devolve:
@@ -108,36 +113,33 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
         changed = True
         original_line = fixed_line
 
-    # 2) Atualizar o 2.º campo (posições fixas 13–27 se contarmos a partir de 1)
-    if len(original_line) >= 27:
-        second_field = original_line[12:27]  # index 12 inclusive, 27 exclusive
-        if second_field.isdigit() and len(second_field) == 15:
-            # Estrutura: 0 + convenção(6) + '91' + sufixo(6)
-            conv_code = second_field[1:7]  # 6 dígitos da convenção
-            ent_code = mapping.get(conv_code)
+    # 2) Atualizar o campo de 15 dígitos (detetado por padrão)
+    m = SECOND_FIELD_RE.search(original_line)
+    if m:
+        conv_code = m.group("conv")       # 6 dígitos
+        suffix = m.group("suffix")        # 6 dígitos
+        ent_code = mapping.get(conv_code)
 
-            if ent_code is not None:
-                try:
-                    ent7 = f"{int(ent_code):07d}"
-                except ValueError:
-                    ent7 = ent_code
+        if ent_code is None:
+            mapping_missing = True
+        else:
+            try:
+                ent7 = f"{int(ent_code):07d}"
+            except ValueError:
+                ent7 = ent_code
 
-                suffix = second_field[9:]  # últimos 6
-                new_second = ent7 + "91" + suffix
+            new_second = ent7 + "91" + suffix
 
-                new_line = original_line[:12] + new_second + original_line[27:]
-                original_line = new_line
-                changed = True
-            else:
-                # Não existe mapeamento para este código de convenção
-                mapping_missing = True
+            original_line = original_line[:m.start()] + new_second + original_line[m.end():]
+            changed = True
 
     # 3) Remover o último bloco de 9 dígitos no fim da linha (mantendo espaços antes)
     new_line = re.sub(r"(\s)\d{9}$", r"\1", original_line)
     if new_line != original_line:
         changed = True
+        original_line = new_line
 
-    return new_line, changed, mapping_missing
+    return original_line, changed, mapping_missing
 
 
 def transform_file_bytes(
@@ -177,13 +179,10 @@ def transform_file_bytes(
             changed_count += 1
         if mapping_missing:
             mapping_error_count += 1
-            # guardar a linha original no ficheiro de erros
-            error_lines.append(line)
+            error_lines.append(line)  # guardar a linha original no ficheiro de erros
 
     out_text = "\n".join(out_lines) + "\n"
-    error_text = ""
-    if error_lines:
-        error_text = "\n".join(error_lines) + "\n"
+    error_text = "\n".join(error_lines) + "\n" if error_lines else ""
 
     return (
         out_text.encode(encoding),
@@ -207,7 +206,7 @@ st.write(
     Esta aplicação:
     1. Usa um **mapeamento Cod. Convenção → Cod. Entidade** (CSV no repositório ou ficheiro carregado);  
     2. Corrige CC com `+93` mal formatado para `+9197`;  
-    3. Atualiza o **2.º campo (15 dígitos)** dos ficheiros;  
+    3. Atualiza o campo **0 + convenção(6) + 91 + sufixo(6)** (15 dígitos);  
     4. Remove o último código de 9 dígitos no fim de cada linha;  
     5. Gera, por ficheiro:
        - apenas *_CONVERTIDO.txt* se estiver tudo mapeado;
