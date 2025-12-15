@@ -28,7 +28,6 @@ ENTIDADE_PADRAO = "999"
 
 # =====================================================
 # 2. Cabeçalhos EXACTOS do ficheiro de importação
-# (Espaços no final removidos)
 # =====================================================
 
 HEADER = [
@@ -40,10 +39,10 @@ HEADER = [
     "Série",
     "Subtipo",
     "classificador economico",
-    "Classificador funcional", # CRÍTICO (0730)
+    "Classificador funcional", 
     "Fonte de financiamento",
-    "Programa",                # CRÍTICO (011)
-    "Medida",                  # CRÍTICO (022)
+    "Programa",                
+    "Medida",                  
     "Projeto",
     "Regionalização",
     "Atividade",
@@ -284,7 +283,7 @@ def today_yyyymmdd() -> str:
 
 
 def format_valor_port(valor: float) -> str:
-    """Formata valor para '1234,50' (Formato Português)"""
+    """Formata valor para '1234,50' (Formato Português) - mantido para consistência"""
     return f"{valor:.2f}".replace(".", ",")
 
 
@@ -304,7 +303,6 @@ def gerar_dataframe_importacao(
     tem_tranche = "Tranche" in df_nc.columns
     data_contab = today_yyyymmdd()
     
-    # Criar listas de valores para construir o DataFrame de forma eficiente
     data_dict: Dict[str, List[str]] = {col: [] for col in HEADER}
 
     for _, row in df_nc.iterrows():
@@ -326,7 +324,7 @@ def gerar_dataframe_importacao(
         observacoes_base = " ".join(obs_parts).strip()
         observacoes_doc = f"{tipo_nc_prefix} {observacoes_base}".strip() if observacoes_base else tipo_nc_prefix
 
-        # Preencher o dicionário coluna a coluna (mais eficiente que linha a linha)
+        # Preencher o dicionário - Os valores CRÍTICOS são gerados como STRING para o Excel
         data_dict["NC"].append("NC")
         data_dict["Entidade"].append(entidade)
         data_dict["Data documento"].append(data_doc)
@@ -335,10 +333,10 @@ def gerar_dataframe_importacao(
         data_dict["Série"].append("")
         data_dict["Subtipo"].append("")
         data_dict["classificador economico"].append("02.01.09.C0.00")
-        data_dict["Classificador funcional"].append("0730") # CRÍTICO
+        data_dict["Classificador funcional"].append("0730") # CRÍTICO: String
         data_dict["Fonte de financiamento"].append("511")
-        data_dict["Programa"].append("011") # CRÍTICO
-        data_dict["Medida"].append("022") # CRÍTICO
+        data_dict["Programa"].append("011") # CRÍTICO: String
+        data_dict["Medida"].append("022") # CRÍTICO: String
         data_dict["Projeto"].append("")
         data_dict["Regionalização"].append("")
         data_dict["Atividade"].append("130")
@@ -365,37 +363,8 @@ def gerar_dataframe_importacao(
 
     return pd.DataFrame(data_dict, columns=HEADER)
 
-
-def escrever_csv_bytes(df: pd.DataFrame) -> bytes:
-    """
-    Escreve CSV em bytes, garantindo a AUSÊNCIA TOTAL de aspas duplas 
-    e o delimitador ';'.
-    """
-    # Converter o DataFrame em uma lista de listas de strings (valores)
-    linhas = df.values.tolist()
-    
-    buffer = StringIO()
-    
-    # 1. Adicionar BOM + sep=;
-    buffer.write("sep=;\n") 
-    
-    # 2. Escrever header
-    buffer.write(";".join(HEADER) + "\n")
-    
-    # 3. Escrever dados
-    for linha in linhas:
-        campos_formatados = []
-        for valor in linha:
-            valor_str = str(valor) if valor is not None else ""
-            
-            # ATENÇÃO: Nenhum campo é envolvido em aspas.
-            campos_formatados.append(valor_str)
-        
-        buffer.write(";".join(campos_formatados) + "\n")
-    
-    # 4. Converter para bytes em UTF-8 com BOM (utf-8-sig)
-    csv_content = buffer.getvalue()
-    return csv_content.encode("utf-8-sig")
+# Não é necessária uma função de escrita manual de CSV, pois vamos usar .to_excel
+# que é mais robusto para manter os formatos.
 
 
 # =====================================================
@@ -407,7 +376,7 @@ st.set_page_config(page_title="NC APIFARMA / PAYBACK → Importação", layout="
 st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK")
 
 st.markdown("""
-Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística, **sem usar aspas duplas (`"`)** nos campos, garantindo a leitura dos zeros à esquerda.
+Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística. O ficheiro de saída será em **formato Excel (.xlsx)** para garantir a correta leitura dos classificadores (`0730`, `011`, `022`) como texto.
 """)
 
 try:
@@ -534,17 +503,19 @@ if process_button:
                 with st.expander("👁️ Preview dos dados"):
                     st.dataframe(df_final.head(20), use_container_width=True)
                 
-                # GERAR CSV SEM ASPAS
-                csv_bytes = escrever_csv_bytes(df_final)
+                # GERAR EXCEL XLSX (Novo formato de exportação)
+                buffer = BytesIO()
+                df_final.to_excel(buffer, index=False)
+                buffer.seek(0)
                 
                 nome_base = os.path.splitext(file.name)[0]
-                nome_saida = f"NC_{tipo_nc_prefix}_{nome_base}_importacao.csv"
+                nome_saida = f"NC_{tipo_nc_prefix}_{nome_base}_importacao.xlsx"
                 
                 st.download_button(
-                    f"⬇️ Descarregar {nome_saida} (Sem Aspas)",
-                    csv_bytes,
+                    f"⬇️ Descarregar {nome_saida}",
+                    buffer.getvalue(),
                     nome_saida,
-                    "text/csv",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key=f"download_{file.name}"
                 )
                 
