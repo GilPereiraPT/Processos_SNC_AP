@@ -16,7 +16,6 @@ import streamlit as st
 def get_mapping_path(default_path: str) -> str:
     """
     Tenta encontrar o ficheiro de mapeamento.
-    Primeiro procura no caminho fornecido, depois no diretório do script.
     """
     if os.path.isfile(default_path):
         return default_path
@@ -79,10 +78,8 @@ HEADER = [
 def load_empresa_mapping(path: str = MAPPING_CSV_PATH) -> pd.DataFrame:
     """
     Lê o CSV de mapeamento Empresa;Entidade do repositório.
-    Espera colunas: 'Empresa' e 'Entidade'.
     """
     df = pd.read_csv(path, sep=";", encoding="latin-1")
-    # Normaliza nomes de colunas (remove espaços extras)
     df.columns = [str(c).strip() for c in df.columns]
     obrig = ["Empresa", "Entidade"]
     for c in obrig:
@@ -93,10 +90,7 @@ def load_empresa_mapping(path: str = MAPPING_CSV_PATH) -> pd.DataFrame:
 
 def normalizar_texto(s: str) -> str:
     """
-    Normaliza texto para comparação:
-    - strip
-    - colapsa espaços
-    - upper
+    Normaliza texto para comparação.
     """
     s = str(s).strip()
     s = re.sub(r"\s+", " ", s)
@@ -106,19 +100,15 @@ def normalizar_texto(s: str) -> str:
 def limpar_nome_coluna(col: str) -> str:
     """
     Remove HTML e caracteres especiais de nomes de colunas.
-    Exemplo: '<span style="...">Ano</span>' → 'Ano'
     """
-    # Remover tags HTML
     col = re.sub(r'<[^>]+>', '', str(col))
-    # Remover espaços extras
     col = col.strip()
     return col
 
 
 def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) -> str:
     """
-    Determina o código de Entidade a partir da(s) Empresa(s) presentes no ficheiro,
-    usando o CSV de mapeamento Empresa → Entidade.
+    Determina o código de Entidade a partir das Empresas.
     """
     empresas_file = (
         df_nc["Empresa"]
@@ -128,9 +118,8 @@ def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) ->
     )
 
     if len(empresas_file) == 0:
-        raise ValueError("Nenhuma 'Empresa' válida encontrada no ficheiro de notas de crédito.")
+        raise ValueError("Nenhuma 'Empresa' válida encontrada.")
 
-    # Construir dicionário Empresa_normalizada → Entidade
     map_dict: Dict[str, str] = {}
     for _, row in mapping_df.iterrows():
         emp = normalizar_texto(row["Empresa"])
@@ -150,13 +139,13 @@ def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) ->
 
     if empresas_sem_mapa:
         raise ValueError(
-            "As seguintes empresas não têm mapeamento no CSV de entidades: "
+            "As seguintes empresas não têm mapeamento: "
             + "; ".join(empresas_sem_mapa)
         )
 
     if len(entidades_encontradas) > 1:
         raise ValueError(
-            "Foram encontradas várias entidades diferentes no mesmo ficheiro: "
+            "Várias entidades diferentes no mesmo ficheiro: "
             + "; ".join(sorted(entidades_encontradas))
         )
 
@@ -165,32 +154,27 @@ def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) ->
 
 def detectar_formato_ficheiro(df: pd.DataFrame) -> Dict[str, str]:
     """
-    Deteta automaticamente qual o formato do ficheiro de NC e mapeia as colunas.
-    Limpa nomes de colunas (remove HTML) antes de processar.
+    Deteta formato do ficheiro e mapeia colunas.
     """
-    # Limpar nomes de colunas (remover HTML)
     colunas_limpas = {col: limpar_nome_coluna(col) for col in df.columns}
     colunas_disponiveis = list(colunas_limpas.values())
     
-    # Mapeamento de nomes alternativos para cada coluna obrigatória
     mapeamento_alternativas = {
-        "Data": ["Data", "Data Documento", "Data NC", "Data do Documento"],
-        "Empresa": ["Empresa", "Nome Empresa", "Nome da Empresa"],
-        "Instituição": ["Instituição", "Instituicao", "Cliente", "Entidade Cliente"],
-        "Tipo": ["Tipo", "Tipo Documento", "Tipo de Documento"],
-        "N.º / Ref.ª": ["N.º / Ref.ª", "Nº Documento", "Número", "Referência", "Nº / Ref.ª"],
-        "Valor (com IVA)": ["Valor (com IVA)", "Valor", "Total", "Valor Total"],
+        "Data": ["Data", "Data Documento", "Data NC"],
+        "Empresa": ["Empresa", "Nome Empresa"],
+        "Instituição": ["Instituição", "Instituicao", "Cliente"],
+        "Tipo": ["Tipo", "Tipo Documento"],
+        "N.º / Ref.ª": ["N.º / Ref.ª", "Nº Documento", "Número", "Referência"],
+        "Valor (com IVA)": ["Valor (com IVA)", "Valor", "Total"],
     }
     
     colunas_encontradas = {}
     colunas_faltantes = []
     
-    # Procurar cada coluna obrigatória
     for col_padrao, alternativas in mapeamento_alternativas.items():
         encontrada = False
         for alt in alternativas:
             if alt in colunas_disponiveis:
-                # Encontrar a coluna original (com HTML se existir)
                 for col_orig, col_limpa in colunas_limpas.items():
                     if col_limpa == alt:
                         colunas_encontradas[col_padrao] = col_orig
@@ -207,7 +191,7 @@ def detectar_formato_ficheiro(df: pd.DataFrame) -> Dict[str, str]:
             f"Colunas disponíveis: {', '.join(colunas_disponiveis)}"
         )
     
-    # Procurar colunas opcionais (Ano e Tranche)
+    # Colunas opcionais
     for col_orig, col_limpa in colunas_limpas.items():
         col_upper = col_limpa.upper()
         if "ANO" in col_upper and "Ano" not in colunas_encontradas:
@@ -220,38 +204,35 @@ def detectar_formato_ficheiro(df: pd.DataFrame) -> Dict[str, str]:
 
 def ler_notas_credito(file) -> pd.DataFrame:
     """
-    Lê ficheiros de Notas de Crédito em Excel (xlsx/xls) ou CSV/TXT.
+    Lê ficheiros de Notas de Crédito (Excel ou CSV/TXT).
+    ⚠️ CORRIGIDO: UTF-16 em primeiro lugar!
     """
     fname = file.name.lower()
 
-    # -----------------------------
-    # 1) Ficheiros Excel
-    # -----------------------------
+    # Excel
     if fname.endswith((".xlsx", ".xls")):
         file.seek(0)
         df = pd.read_excel(file)
-
-    # -----------------------------
-    # 2) CSV / TXT com autodetecção melhorada
-    # -----------------------------
     else:
+        # CSV/TXT
         file.seek(0)
         raw = file.read()
 
         text: Optional[str] = None
         encoding_usado: Optional[str] = None
 
-        # Lista de encodings para testar
+        # ⚠️ IMPORTANTE: UTF-16 PRIMEIRO!
         encodings_para_testar = [
+            "utf-16",          # ← ADICIONADO EM PRIMEIRO!
+            "utf-16-le",
+            "utf-16-be",
             "utf-8",
             "utf-8-sig",
             "latin-1",
             "cp1252",
             "iso-8859-1",
-            "windows-1252",
         ]
 
-        # Tentar cada encoding
         for enc in encodings_para_testar:
             try:
                 text = raw.decode(enc)
@@ -260,113 +241,73 @@ def ler_notas_credito(file) -> pd.DataFrame:
             except (UnicodeDecodeError, AttributeError):
                 continue
 
-        if text is None or encoding_usado is None:
+        if text is None:
             raise ValueError(
-                f"Não foi possível decodificar o ficheiro '{file.name}'. "
+                f"Não foi possível decodificar '{file.name}'. "
                 f"Encodings testados: {', '.join(encodings_para_testar)}"
             )
 
-        # Remover BOM se existir
+        # Remover BOM
         if text.startswith('\ufeff'):
             text = text[1:]
 
         lines = text.splitlines()
         if not lines:
-            raise ValueError("O ficheiro está vazio.")
+            raise ValueError("Ficheiro vazio.")
             
-        first_line = lines[0] if lines else ""
-        skip = 1 if first_line.lower().startswith("sep=") else 0
+        first_line = lines[0]
+        skip = 1 if first_line.lower().strip().startswith(('sep=', '"sep=')) else 0
 
         # Detectar separador
-        try:
-            sample = "\n".join(lines[skip:min(skip+5, len(lines))])
-            dialect = csv.Sniffer().sniff(sample, delimiters=";,\t")
-            sep = dialect.delimiter
-        except Exception:
-            if ";" in first_line:
-                sep = ";"
-            elif "," in first_line:
-                sep = ","
-            elif "\t" in first_line:
-                sep = "\t"
-            else:
-                sep = ";"
+        if ";" in first_line:
+            sep = ";"
+        elif "," in first_line:
+            sep = ","
+        elif "\t" in first_line:
+            sep = "\t"
+        else:
+            sep = ";"
 
         buf = StringIO(text)
 
-        # Tentar ler com várias estratégias
-        df = None
-        erros = []
-        
-        # Estratégia 1: Leitura normal
+        # Ler CSV
         try:
             df = pd.read_csv(buf, sep=sep, skiprows=skip)
-        except Exception as e1:
-            erros.append(f"Leitura normal: {str(e1)[:100]}")
-            
-            # Estratégia 2: Com on_bad_lines='skip' (pandas >= 1.3)
-            buf = StringIO(text)
-            try:
-                df = pd.read_csv(
-                    buf, 
-                    sep=sep, 
-                    skiprows=skip,
-                    on_bad_lines='skip'
-                )
-            except Exception as e2:
-                erros.append(f"Com on_bad_lines='skip': {str(e2)[:100]}")
-                
-                # Estratégia 3: Engine python (mais tolerante)
-                buf = StringIO(text)
-                try:
-                    df = pd.read_csv(
-                        buf,
-                        sep=sep,
-                        skiprows=skip,
-                        engine='python',
-                        on_bad_lines='skip'
-                    )
-                except Exception as e3:
-                    erros.append(f"Engine python: {str(e3)[:100]}")
-                    raise ValueError(
-                        f"Não foi possível ler o ficheiro '{file.name}'.\n"
-                        f"Encoding detectado: {encoding_usado}\n"
-                        f"Separador detectado: '{sep}'\n"
-                        f"Tentativas realizadas:\n" + "\n".join(f"- {e}" for e in erros)
-                    )
+        except Exception as e:
+            raise ValueError(
+                f"Erro ao ler '{file.name}'.\n"
+                f"Encoding: {encoding_usado}, Separador: '{sep}'\n"
+                f"Erro: {e}"
+            )
 
-    # Remover colunas completamente vazias
+    # Remover colunas vazias
     df = df.dropna(axis=1, how='all')
     
-    # -----------------------------
-    # 3) Detectar formato e validar colunas
-    # -----------------------------
+    # Detectar formato
     try:
         mapeamento_colunas = detectar_formato_ficheiro(df)
     except ValueError as e:
-        raise ValueError(f"Erro na validação do formato do ficheiro '{file.name}': {e}")
+        raise ValueError(f"Erro no formato de '{file.name}': {e}")
     
-    # Renomear colunas para nomes padronizados
+    # Renomear
     rename_dict = {v: k for k, v in mapeamento_colunas.items()}
     df = df.rename(columns=rename_dict)
     
-    # Informação sobre o formato detectado
+    # Info formato
     formato_info = []
     if "Ano" in mapeamento_colunas:
-        col_orig = mapeamento_colunas["Ano"]
-        col_limpa = limpar_nome_coluna(col_orig)
+        col_limpa = limpar_nome_coluna(mapeamento_colunas["Ano"])
         formato_info.append(f"Ano ('{col_limpa}')")
     if "Tranche" in mapeamento_colunas:
         formato_info.append("Tranche")
     
-    # Guardar informação do formato no DataFrame
     df.attrs['formato_detectado'] = ", ".join(formato_info) if formato_info else "formato básico"
     df.attrs['mapeamento_colunas'] = mapeamento_colunas
 
-    # Apenas NOTAS DE CRÉDITO
+    # Apenas NC
     df_nc = df[df["Tipo"].astype(str).str.upper().str.contains("NOTA DE CRÉDITO", na=False)].copy()
     if df_nc.empty:
-        raise ValueError("Nenhuma linha com 'NOTA DE CRÉDITO' encontrada no ficheiro.")
+        raise ValueError("Nenhuma 'NOTA DE CRÉDITO' encontrada.")
 
     # Converter valor
     def parse_valor(v):
@@ -377,17 +318,13 @@ def ler_notas_credito(file) -> pd.DataFrame:
         return float(s.replace(".", "").replace(",", "."))
 
     df_nc["ValorNum"] = df_nc["Valor (com IVA)"].apply(parse_valor)
-    
-    # Preservar os atributos
     df_nc.attrs = df.attrs
 
     return df_nc
 
 
 def format_yyyymmdd(data_str: str) -> str:
-    """
-    Converte '2025-12-11' em '20251211'.
-    """
+    """Converte data para AAAAMMDD."""
     s = str(data_str).strip()
     if "-" in s:
         partes = s.split("-")
@@ -402,24 +339,18 @@ def format_yyyymmdd(data_str: str) -> str:
 
 
 def today_yyyymmdd() -> str:
-    """
-    Devolve a data de hoje em formato AAAAMMDD.
-    """
+    """Data de hoje em AAAAMMDD."""
     hoje = date.today()
     return f"{hoje.year:04d}{hoje.month:02d}{hoje.day:02d}"
 
 
 def format_valor_port(valor: float) -> str:
-    """
-    Converte 1234.5 em '1234,50'.
-    """
+    """1234.5 → '1234,50'"""
     return f"{valor:.2f}".replace(".", ",")
 
 
 def apenas_algarismos(texto: str) -> str:
-    """
-    Mantém apenas dígitos numa string.
-    """
+    """Apenas dígitos."""
     return re.sub(r"\D", "", str(texto))
 
 
@@ -428,42 +359,32 @@ def gerar_linhas_importacao_para_ficheiro(
     entidade: str,
     tipo_nc_prefix: str,
 ) -> List[List[str]]:
-    """
-    Gera as linhas do CSV de importação.
-    """
+    """Gera linhas do CSV de importação."""
     linhas: List[List[str]] = []
 
     tem_ano = "Ano" in df_nc.columns
     tem_tranche = "Tranche" in df_nc.columns
-
     data_contab = today_yyyymmdd()
 
     for _, row in df_nc.iterrows():
         data_doc = format_yyyymmdd(row["Data"])
         valor = float(row["ValorNum"])
         ref = str(row["N.º / Ref.ª"])
-
         numero_nc = apenas_algarismos(ref)
 
-        # Construir Observações
+        # Observações
         obs_parts = []
-        
         if tem_ano and pd.notna(row["Ano"]):
             ano_val = str(row["Ano"]).strip()
             if ano_val and ano_val.lower() not in ("nan", "none", ""):
                 obs_parts.append(ano_val)
-        
         if tem_tranche and pd.notna(row["Tranche"]):
             tranche_val = str(row["Tranche"]).strip()
             if tranche_val and tranche_val.lower() not in ("nan", "none", ""):
                 obs_parts.append(tranche_val)
         
         observacoes_base = " ".join(obs_parts).strip()
-
-        if observacoes_base:
-            observacoes_doc = f"{tipo_nc_prefix} {observacoes_base}".strip()
-        else:
-            observacoes_doc = tipo_nc_prefix
+        observacoes_doc = f"{tipo_nc_prefix} {observacoes_base}".strip() if observacoes_base else tipo_nc_prefix
 
         linha: Dict[str, str] = {col: "" for col in HEADER}
 
@@ -472,56 +393,29 @@ def gerar_linhas_importacao_para_ficheiro(
         linha["Data documento"] = data_doc
         linha["Data Contabilistica"] = data_contab
         linha["Nº NC"] = numero_nc
-        linha["Série"] = ""
-        linha["Subtipo"] = ""
-
         linha["classificador economico "] = "02.01.09.C0.00"
         linha["Classificador funcional "] = "0730"
         linha["Fonte de financiamento "] = "511"
         linha["Programa "] = "011"
         linha["Medida"] = "022"
-        linha["Projeto"] = ""
-        linha["Regionalização"] = ""
         linha["Atividade"] = "130"
-        linha["Natureza"] = ""
-
-        linha["Departamento/Atividade"] = ""
         linha["Conta Debito"] = "21111"
         linha["Conta a Credito "] = "3186111"
         linha["Valor Lançamento"] = format_valor_port(valor)
-        linha["Centro de custo"] = ""
         linha["Observações Documento "] = observacoes_doc
-        linha["Observaçoes lançamento"] = ""
         linha["Classificação Orgânica"] = "101904000"
 
-        linha["Litigio"] = ""
-        linha["Data Litigio"] = ""
-        linha["Data Fim Litigio"] = ""
-        linha["Plano Pagamento"] = ""
-        linha["Data Plano Pagamento"] = ""
-        linha["Data Fim Plano Pag"] = ""
-        linha["Pag Factoring"] = ""
-
-        linha["Nº Compromisso Assumido"] = ""
-        linha["Projeto Documento"] = ""
-        linha["Ano Compromisso Assumido"] = ""
-        linha["Série Compromisso Assumido"] = ""
-
-        linha_final = [linha[col] for col in HEADER]
-        linhas.append(linha_final)
+        linhas.append([linha[col] for col in HEADER])
 
     return linhas
 
 
 def escrever_csv_bytes(linhas: List[List[str]]) -> bytes:
-    """
-    Escreve as linhas num CSV (em memória) e devolve bytes.
-    """
+    """Escreve CSV em bytes."""
     buffer_text = StringIO()
     writer = csv.writer(buffer_text, delimiter=";")
     writer.writerow(HEADER)
     writer.writerows(linhas)
-
     text_value = buffer_text.getvalue()
     buffer_bytes = BytesIO()
     buffer_bytes.write(text_value.encode("latin-1"))
@@ -535,145 +429,109 @@ def escrever_csv_bytes(linhas: List[List[str]]) -> bytes:
 
 st.set_page_config(page_title="NC APIFARMA / PAYBACK → Importação", layout="wide")
 
-st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK para ficheiro de importação contabilística")
+st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK")
 
-st.markdown(
-    """
-Esta página converte ficheiros de **Notas de Crédito** (Excel ou CSV)  
-num ficheiro **CSV pronto a importar na contabilidade**, com o layout oficial.
+st.markdown("""
+Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística.
 
-O mapeamento **Empresa → Entidade** é lido automaticamente do ficheiro
-`mapeamento_entidades_nc.csv` existente no repositório.
+**✨ Suporta automaticamente diferentes formatos** (APIFARMA e PAYBACK).
+""")
 
-**✨ Suporta automaticamente diferentes formatos de ficheiro** das plataformas APIFARMA e PAYBACK.
-"""
-)
-
-# Tentar carregar o CSV de mapeamento
+# Carregar mapeamento
 try:
     mapping_df = load_empresa_mapping(MAPPING_CSV_PATH)
-    st.success(
-        f"✅ Mapa Empresa → Entidade carregado de `{MAPPING_CSV_PATH}` "
-        f"({len(mapping_df)} linhas)."
-    )
-    with st.expander("Ver mapeamento Empresa → Entidade"):
+    st.success(f"✅ Mapa carregado: {len(mapping_df)} empresas")
+    with st.expander("Ver mapeamento"):
         st.dataframe(mapping_df, use_container_width=True)
 except Exception as e:
-    st.error(f"❌ Erro ao carregar o ficheiro de mapeamento `{MAPPING_CSV_PATH}`: {e}")
+    st.error(f"❌ Erro no mapeamento: {e}")
     st.stop()
 
 st.divider()
 
-# Tipo de NC
+# Tipo NC
 st.header("1️⃣ Tipo de Nota de Crédito")
-tipo_nc = st.radio(
-    "Seleciona o tipo de NC:",
-    ["APIFARMA", "PAYBACK"],
-    horizontal=True,
-)
-tipo_nc_prefix = "APIFARMA" if tipo_nc == "APIFARMA" else "PAYBACK"
+tipo_nc = st.radio("Seleciona:", ["APIFARMA", "PAYBACK"], horizontal=True)
+tipo_nc_prefix = tipo_nc
 
-st.header("2️⃣ Carregar ficheiros de Notas de Crédito")
+st.header("2️⃣ Carregar ficheiros")
 
 uploaded_files = st.file_uploader(
-    "Ficheiros de Notas de Crédito (Excel: xlsx/xls ou CSV/TXT)",
+    "Ficheiros de NC (Excel/CSV/TXT)",
     type=["xlsx", "xls", "csv", "txt"],
     accept_multiple_files=True,
-    key="nc_files_uploader",
 )
 
 # Pré-visualização
 if uploaded_files:
     preview_rows = []
     for file in uploaded_files:
-        fname = file.name
         try:
-            df_nc_preview = ler_notas_credito(file)
-            entidade_preview = get_entidade_from_empresas(df_nc_preview, mapping_df)
-            empresas_preview = ", ".join(
-                sorted(
-                    df_nc_preview["Empresa"]
-                    .dropna()
-                    .map(normalizar_texto)
-                    .unique()
-                )
-            )
-            formato_detectado = df_nc_preview.attrs.get('formato_detectado', 'N/A')
-            preview_rows.append(
-                {
-                    "Ficheiro": fname,
-                    "Empresas no ficheiro": empresas_preview,
-                    "Entidade mapeada": entidade_preview,
-                    "Formato": formato_detectado,
-                    "Estado": "✅ OK",
-                }
-            )
+            df_nc = ler_notas_credito(file)
+            entidade = get_entidade_from_empresas(df_nc, mapping_df)
+            empresas = ", ".join(sorted(df_nc["Empresa"].dropna().map(normalizar_texto).unique()))
+            formato = df_nc.attrs.get('formato_detectado', 'N/A')
+            preview_rows.append({
+                "Ficheiro": file.name,
+                "Empresas": empresas,
+                "Entidade": entidade,
+                "Formato": formato,
+                "Estado": "✅ OK"
+            })
         except Exception as e:
-            preview_rows.append(
-                {
-                    "Ficheiro": fname,
-                    "Empresas no ficheiro": "",
-                    "Entidade mapeada": "",
-                    "Formato": "",
-                    "Estado": f"❌ {str(e)[:80]}...",
-                }
-            )
+            preview_rows.append({
+                "Ficheiro": file.name,
+                "Empresas": "",
+                "Entidade": "",
+                "Formato": "",
+                "Estado": f"❌ {str(e)[:60]}..."
+            })
 
-    st.subheader("Pré-visualização: Empresa(s), Entidade e Formato por ficheiro")
+    st.subheader("Pré-visualização")
     st.dataframe(pd.DataFrame(preview_rows), use_container_width=True)
 
-process_button = st.button("▶️ Converter para ficheiro de importação", type="primary")
+process_button = st.button("▶️ Converter", type="primary")
 
 if process_button:
     if not uploaded_files:
-        st.error("❌ Carrega pelo menos um ficheiro de notas de crédito.")
+        st.error("❌ Carrega ficheiros primeiro.")
     else:
-        todas_linhas: List[List[str]] = []
-        erros: List[str] = []
+        todas_linhas = []
+        erros = []
         total_notas = 0
-        formatos_processados = set()
+        formatos = set()
 
         for file in uploaded_files:
-            fname = file.name
             try:
                 df_nc = ler_notas_credito(file)
                 entidade = get_entidade_from_empresas(df_nc, mapping_df)
-                formato = df_nc.attrs.get('formato_detectado', 'desconhecido')
-                formatos_processados.add(formato)
+                formatos.add(df_nc.attrs.get('formato_detectado', 'N/A'))
+                total_notas += len(df_nc)
+                linhas = gerar_linhas_importacao_para_ficheiro(df_nc, entidade, tipo_nc_prefix)
+                todas_linhas.extend(linhas)
             except Exception as e:
-                erros.append(f"**{fname}**: {e}")
-                continue
-
-            total_notas += len(df_nc)
-
-            linhas = gerar_linhas_importacao_para_ficheiro(
-                df_nc=df_nc,
-                entidade=entidade,
-                tipo_nc_prefix=tipo_nc_prefix,
-            )
-            todas_linhas.extend(linhas)
+                erros.append(f"**{file.name}**: {e}")
 
         if erros:
-            st.error("⚠️ Ocorreram os seguintes problemas:")
+            st.error("⚠️ Problemas:")
             for e in erros:
                 st.markdown(f"- {e}")
 
-        if not todas_linhas:
-            st.warning("⚠️ Não foi gerada qualquer linha de importação. Verifique os erros acima.")
-        else:
+        if todas_linhas:
             st.success(
-                f"✅ **Ficheiro(s) processados com sucesso!**\n\n"
-                f"- **Notas de crédito total:** {total_notas}\n"
-                f"- **Linhas de importação geradas:** {len(todas_linhas)}\n"
-                f"- **Tipo de NC aplicado:** {tipo_nc_prefix}\n"
-                f"- **Formatos detectados:** {', '.join(sorted(formatos_processados))}"
+                f"✅ **Sucesso!**\n\n"
+                f"- NCs: {total_notas}\n"
+                f"- Linhas: {len(todas_linhas)}\n"
+                f"- Tipo: {tipo_nc_prefix}\n"
+                f"- Formatos: {', '.join(sorted(formatos))}"
             )
 
             csv_bytes = escrever_csv_bytes(todas_linhas)
-
             st.download_button(
-                label="⬇️ Descarregar ficheiro de importação (CSV)",
-                data=csv_bytes,
-                file_name=f"NC_{tipo_nc_prefix}_importacao_contabilidade.csv",
-                mime="text/csv",
+                "⬇️ Descarregar ficheiro",
+                csv_bytes,
+                f"NC_{tipo_nc_prefix}_importacao.csv",
+                "text/csv"
             )
+        else:
+            st.warning("⚠️ Nenhuma linha gerada.")
