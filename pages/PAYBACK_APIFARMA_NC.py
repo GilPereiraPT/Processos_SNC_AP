@@ -68,14 +68,6 @@ COLUNAS_FINAIS = [
     "Série Compromisso Assumido",
 ]
 
-# Colunas que devem ser TEXTO (preservar zeros à esquerda)
-COLUNAS_TEXTO = [
-    "Classificador funcional ",
-    "Programa ",
-    "Medida",
-    "Classificação Orgânica"
-]
-
 
 # =====================================================
 # 3. Funções de base
@@ -300,7 +292,7 @@ def gerar_dataframe_importacao(
 ) -> pd.DataFrame:
     """
     Gera DataFrame final para exportação.
-    ⚠️ CRÍTICO: Campos com zeros à esquerda são definidos como STRINGS
+    IGUAL AO TEU EXEMPLO: usa DataFrame do pandas diretamente.
     """
     linhas_finais = []
 
@@ -336,10 +328,10 @@ def gerar_dataframe_importacao(
             "Série": "",
             "Subtipo": "",
             "classificador economico ": "02.01.09.C0.00",
-            "Classificador funcional ": "0730",  # TEXTO - preservar zero
+            "Classificador funcional ": "0730",
             "Fonte de financiamento ": "511",
-            "Programa ": "011",  # TEXTO - preservar zero
-            "Medida": "022",  # TEXTO - preservar zero
+            "Programa ": "011",
+            "Medida": "022",
             "Projeto": "",
             "Regionalização": "",
             "Atividade": "130",
@@ -351,7 +343,7 @@ def gerar_dataframe_importacao(
             "Centro de custo": "",
             "Observações Documento ": observacoes_doc,
             "Observaçoes lançamento": "",
-            "Classificação Orgânica": "101904000",  # TEXTO - preservar zero
+            "Classificação Orgânica": "101904000",
             "Litigio": "",
             "Data Litigio": "",
             "Data Fim Litigio": "",
@@ -369,12 +361,6 @@ def gerar_dataframe_importacao(
 
     # Criar DataFrame
     df_final = pd.DataFrame(linhas_finais)
-    
-    # ⚠️ CRÍTICO: Forçar colunas específicas como STRING (dtype=object)
-    # Isso garante que 0730, 011, 022 sejam mantidos como texto
-    for col in COLUNAS_TEXTO:
-        if col in df_final.columns:
-            df_final[col] = df_final[col].astype(str)
     
     # Garantir a ordem correta das colunas
     df_final = df_final[COLUNAS_FINAIS]
@@ -483,7 +469,7 @@ if nc_file and mapping_df is not None:
         st.dataframe(pd.DataFrame(resumo_data), use_container_width=True)
         
         # Gerar e disponibilizar downloads
-        st.header("⬇️ Download dos Ficheiros CSV")
+        st.header("⬇️ Download dos Ficheiros")
         
         for entidade, (df_ent, empresas) in sorted(resultados.items()):
             with st.expander(f"📁 Entidade {entidade} ({len(df_ent)} registos)"):
@@ -499,21 +485,37 @@ if nc_file and mapping_df is not None:
                 # Preview
                 st.dataframe(df_final.head(10), use_container_width=True)
                 
-                # Gerar CSV com to_csv do pandas
-                csv_string = df_final.to_csv(index=False, sep=";", encoding="utf-8-sig")
+                # Gerar CSV - IGUAL AO TEU EXEMPLO
+                buffer = BytesIO()
+                df_final.to_csv(buffer, index=False, sep=";", encoding="utf-8-sig")
+                buffer.seek(0)
                 
                 # Botão de download CSV
                 filename_csv = f"NC_Entidade_{entidade}_{today_yyyymmdd()}.csv"
                 st.download_button(
                     label=f"📥 Download CSV - Entidade {entidade}",
-                    data=csv_string.encode('utf-8-sig'),
+                    data=buffer.getvalue(),
                     file_name=filename_csv,
                     mime="text/csv",
                     key=f"download_csv_{entidade}"
                 )
+                
+                # Também disponibilizar em Excel
+                buffer_excel = BytesIO()
+                df_final.to_excel(buffer_excel, index=False)
+                buffer_excel.seek(0)
+                
+                filename_excel = f"NC_Entidade_{entidade}_{today_yyyymmdd()}.xlsx"
+                st.download_button(
+                    label=f"📥 Download Excel - Entidade {entidade}",
+                    data=buffer_excel.getvalue(),
+                    file_name=filename_excel,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key=f"download_excel_{entidade}"
+                )
         
-        # Download completo (todas as entidades num só ficheiro CSV)
-        st.header("📦 Download Completo CSV")
+        # Download completo (todas as entidades num só ficheiro)
+        st.header("📦 Download Completo")
         
         todas_linhas = []
         for entidade, (df_ent, _) in sorted(resultados.items()):
@@ -527,14 +529,29 @@ if nc_file and mapping_df is not None:
         df_completo = pd.concat(todas_linhas, ignore_index=True)
         
         # CSV completo
-        csv_completo_string = df_completo.to_csv(index=False, sep=";", encoding="utf-8-sig")
+        buffer_csv_completo = BytesIO()
+        df_completo.to_csv(buffer_csv_completo, index=False, sep=";", encoding="utf-8-sig")
+        buffer_csv_completo.seek(0)
         
         st.download_button(
             label="📥 Download CSV COMPLETO (todas as entidades)",
-            data=csv_completo_string.encode('utf-8-sig'),
+            data=buffer_csv_completo.getvalue(),
             file_name=f"NC_COMPLETO_{today_yyyymmdd()}.csv",
             mime="text/csv",
             key="download_csv_completo"
+        )
+        
+        # Excel completo
+        buffer_excel_completo = BytesIO()
+        df_completo.to_excel(buffer_excel_completo, index=False)
+        buffer_excel_completo.seek(0)
+        
+        st.download_button(
+            label="📥 Download Excel COMPLETO (todas as entidades)",
+            data=buffer_excel_completo.getvalue(),
+            file_name=f"NC_COMPLETO_{today_yyyymmdd()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_excel_completo"
         )
         
     except Exception as e:
