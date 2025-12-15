@@ -1,4 +1,5 @@
 import csv
+import os
 import re
 from datetime import date
 from io import StringIO, BytesIO
@@ -12,7 +13,20 @@ import streamlit as st
 # 1. Caminho do CSV de mapeamento Empresa → Entidade
 # =====================================================
 
-MAPPING_CSV_PATH = "EMPRESA_ENTIDADE_NC.csv"  # ajusta se o ficheiro estiver noutra pasta
+def get_mapping_path(default_path: str) -> str:
+    """
+    Tenta encontrar o ficheiro de mapeamento.
+    Primeiro procura no caminho fornecido, depois no diretório do script.
+    """
+    if os.path.isfile(default_path):
+        return default_path
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidate = os.path.join(script_dir, "mapeamento_entidades_nc.csv")
+    if os.path.isfile(candidate):
+        return candidate
+    return default_path
+
+MAPPING_CSV_PATH = get_mapping_path("mapeamento_entidades_nc.csv")
 
 
 # =====================================================
@@ -68,6 +82,8 @@ def load_empresa_mapping(path: str = MAPPING_CSV_PATH) -> pd.DataFrame:
     Espera colunas: 'Empresa' e 'Entidade'.
     """
     df = pd.read_csv(path, sep=";", encoding="latin-1")
+    # Normaliza nomes de colunas (remove espaços extras)
+    df.columns = [str(c).strip() for c in df.columns]
     obrig = ["Empresa", "Entidade"]
     for c in obrig:
         if c not in df.columns:
@@ -403,7 +419,7 @@ Esta página converte ficheiros de **Notas de Crédito** (Excel ou CSV)
 num ficheiro **CSV pronto a importar na contabilidade**, com o layout oficial.
 
 O mapeamento **Empresa → Entidade** é lido automaticamente do ficheiro
-`EMPRESA_ENTIDADE_NC.csv` existente no repositório.
+`mapeamento_entidades_nc.csv` existente no repositório.
 """
 )
 
