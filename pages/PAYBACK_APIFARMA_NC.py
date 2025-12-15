@@ -1,11 +1,11 @@
 import os
 import re
 from datetime import date
+from io import StringIO, BytesIO
 from typing import List, Dict, Tuple
 
 import pandas as pd
 import streamlit as st
-from io import BytesIO
 
 
 # =====================================================
@@ -28,6 +28,7 @@ ENTIDADE_PADRAO = "999"
 
 # =====================================================
 # 2. Cabeçalhos EXACTOS do ficheiro de importação
+# (Espaços no final removidos)
 # =====================================================
 
 HEADER = [
@@ -38,21 +39,21 @@ HEADER = [
     "Nº NC",
     "Série",
     "Subtipo",
-    "classificador economico ",
-    "Classificador funcional ",
-    "Fonte de financiamento ",
-    "Programa ",
-    "Medida",
+    "classificador economico",
+    "Classificador funcional", # CRÍTICO (0730)
+    "Fonte de financiamento",
+    "Programa",                # CRÍTICO (011)
+    "Medida",                  # CRÍTICO (022)
     "Projeto",
     "Regionalização",
     "Atividade",
     "Natureza",
     "Departamento/Atividade",
     "Conta Debito",
-    "Conta a Credito ",
+    "Conta a Credito",
     "Valor Lançamento",
     "Centro de custo",
-    "Observações Documento ",
+    "Observações Documento",
     "Observaçoes lançamento",
     "Classificação Orgânica",
     "Litigio",
@@ -76,11 +77,12 @@ HEADER = [
 def load_empresa_mapping(path: str = MAPPING_CSV_PATH) -> pd.DataFrame:
     """Lê o CSV de mapeamento Empresa;Entidade."""
     df = pd.read_csv(path, sep=";", encoding="latin-1")
-    df.columns = [str(c).strip() for c in df.columns]
+    df.columns = [str(c).strip() for c in df.columns] 
+    
     obrig = ["Empresa", "Entidade"]
     for c in obrig:
         if c not in df.columns:
-            raise ValueError(f"O ficheiro de mapeamento tem de ter as colunas: {obrig}")
+             raise ValueError(f"O ficheiro de mapeamento tem de ter as colunas: {obrig}")
     return df
 
 
@@ -192,7 +194,6 @@ def detectar_formato_ficheiro(df: pd.DataFrame) -> Dict[str, str]:
 
 def ler_notas_credito(file) -> pd.DataFrame:
     """Lê ficheiros de Notas de Crédito."""
-    from io import StringIO
     
     fname = file.name.lower()
 
@@ -249,7 +250,9 @@ def ler_notas_credito(file) -> pd.DataFrame:
         if not s or s.lower() in ("nan", "none"):
             return 0.0
         s = s.replace(" ", "")
-        return float(s.replace(".", "").replace(",", "."))
+        if ',' in s and s.rfind(',') > s.rfind('.'):
+             s = s.replace('.', '').replace(',', '.') 
+        return float(s.replace(",", ".")) 
 
     df_nc["ValorNum"] = df_nc["Valor (com IVA)"].apply(parse_valor)
     df_nc.attrs = df.attrs
@@ -262,12 +265,15 @@ def format_yyyymmdd(data_str: str) -> str:
     if "-" in s:
         partes = s.split("-")
         if len(partes) == 3:
-            return partes[0] + partes[1] + partes[2]
+            return partes[0] + partes[1].zfill(2) + partes[2].zfill(2)
     if "/" in s:
         partes = s.split("/")
         if len(partes) == 3:
             dia, mes, ano = partes
             return ano + mes.zfill(2) + dia.zfill(2)
+    if s.isdigit() and len(s) == 8:
+        return s
+        
     return s
 
 
@@ -278,7 +284,7 @@ def today_yyyymmdd() -> str:
 
 
 def format_valor_port(valor: float) -> str:
-    """1234.5 → '1234,50'"""
+    """Formata valor para '1234,50' (Formato Português)"""
     return f"{valor:.2f}".replace(".", ",")
 
 
@@ -292,15 +298,14 @@ def gerar_dataframe_importacao(
     entidade: str,
     tipo_nc_prefix: str,
 ) -> pd.DataFrame:
-    """
-    Gera DataFrame final - IGUAL AO TEU EXEMPLO.
-    Retorna DataFrame que será convertido para CSV.
-    """
-    linhas_finais = []
-
+    """Gera DataFrame final de importação com os novos cabeçalhos limpos."""
+    
     tem_ano = "Ano" in df_nc.columns
     tem_tranche = "Tranche" in df_nc.columns
     data_contab = today_yyyymmdd()
+    
+    # Criar listas de valores para construir o DataFrame de forma eficiente
+    data_dict: Dict[str, List[str]] = {col: [] for col in HEADER}
 
     for _, row in df_nc.iterrows():
         data_doc = format_yyyymmdd(row["Data"])
@@ -321,50 +326,76 @@ def gerar_dataframe_importacao(
         observacoes_base = " ".join(obs_parts).strip()
         observacoes_doc = f"{tipo_nc_prefix} {observacoes_base}".strip() if observacoes_base else tipo_nc_prefix
 
-        linha = {
-            "NC": "NC",
-            "Entidade": entidade,
-            "Data documento": data_doc,
-            "Data Contabilistica": data_contab,
-            "Nº NC": numero_nc,
-            "Série": "",
-            "Subtipo": "",
-            "classificador economico ": "02.01.09.C0.00",
-            "Classificador funcional ": "0730",
-            "Fonte de financiamento ": "511",
-            "Programa ": "011",
-            "Medida": "022",
-            "Projeto": "",
-            "Regionalização": "",
-            "Atividade": "130",
-            "Natureza": "",
-            "Departamento/Atividade": "1",
-            "Conta Debito": "221111",
-            "Conta a Credito ": "31826111",
-            "Valor Lançamento": format_valor_port(valor),
-            "Centro de custo": "",
-            "Observações Documento ": observacoes_doc,
-            "Observaçoes lançamento": "",
-            "Classificação Orgânica": "101904000",
-            "Litigio": "",
-            "Data Litigio": "",
-            "Data Fim Litigio": "",
-            "Plano Pagamento": "",
-            "Data Plano Pagamento": "",
-            "Data Fim Plano Pag": "",
-            "Pag Factoring": "",
-            "Nº Compromisso Assumido": "",
-            "Projeto Documento": "",
-            "Ano Compromisso Assumido": "",
-            "Série Compromisso Assumido": "",
-        }
-        
-        linhas_finais.append(linha)
+        # Preencher o dicionário coluna a coluna (mais eficiente que linha a linha)
+        data_dict["NC"].append("NC")
+        data_dict["Entidade"].append(entidade)
+        data_dict["Data documento"].append(data_doc)
+        data_dict["Data Contabilistica"].append(data_contab)
+        data_dict["Nº NC"].append(numero_nc)
+        data_dict["Série"].append("")
+        data_dict["Subtipo"].append("")
+        data_dict["classificador economico"].append("02.01.09.C0.00")
+        data_dict["Classificador funcional"].append("0730") # CRÍTICO
+        data_dict["Fonte de financiamento"].append("511")
+        data_dict["Programa"].append("011") # CRÍTICO
+        data_dict["Medida"].append("022") # CRÍTICO
+        data_dict["Projeto"].append("")
+        data_dict["Regionalização"].append("")
+        data_dict["Atividade"].append("130")
+        data_dict["Natureza"].append("")
+        data_dict["Departamento/Atividade"].append("1")
+        data_dict["Conta Debito"].append("221111")
+        data_dict["Conta a Credito"].append("31826111")
+        data_dict["Valor Lançamento"].append(format_valor_port(valor))
+        data_dict["Centro de custo"].append("")
+        data_dict["Observações Documento"].append(observacoes_doc)
+        data_dict["Observaçoes lançamento"].append("")
+        data_dict["Classificação Orgânica"].append("101904000")
+        data_dict["Litigio"].append("")
+        data_dict["Data Litigio"].append("")
+        data_dict["Data Fim Litigio"].append("")
+        data_dict["Plano Pagamento"].append("")
+        data_dict["Data Plano Pagamento"].append("")
+        data_dict["Data Fim Plano Pag"].append("")
+        data_dict["Pag Factoring"].append("")
+        data_dict["Nº Compromisso Assumido"].append("")
+        data_dict["Projeto Documento"].append("")
+        data_dict["Ano Compromisso Assumido"].append("")
+        data_dict["Série Compromisso Assumido"].append("")
 
-    # Criar DataFrame - IGUAL AO TEU EXEMPLO
-    df_final = pd.DataFrame(linhas_finais)
+    return pd.DataFrame(data_dict, columns=HEADER)
+
+
+def escrever_csv_bytes(df: pd.DataFrame) -> bytes:
+    """
+    Escreve CSV em bytes, garantindo a AUSÊNCIA TOTAL de aspas duplas 
+    e o delimitador ';'.
+    """
+    # Converter o DataFrame em uma lista de listas de strings (valores)
+    linhas = df.values.tolist()
     
-    return df_final
+    buffer = StringIO()
+    
+    # 1. Adicionar BOM + sep=;
+    buffer.write("sep=;\n") 
+    
+    # 2. Escrever header
+    buffer.write(";".join(HEADER) + "\n")
+    
+    # 3. Escrever dados
+    for linha in linhas:
+        campos_formatados = []
+        for valor in linha:
+            valor_str = str(valor) if valor is not None else ""
+            
+            # ATENÇÃO: Nenhum campo é envolvido em aspas.
+            campos_formatados.append(valor_str)
+        
+        buffer.write(";".join(campos_formatados) + "\n")
+    
+    # 4. Converter para bytes em UTF-8 com BOM (utf-8-sig)
+    csv_content = buffer.getvalue()
+    return csv_content.encode("utf-8-sig")
 
 
 # =====================================================
@@ -376,9 +407,7 @@ st.set_page_config(page_title="NC APIFARMA / PAYBACK → Importação", layout="
 st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK")
 
 st.markdown("""
-Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística.
-
-**✨ Gera ficheiros CSV com formatação correta de zeros à esquerda.**
+Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística, **sem usar aspas duplas (`"`)** nos campos, garantindo a leitura dos zeros à esquerda.
 """)
 
 try:
@@ -436,7 +465,7 @@ if ficheiros_para_processar:
             
             status = "✅ OK"
             if empresas_sem_mapa:
-                status += f" (⚠️ {len(empresas_sem_mapa)} → 999)"
+                status += f" (⚠️ {len(empresas_sem_mapa)} → {ENTIDADE_PADRAO})"
             
             preview_rows.append({
                 "Ficheiro": file.name,
@@ -483,7 +512,6 @@ if process_button:
                         f"{', '.join(empresas_sem_mapa)}"
                     )
                 
-                # Gerar DataFrame completo para este ficheiro
                 todas_dfs = []
                 total_notas_ficheiro = 0
                 
@@ -492,7 +520,6 @@ if process_button:
                     df_temp = gerar_dataframe_importacao(df_ent, entidade, tipo_nc_prefix)
                     todas_dfs.append(df_temp)
                 
-                # Concatenar todos os DataFrames
                 df_final = pd.concat(todas_dfs, ignore_index=True)
                 
                 formato = df_nc.attrs.get('formato_detectado', 'desconhecido')
@@ -504,21 +531,18 @@ if process_button:
                     f"- Formato: {formato}"
                 )
                 
-                # Preview do DataFrame
                 with st.expander("👁️ Preview dos dados"):
                     st.dataframe(df_final.head(20), use_container_width=True)
                 
-                # Gerar CSV - IGUAL AO TEU EXEMPLO
-                buffer = BytesIO()
-                df_final.to_csv(buffer, index=False, sep=";", encoding="utf-8-sig")
-                buffer.seek(0)
+                # GERAR CSV SEM ASPAS
+                csv_bytes = escrever_csv_bytes(df_final)
                 
                 nome_base = os.path.splitext(file.name)[0]
                 nome_saida = f"NC_{tipo_nc_prefix}_{nome_base}_importacao.csv"
                 
                 st.download_button(
-                    f"⬇️ Descarregar {nome_saida}",
-                    buffer.getvalue(),
+                    f"⬇️ Descarregar {nome_saida} (Sem Aspas)",
+                    csv_bytes,
                     nome_saida,
                     "text/csv",
                     key=f"download_{file.name}"
