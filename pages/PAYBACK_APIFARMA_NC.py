@@ -363,39 +363,46 @@ def gerar_linhas_importacao_para_ficheiro(
 def escrever_csv_bytes(linhas: List[List[str]]) -> bytes:
     """
     Escreve CSV em bytes.
-    ⚠️ Usa ="valor" para forçar texto e manter zeros à esquerda.
+    ⚠️ APENAS 3 colunas usam TAB para preservar zeros: 0730, 011, 022
     """
-    buffer_text = StringIO()
-    writer = csv.writer(buffer_text, delimiter=";", quoting=csv.QUOTE_NONE, escapechar='\\')
-    
-    writer.writerow(HEADER)
-    
-    # APENAS estas 4 colunas mantêm zeros à esquerda
+    # Identificar índices das colunas que precisam de TAB
+    indices_com_zeros = set()
     colunas_com_zeros = {
-        "Classificador funcional ",
-        "Fonte de financiamento ",
-        "Programa ",
-        "Medida"
+        "Classificador funcional ",  # 0730
+        "Programa ",                  # 011
+        "Medida"                      # 022
     }
     
-    for linha in linhas:
-        linha_processada = []
-        for i, valor in enumerate(linha):
-            col_name = HEADER[i]
-            
-            if col_name in colunas_com_zeros and valor:
-                # Usar ="valor" para forçar como texto no Excel/LibreOffice
-                linha_processada.append(f'="{valor}"')
-            else:
-                linha_processada.append(valor)
-        
-        writer.writerow(linha_processada)
+    for i, col in enumerate(HEADER):
+        if col in colunas_com_zeros:
+            indices_com_zeros.add(i)
     
-    text_value = buffer_text.getvalue()
-    buffer_bytes = BytesIO()
-    buffer_bytes.write(text_value.encode("latin-1"))
-    buffer_bytes.seek(0)
-    return buffer_bytes.read()
+    # Construir CSV manualmente
+    buffer = StringIO()
+    
+    # Escrever header
+    buffer.write(";".join(HEADER) + "\n")
+    
+    # Escrever dados
+    for linha in linhas:
+        campos_formatados = []
+        for i, valor in enumerate(linha):
+            if i in indices_com_zeros and valor:
+                # TAB antes do valor força Excel/Calc a tratar como texto
+                campos_formatados.append(f"\t{valor}")
+            else:
+                # Campos normais - adicionar aspas se contiverem ; ou ,
+                valor_str = str(valor) if valor else ""
+                if ";" in valor_str or "," in valor_str:
+                    campos_formatados.append(f'"{valor_str}"')
+                else:
+                    campos_formatados.append(valor_str)
+        
+        buffer.write(";".join(campos_formatados) + "\n")
+    
+    # Converter para bytes em latin-1
+    csv_content = buffer.getvalue()
+    return csv_content.encode("latin-1")
 
 
 # =====================================================
