@@ -104,9 +104,15 @@ def obter_mapa_empresas(mapping_df: pd.DataFrame) -> Dict[str, str]:
     map_dict: Dict[str, str] = {}
     for _, row in mapping_df.iterrows():
         emp = normalizar_texto(row["Empresa"])
-        ent = str(row["Entidade"]).strip()
+        # A Entidade é lida como string para evitar problemas de formatação
+        ent = str(row["Entidade"]).strip() 
         if not emp or not ent or ent.lower() in ("nan", "none"):
             continue
+        
+        # Limpar o formato float se tiver sido lido do mapeamento
+        if ent.endswith(".0"):
+            ent = ent[:-2]
+            
         map_dict[emp] = ent
     return map_dict
 
@@ -283,7 +289,7 @@ def today_yyyymmdd() -> str:
 
 
 def format_valor_port(valor: float) -> str:
-    """Formata valor para '1234,50' (Formato Português) - mantido para consistência"""
+    """Formata valor para '1234,50' (Formato Português)"""
     return f"{valor:.2f}".replace(".", ",")
 
 
@@ -305,6 +311,13 @@ def gerar_dataframe_importacao(
     
     data_dict: Dict[str, List[str]] = {col: [] for col in HEADER}
 
+    # --- CORREÇÃO DE FORMATO DA ENTIDADE ---
+    entidade_limpa = str(entidade)
+    # Remove o ".0" se existir (porque o Pandas o adiciona a números inteiros lidos como float)
+    if entidade_limpa.endswith(".0"):
+        entidade_limpa = entidade_limpa[:-2] 
+    # ---------------------------------------
+
     for _, row in df_nc.iterrows():
         data_doc = format_yyyymmdd(row["Data"])
         valor = float(row["ValorNum"])
@@ -324,19 +337,19 @@ def gerar_dataframe_importacao(
         observacoes_base = " ".join(obs_parts).strip()
         observacoes_doc = f"{tipo_nc_prefix} {observacoes_base}".strip() if observacoes_base else tipo_nc_prefix
 
-        # Preencher o dicionário - Os valores CRÍTICOS são gerados como STRING para o Excel
+        # Preencher o dicionário
         data_dict["NC"].append("NC")
-        data_dict["Entidade"].append(entidade)
+        data_dict["Entidade"].append(entidade_limpa) # AQUI: Usa o valor corrigido
         data_dict["Data documento"].append(data_doc)
         data_dict["Data Contabilistica"].append(data_contab)
         data_dict["Nº NC"].append(numero_nc)
         data_dict["Série"].append("")
         data_dict["Subtipo"].append("")
         data_dict["classificador economico"].append("02.01.09.C0.00")
-        data_dict["Classificador funcional"].append("0730") # CRÍTICO: String
+        data_dict["Classificador funcional"].append("0730") 
         data_dict["Fonte de financiamento"].append("511")
-        data_dict["Programa"].append("011") # CRÍTICO: String
-        data_dict["Medida"].append("022") # CRÍTICO: String
+        data_dict["Programa"].append("011") 
+        data_dict["Medida"].append("022") 
         data_dict["Projeto"].append("")
         data_dict["Regionalização"].append("")
         data_dict["Atividade"].append("130")
@@ -363,9 +376,6 @@ def gerar_dataframe_importacao(
 
     return pd.DataFrame(data_dict, columns=HEADER)
 
-# Não é necessária uma função de escrita manual de CSV, pois vamos usar .to_excel
-# que é mais robusto para manter os formatos.
-
 
 # =====================================================
 # 4. Interface Streamlit
@@ -376,7 +386,7 @@ st.set_page_config(page_title="NC APIFARMA / PAYBACK → Importação", layout="
 st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK")
 
 st.markdown("""
-Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística. O ficheiro de saída será em **formato Excel (.xlsx)** para garantir a correta leitura dos classificadores (`0730`, `011`, `022`) como texto.
+Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística. O ficheiro de saída é em **formato Excel (.xlsx)** para garantir a correta leitura dos classificadores e dos códigos de entidade.
 """)
 
 try:
@@ -503,7 +513,7 @@ if process_button:
                 with st.expander("👁️ Preview dos dados"):
                     st.dataframe(df_final.head(20), use_container_width=True)
                 
-                # GERAR EXCEL XLSX (Novo formato de exportação)
+                # GERAR EXCEL XLSX 
                 buffer = BytesIO()
                 df_final.to_excel(buffer, index=False)
                 buffer.seek(0)
