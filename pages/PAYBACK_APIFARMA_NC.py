@@ -103,6 +103,18 @@ def normalizar_texto(s: str) -> str:
     return s.upper()
 
 
+def limpar_nome_coluna(col: str) -> str:
+    """
+    Remove HTML e caracteres especiais de nomes de colunas.
+    Exemplo: '<span style="...">Ano</span>' → 'Ano'
+    """
+    # Remover tags HTML
+    col = re.sub(r'<[^>]+>', '', str(col))
+    # Remover espaços extras
+    col = col.strip()
+    return col
+
+
 def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) -> str:
     """
     Determina o código de Entidade a partir da(s) Empresa(s) presentes no ficheiro,
@@ -159,10 +171,13 @@ def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) ->
 def detectar_formato_ficheiro(df: pd.DataFrame) -> Dict[str, str]:
     """
     Deteta automaticamente qual o formato do ficheiro de NC e mapeia as colunas.
+    Limpa nomes de colunas (remove HTML) antes de processar.
     
     Retorna dicionário com mapeamento: coluna_padrao -> coluna_real
     """
-    colunas_disponiveis = [str(c).strip() for c in df.columns]
+    # Limpar nomes de colunas (remover HTML)
+    colunas_limpas = {col: limpar_nome_coluna(col) for col in df.columns}
+    colunas_disponiveis = list(colunas_limpas.values())
     
     # Mapeamento de nomes alternativos para cada coluna obrigatória
     mapeamento_alternativas = {
@@ -182,25 +197,30 @@ def detectar_formato_ficheiro(df: pd.DataFrame) -> Dict[str, str]:
         encontrada = False
         for alt in alternativas:
             if alt in colunas_disponiveis:
-                colunas_encontradas[col_padrao] = alt
-                encontrada = True
-                break
+                # Encontrar a coluna original (com HTML se existir)
+                for col_orig, col_limpa in colunas_limpas.items():
+                    if col_limpa == alt:
+                        colunas_encontradas[col_padrao] = col_orig
+                        encontrada = True
+                        break
+                if encontrada:
+                    break
         if not encontrada:
             colunas_faltantes.append(col_padrao)
     
     if colunas_faltantes:
         raise ValueError(
             f"Colunas obrigatórias não encontradas: {', '.join(colunas_faltantes)}.\n"
-            f"Colunas disponíveis no ficheiro: {', '.join(colunas_disponiveis)}"
+            f"Colunas disponíveis no ficheiro (limpas): {', '.join(colunas_disponiveis)}"
         )
     
     # Procurar colunas opcionais (Ano e Tranche)
-    for col in colunas_disponiveis:
-        col_upper = col.upper()
+    for col_orig, col_limpa in colunas_limpas.items():
+        col_upper = col_limpa.upper()
         if "ANO" in col_upper and "Ano" not in colunas_encontradas:
-            colunas_encontradas["Ano"] = col
+            colunas_encontradas["Ano"] = col_orig
         if "TRANCHE" in col_upper and "Tranche" not in colunas_encontradas:
-            colunas_encontradas["Tranche"] = col
+            colunas_encontradas["Tranche"] = col_orig
     
     return colunas_encontradas
 
@@ -224,46 +244,77 @@ def ler_notas_credito(file) -> pd.DataFrame:
         df = pd.read_excel(file)
 
     # -----------------------------
-    # 2) CSV / TXT com autodetecção
+    # 2) CSV / TXT com autodetecção melhorada
     # -----------------------------
     else:
         file.seek(0)
         raw = file.read()
 
-        last_exc: Optional[Exception] = None
         text: Optional[str] = None
+        encoding_usado: Optional[str] = None
 
-        # Detectar encoding
-        for enc in ["utf-16", "utf-8-sig", "latin-1"]:
+        # Lista de encodings para testar (ordem de prioridade)
+        encodings_para_testar = [
+            "utf-8",           # Padrão moderno
+            "utf-8-sig",       # UTF-8 com BOM
+            "latin-1",         # ISO-8859-1 (Portugal/Brasil)
+            "cp1252",          # Windows Western Europe
+            "iso-8859-1",      # Latin-1
+            "windows-1252",    # Windows
+        ]
+
+        # Tentar cada encoding
+        for enc in encodings_para_testar:
             try:
                 text = raw.decode(enc)
+                encoding_usado = enc
                 break
-            except Exception as e:
-                last_exc = e
+            except (UnicodeDecodeError, AttributeError):
+                continue
 
-        if text is None:
+        if text is None or encoding_usado is None:
             raise ValueError(
-                "Não foi possível decodificar o ficheiro (utf-16, utf-8-sig, latin-1). "
-                f"Último erro: {last_exc}"
+                "Não foi possível decodificar o ficheiro. "
+                f"Encodings testados: {', '.join(encodings_para_testar)}. "
+                "O ficheiro pode estar corrompido."
             )
 
+        # Remover BOM se existir
+        if text.startswith('\ufeff'):
+            text = text[1:]
+
         lines = text.splitlines()
-        first_line = lines[0] if lines else ""
+        if not lines:
+            raise ValueError("O ficheiro está vazio.")
+            
+        first_line = lines[0]
         skip = 1 if first_line.lower().startswith("sep=") else 0
 
-        # detetar automaticamente separador
+        # Detectar separador automaticamente
         try:
-            dialect = csv.Sniffer().sniff(text, delimiters=";,")
+            # Usar uma amostra para detecção
+            sample = "\n".join(lines[skip:min(skip+5, len(lines))])
+            dialect = csv.Sniffer().sniff(sample, delimiters=";,\t")
             sep = dialect.delimiter
         except Exception:
-            sep = ";"
+            # Fallback: detectar manualmente
+            if ";" in first_line:
+                sep = ";"
+            elif "," in first_line:
+                sep = ","
+            elif "\t" in first_line:
+                sep = "\t"
+            else:
+                sep = ";"
 
         buf = StringIO(text)
 
         try:
             df = pd.read_csv(buf, sep=sep, skiprows=skip)
         except Exception as e:
-            raise ValueError(f"Erro ao ler CSV com separador '{sep}': {e}")
+            raise ValueError(
+                f"Erro ao ler CSV com separador '{sep}' e encoding '{encoding_usado}': {e}"
+            )
 
     # -----------------------------
     # 3) Detectar formato e validar colunas
@@ -271,25 +322,27 @@ def ler_notas_credito(file) -> pd.DataFrame:
     try:
         mapeamento_colunas = detectar_formato_ficheiro(df)
     except ValueError as e:
-        raise ValueError(f"Erro na validação do formato do ficheiro: {e}")
+        raise ValueError(f"Erro na validação do formato do ficheiro '{file.name}': {e}")
     
     # Renomear colunas para nomes padronizados
     rename_dict = {v: k for k, v in mapeamento_colunas.items()}
     df = df.rename(columns=rename_dict)
     
-    # Mostrar informação sobre o formato detectado
+    # Informação sobre o formato detectado
     formato_info = []
     if "Ano" in mapeamento_colunas:
-        formato_info.append(f"Ano (coluna: {mapeamento_colunas['Ano']})")
+        col_orig = mapeamento_colunas["Ano"]
+        col_limpa = limpar_nome_coluna(col_orig)
+        formato_info.append(f"Ano ('{col_limpa}')")
     if "Tranche" in mapeamento_colunas:
-        formato_info.append(f"Tranche (coluna: {mapeamento_colunas['Tranche']})")
+        formato_info.append("Tranche")
     
-    # Guardar informação do formato no DataFrame (como atributo)
-    df.attrs['formato_detectado'] = ", ".join(formato_info) if formato_info else "formato base"
+    # Guardar informação do formato no DataFrame
+    df.attrs['formato_detectado'] = ", ".join(formato_info) if formato_info else "formato básico"
     df.attrs['mapeamento_colunas'] = mapeamento_colunas
 
     # Apenas NOTAS DE CRÉDITO
-    df_nc = df[df["Tipo"].astype(str).str.upper().str.contains("NOTA DE CRÉDITO")].copy()
+    df_nc = df[df["Tipo"].astype(str).str.upper().str.contains("NOTA DE CRÉDITO", na=False)].copy()
     if df_nc.empty:
         raise ValueError("Nenhuma linha com 'NOTA DE CRÉDITO' encontrada no ficheiro.")
 
@@ -298,6 +351,8 @@ def ler_notas_credito(file) -> pd.DataFrame:
         s = str(v).strip()
         if not s or s.lower() in ("nan", "none"):
             return 0.0
+        # Remover espaços e converter
+        s = s.replace(" ", "")
         return float(s.replace(".", "").replace(",", "."))
 
     df_nc["ValorNum"] = df_nc["Valor (com IVA)"].apply(parse_valor)
@@ -358,7 +413,7 @@ def gerar_linhas_importacao_para_ficheiro(
     Gera as linhas do CSV de importação, no formato do ficheiro modelo,
     para UM ficheiro de origem.
     
-    Adapta-se automaticamente ao formato detectado (com Ano, Tranche, ou ambos).
+    Adapta-se automaticamente ao formato detectado (com Ano, Tranche, ou nenhum).
 
     Regras fixas:
       - NC fixo = "NC"
@@ -495,7 +550,7 @@ num ficheiro **CSV pronto a importar na contabilidade**, com o layout oficial.
 O mapeamento **Empresa → Entidade** é lido automaticamente do ficheiro
 `mapeamento_entidades_nc.csv` existente no repositório.
 
-**Suporta automaticamente diferentes formatos de ficheiro** das plataformas APIFARMA e PAYBACK.
+**✨ Suporta automaticamente diferentes formatos de ficheiro** das plataformas APIFARMA e PAYBACK.
 """
 )
 
@@ -565,7 +620,7 @@ if uploaded_files:
                     "Empresas no ficheiro": "",
                     "Entidade mapeada": "",
                     "Formato": "",
-                    "Estado": f"❌ Erro: {e}",
+                    "Estado": f"❌ Erro: {str(e)[:100]}",
                 }
             )
 
@@ -591,7 +646,7 @@ if process_button:
                 formato = df_nc.attrs.get('formato_detectado', 'desconhecido')
                 formatos_processados.add(formato)
             except Exception as e:
-                erros.append(f"[{fname}] {e}")
+                erros.append(f"**{fname}**: {e}")
                 continue
 
             total_notas += len(df_nc)
@@ -606,13 +661,13 @@ if process_button:
         if erros:
             st.error("⚠️ Ocorreram os seguintes problemas:")
             for e in erros:
-                st.write(f"- {e}")
+                st.markdown(f"- {e}")
 
         if not todas_linhas:
             st.warning("⚠️ Não foi gerada qualquer linha de importação. Verifique os erros acima.")
         else:
             st.success(
-                f"✅ Ficheiro(s) processados com sucesso!\n\n"
+                f"✅ **Ficheiro(s) processados com sucesso!**\n\n"
                 f"- **Notas de crédito total:** {total_notas}\n"
                 f"- **Linhas de importação geradas:** {len(todas_linhas)}\n"
                 f"- **Tipo de NC aplicado:** {tipo_nc_prefix}\n"
