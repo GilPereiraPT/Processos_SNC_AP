@@ -1,12 +1,10 @@
 import os
 import re
 from datetime import date
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Tuple
 
 import pandas as pd
 import streamlit as st
-from openpyxl import Workbook
-from openpyxl.styles import Alignment
 from io import BytesIO
 
 
@@ -289,13 +287,16 @@ def apenas_algarismos(texto: str) -> str:
     return re.sub(r"\D", "", str(texto))
 
 
-def gerar_linhas_importacao_para_ficheiro(
+def gerar_dataframe_importacao(
     df_nc: pd.DataFrame,
     entidade: str,
     tipo_nc_prefix: str,
-) -> List[List[str]]:
-    """Gera linhas do CSV de importação."""
-    linhas: List[List[str]] = []
+) -> pd.DataFrame:
+    """
+    Gera DataFrame final - IGUAL AO TEU EXEMPLO.
+    Retorna DataFrame que será convertido para CSV.
+    """
+    linhas_finais = []
 
     tem_ano = "Ano" in df_nc.columns
     tem_tranche = "Tranche" in df_nc.columns
@@ -320,96 +321,50 @@ def gerar_linhas_importacao_para_ficheiro(
         observacoes_base = " ".join(obs_parts).strip()
         observacoes_doc = f"{tipo_nc_prefix} {observacoes_base}".strip() if observacoes_base else tipo_nc_prefix
 
-        linha: Dict[str, str] = {col: "" for col in HEADER}
+        linha = {
+            "NC": "NC",
+            "Entidade": entidade,
+            "Data documento": data_doc,
+            "Data Contabilistica": data_contab,
+            "Nº NC": numero_nc,
+            "Série": "",
+            "Subtipo": "",
+            "classificador economico ": "02.01.09.C0.00",
+            "Classificador funcional ": "0730",
+            "Fonte de financiamento ": "511",
+            "Programa ": "011",
+            "Medida": "022",
+            "Projeto": "",
+            "Regionalização": "",
+            "Atividade": "130",
+            "Natureza": "",
+            "Departamento/Atividade": "1",
+            "Conta Debito": "221111",
+            "Conta a Credito ": "31826111",
+            "Valor Lançamento": format_valor_port(valor),
+            "Centro de custo": "",
+            "Observações Documento ": observacoes_doc,
+            "Observaçoes lançamento": "",
+            "Classificação Orgânica": "101904000",
+            "Litigio": "",
+            "Data Litigio": "",
+            "Data Fim Litigio": "",
+            "Plano Pagamento": "",
+            "Data Plano Pagamento": "",
+            "Data Fim Plano Pag": "",
+            "Pag Factoring": "",
+            "Nº Compromisso Assumido": "",
+            "Projeto Documento": "",
+            "Ano Compromisso Assumido": "",
+            "Série Compromisso Assumido": "",
+        }
+        
+        linhas_finais.append(linha)
 
-        linha["NC"] = "NC"
-        linha["Entidade"] = entidade
-        linha["Data documento"] = data_doc
-        linha["Data Contabilistica"] = data_contab
-        linha["Nº NC"] = numero_nc
-        linha["Série"] = ""
-        linha["Subtipo"] = ""
-        linha["classificador economico "] = "02.01.09.C0.00"
-        linha["Classificador funcional "] = "0730"
-        linha["Fonte de financiamento "] = "511"
-        linha["Programa "] = "011"
-        linha["Medida"] = "022"
-        linha["Projeto"] = ""
-        linha["Regionalização"] = ""
-        linha["Atividade"] = "130"
-        linha["Natureza"] = ""
-        linha["Departamento/Atividade"] = "1"
-        linha["Conta Debito"] = "221111"
-        linha["Conta a Credito "] = "31826111"
-        linha["Valor Lançamento"] = format_valor_port(valor)
-        linha["Centro de custo"] = ""
-        linha["Observações Documento "] = observacoes_doc
-        linha["Observaçoes lançamento"] = ""
-        linha["Classificação Orgânica"] = "101904000"
-        linha["Litigio"] = ""
-        linha["Data Litigio"] = ""
-        linha["Data Fim Litigio"] = ""
-        linha["Plano Pagamento"] = ""
-        linha["Data Plano Pagamento"] = ""
-        linha["Data Fim Plano Pag"] = ""
-        linha["Pag Factoring"] = ""
-        linha["Nº Compromisso Assumido"] = ""
-        linha["Projeto Documento"] = ""
-        linha["Ano Compromisso Assumido"] = ""
-        linha["Série Compromisso Assumido"] = ""
-
-        linhas.append([linha[col] for col in HEADER])
-
-    return linhas
-
-
-def escrever_excel_bytes(linhas: List[List[str]]) -> bytes:
-    """
-    Escreve ficheiro Excel com colunas formatadas como texto.
-    ⚠️ Colunas 0730, 011, 022 são formatadas como TEXTO para preservar zeros.
-    """
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Importação"
+    # Criar DataFrame - IGUAL AO TEU EXEMPLO
+    df_final = pd.DataFrame(linhas_finais)
     
-    # Identificar índices das colunas que devem ser texto
-    indices_texto = set()
-    colunas_texto = {
-        "Classificador funcional ",  # 0730
-        "Programa ",                  # 011
-        "Medida"                      # 022
-    }
-    
-    for i, col in enumerate(HEADER):
-        if col in colunas_texto:
-            indices_texto.add(i)
-    
-    # Escrever header
-    ws.append(HEADER)
-    
-    # Escrever dados
-    for linha in linhas:
-        row_data = []
-        for i, valor in enumerate(linha):
-            if i in indices_texto and valor:
-                # Forçar como texto adicionando apóstrofo invisível
-                row_data.append(f"'{valor}")
-            else:
-                row_data.append(valor)
-        ws.append(row_data)
-    
-    # Formatar colunas como texto
-    for col_idx in indices_texto:
-        col_letter = chr(65 + col_idx)  # A=65, B=66, etc
-        for row in range(2, ws.max_row + 1):
-            cell = ws[f"{col_letter}{row}"]
-            cell.number_format = '@'  # Formato texto
-    
-    # Salvar em memória
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    return buffer.read()
+    return df_final
 
 
 # =====================================================
@@ -423,7 +378,7 @@ st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK")
 st.markdown("""
 Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística.
 
-**✨ Gera ficheiros Excel (.xlsx) com formatação correta de zeros à esquerda.**
+**✨ Gera ficheiros CSV com formatação correta de zeros à esquerda.**
 """)
 
 try:
@@ -528,40 +483,50 @@ if process_button:
                         f"{', '.join(empresas_sem_mapa)}"
                     )
                 
-                todas_linhas_ficheiro = []
+                # Gerar DataFrame completo para este ficheiro
+                todas_dfs = []
                 total_notas_ficheiro = 0
                 
                 for entidade, (df_ent, empresas) in entidades_dict.items():
                     total_notas_ficheiro += len(df_ent)
-                    linhas = gerar_linhas_importacao_para_ficheiro(df_ent, entidade, tipo_nc_prefix)
-                    todas_linhas_ficheiro.extend(linhas)
+                    df_temp = gerar_dataframe_importacao(df_ent, entidade, tipo_nc_prefix)
+                    todas_dfs.append(df_temp)
+                
+                # Concatenar todos os DataFrames
+                df_final = pd.concat(todas_dfs, ignore_index=True)
                 
                 formato = df_nc.attrs.get('formato_detectado', 'desconhecido')
                 
                 st.success(
                     f"✅ **Processado!**\n\n"
                     f"- NCs: {total_notas_ficheiro}\n"
-                    f"- Linhas: {len(todas_linhas_ficheiro)}\n"
+                    f"- Linhas: {len(df_final)}\n"
                     f"- Formato: {formato}"
                 )
                 
-                nome_base = os.path.splitext(file.name)[0]
-                nome_saida = f"NC_{tipo_nc_prefix}_{nome_base}_importacao.xlsx"
+                # Preview do DataFrame
+                with st.expander("👁️ Preview dos dados"):
+                    st.dataframe(df_final.head(20), use_container_width=True)
                 
-                excel_bytes = escrever_excel_bytes(todas_linhas_ficheiro)
+                # Gerar CSV - IGUAL AO TEU EXEMPLO
+                buffer = BytesIO()
+                df_final.to_csv(buffer, index=False, sep=";", encoding="utf-8-sig")
+                buffer.seek(0)
+                
+                nome_base = os.path.splitext(file.name)[0]
+                nome_saida = f"NC_{tipo_nc_prefix}_{nome_base}_importacao.csv"
                 
                 st.download_button(
                     f"⬇️ Descarregar {nome_saida}",
-                    excel_bytes,
+                    buffer.getvalue(),
                     nome_saida,
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "text/csv",
                     key=f"download_{file.name}"
                 )
                 
-                st.info("💡 **Nota:** Abre o ficheiro Excel, verifica os dados e depois grava como CSV se necessário.")
-                
             except Exception as e:
                 st.error(f"❌ Erro: {e}")
+                st.exception(e)
         
         if todas_empresas_sem_mapa:
             st.divider()
