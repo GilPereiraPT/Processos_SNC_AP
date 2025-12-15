@@ -261,10 +261,12 @@ def format_yyyymmdd(data_str: str) -> str:
     if "-" in s:
         partes = s.split("-")
         if len(partes) == 3:
-            return partes[0] + partes[1] + partes[2]
+            # Assume formato AAAA-MM-DD
+            return partes[0] + partes[1].zfill(2) + partes[2].zfill(2)
     if "/" in s:
         partes = s.split("/")
         if len(partes) == 3:
+            # Assume formato DD/MM/AAAA
             dia, mes, ano = partes
             return ano + mes.zfill(2) + dia.zfill(2)
     return s
@@ -363,22 +365,28 @@ def gerar_linhas_importacao_para_ficheiro(
 def escrever_csv_bytes(linhas: List[List[str]]) -> bytes:
     """
     Escreve CSV em bytes.
-    ⚠️ APENAS 3 colunas usam TAB para preservar zeros: 0730, 011, 022
+    
+    ⚠️ ALTERAÇÃO APLICADA: Os campos 'Classificador funcional ', 'Programa ' 
+    e 'Medida' são escritos *sem* o '\t' para evitar problemas de importação 
+    em sistemas de contabilidade estritos.
     """
-    # Identificar índices das colunas que precisam de TAB
-    indices_com_zeros = set()
-    colunas_com_zeros = {
+    # Identificar índices das colunas que NÃO devem ter formatação extra (sem '\t')
+    indices_sem_tab = set()
+    colunas_sem_tab = {
         "Classificador funcional ",  # 0730
-        "Programa ",                  # 011
-        "Medida"                      # 022
+        "Programa ",                 # 011
+        "Medida"                     # 022
     }
     
     for i, col in enumerate(HEADER):
-        if col in colunas_com_zeros:
-            indices_com_zeros.add(i)
+        if col in colunas_sem_tab:
+            indices_sem_tab.add(i)
     
     # Construir CSV manualmente
     buffer = StringIO()
+    
+    # Escrever 'sep=;' no início para detetar o delimitador
+    buffer.write("sep=;\n") 
     
     # Escrever header
     buffer.write(";".join(HEADER) + "\n")
@@ -387,12 +395,13 @@ def escrever_csv_bytes(linhas: List[List[str]]) -> bytes:
     for linha in linhas:
         campos_formatados = []
         for i, valor in enumerate(linha):
-            if i in indices_com_zeros and valor:
-                # TAB antes do valor força Excel/Calc a tratar como texto
-                campos_formatados.append(f"\t{valor}")
+            valor_str = str(valor) if valor is not None else ""
+            
+            if i in indices_sem_tab:
+                # Campos críticos (0730, 011, 022): Escritos diretamente
+                campos_formatados.append(valor_str)
             else:
                 # Campos normais - adicionar aspas se contiverem ; ou ,
-                valor_str = str(valor) if valor else ""
                 if ";" in valor_str or "," in valor_str:
                     campos_formatados.append(f'"{valor_str}"')
                 else:
