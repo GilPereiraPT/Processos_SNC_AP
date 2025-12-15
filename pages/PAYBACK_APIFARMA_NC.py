@@ -5,9 +5,7 @@ from typing import List, Dict, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
-from openpyxl import Workbook
-from openpyxl.styles import Alignment
-from io import BytesIO
+from io import StringIO, BytesIO
 
 
 # =====================================================
@@ -32,7 +30,7 @@ ENTIDADE_PADRAO = "999"
 # 2. Cabeçalhos EXACTOS do ficheiro de importação
 # =====================================================
 
-HEADER = [
+COLUNAS_FINAIS = [
     "NC",
     "Entidade",
     "Data documento",
@@ -68,6 +66,14 @@ HEADER = [
     "Projeto Documento",
     "Ano Compromisso Assumido",
     "Série Compromisso Assumido",
+]
+
+# Colunas que devem ser TEXTO (preservar zeros à esquerda)
+COLUNAS_TEXTO = [
+    "Classificador funcional ",
+    "Programa ",
+    "Medida",
+    "Classificação Orgânica"
 ]
 
 
@@ -194,8 +200,6 @@ def detectar_formato_ficheiro(df: pd.DataFrame) -> Dict[str, str]:
 
 def ler_notas_credito(file) -> pd.DataFrame:
     """Lê ficheiros de Notas de Crédito."""
-    from io import StringIO
-    
     fname = file.name.lower()
 
     if fname.endswith((".xlsx", ".xls")):
@@ -289,13 +293,16 @@ def apenas_algarismos(texto: str) -> str:
     return re.sub(r"\D", "", str(texto))
 
 
-def gerar_linhas_importacao_para_ficheiro(
+def gerar_dataframe_importacao(
     df_nc: pd.DataFrame,
     entidade: str,
     tipo_nc_prefix: str,
-) -> List[List[str]]:
-    """Gera linhas do CSV de importação."""
-    linhas: List[List[str]] = []
+) -> pd.DataFrame:
+    """
+    Gera DataFrame final para exportação.
+    ⚠️ CRÍTICO: Campos com zeros à esquerda são definidos como STRINGS
+    """
+    linhas_finais = []
 
     tem_ano = "Ano" in df_nc.columns
     tem_tranche = "Tranche" in df_nc.columns
@@ -320,252 +327,219 @@ def gerar_linhas_importacao_para_ficheiro(
         observacoes_base = " ".join(obs_parts).strip()
         observacoes_doc = f"{tipo_nc_prefix} {observacoes_base}".strip() if observacoes_base else tipo_nc_prefix
 
-        linha: Dict[str, str] = {col: "" for col in HEADER}
+        linha = {
+            "NC": "NC",
+            "Entidade": entidade,
+            "Data documento": data_doc,
+            "Data Contabilistica": data_contab,
+            "Nº NC": numero_nc,
+            "Série": "",
+            "Subtipo": "",
+            "classificador economico ": "02.01.09.C0.00",
+            "Classificador funcional ": "0730",  # TEXTO - preservar zero
+            "Fonte de financiamento ": "511",
+            "Programa ": "011",  # TEXTO - preservar zero
+            "Medida": "022",  # TEXTO - preservar zero
+            "Projeto": "",
+            "Regionalização": "",
+            "Atividade": "130",
+            "Natureza": "",
+            "Departamento/Atividade": "1",
+            "Conta Debito": "221111",
+            "Conta a Credito ": "31826111",
+            "Valor Lançamento": format_valor_port(valor),
+            "Centro de custo": "",
+            "Observações Documento ": observacoes_doc,
+            "Observaçoes lançamento": "",
+            "Classificação Orgânica": "101904000",  # TEXTO - preservar zero
+            "Litigio": "",
+            "Data Litigio": "",
+            "Data Fim Litigio": "",
+            "Plano Pagamento": "",
+            "Data Plano Pagamento": "",
+            "Data Fim Plano Pag": "",
+            "Pag Factoring": "",
+            "Nº Compromisso Assumido": "",
+            "Projeto Documento": "",
+            "Ano Compromisso Assumido": "",
+            "Série Compromisso Assumido": "",
+        }
+        
+        linhas_finais.append(linha)
 
-        linha["NC"] = "NC"
-        linha["Entidade"] = entidade
-        linha["Data documento"] = data_doc
-        linha["Data Contabilistica"] = data_contab
-        linha["Nº NC"] = numero_nc
-        linha["Série"] = ""
-        linha["Subtipo"] = ""
-        linha["classificador economico "] = "02.01.09.C0.00"
-        linha["Classificador funcional "] = "0730"
-        linha["Fonte de financiamento "] = "511"
-        linha["Programa "] = "011"
-        linha["Medida"] = "022"
-        linha["Projeto"] = ""
-        linha["Regionalização"] = ""
-        linha["Atividade"] = "130"
-        linha["Natureza"] = ""
-        linha["Departamento/Atividade"] = "1"
-        linha["Conta Debito"] = "221111"
-        linha["Conta a Credito "] = "31826111"
-        linha["Valor Lançamento"] = format_valor_port(valor)
-        linha["Centro de custo"] = ""
-        linha["Observações Documento "] = observacoes_doc
-        linha["Observaçoes lançamento"] = ""
-        linha["Classificação Orgânica"] = "101904000"
-        linha["Litigio"] = ""
-        linha["Data Litigio"] = ""
-        linha["Data Fim Litigio"] = ""
-        linha["Plano Pagamento"] = ""
-        linha["Data Plano Pagamento"] = ""
-        linha["Data Fim Plano Pag"] = ""
-        linha["Pag Factoring"] = ""
-        linha["Nº Compromisso Assumido"] = ""
-        linha["Projeto Documento"] = ""
-        linha["Ano Compromisso Assumido"] = ""
-        linha["Série Compromisso Assumido"] = ""
-
-        linhas.append([linha[col] for col in HEADER])
-
-    return linhas
-
-
-def escrever_excel_bytes(linhas: List[List[str]]) -> bytes:
-    """
-    Escreve ficheiro Excel com colunas formatadas como texto.
-    ⚠️ Colunas 0730, 011, 022 são formatadas como TEXTO para preservar zeros.
-    """
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Importação"
+    # Criar DataFrame
+    df_final = pd.DataFrame(linhas_finais)
     
-    # Identificar índices das colunas que devem ser texto
-    indices_texto = set()
-    colunas_texto = {
-        "Classificador funcional ",  # 0730
-        "Programa ",                  # 011
-        "Medida"                      # 022
-    }
+    # ⚠️ CRÍTICO: Forçar colunas específicas como STRING (dtype=object)
+    # Isso garante que 0730, 011, 022 sejam mantidos como texto
+    for col in COLUNAS_TEXTO:
+        if col in df_final.columns:
+            df_final[col] = df_final[col].astype(str)
     
-    for i, col in enumerate(HEADER):
-        if col in colunas_texto:
-            indices_texto.add(i)
+    # Garantir a ordem correta das colunas
+    df_final = df_final[COLUNAS_FINAIS]
     
-    # Escrever header
-    ws.append(HEADER)
-    
-    # Escrever dados
-    for linha in linhas:
-        row_data = []
-        for i, valor in enumerate(linha):
-            if i in indices_texto and valor:
-                # Forçar como texto adicionando apóstrofo invisível
-                row_data.append(f"'{valor}")
-            else:
-                row_data.append(valor)
-        ws.append(row_data)
-    
-    # Formatar colunas como texto
-    for col_idx in indices_texto:
-        col_letter = chr(65 + col_idx)  # A=65, B=66, etc
-        for row in range(2, ws.max_row + 1):
-            cell = ws[f"{col_letter}{row}"]
-            cell.number_format = '@'  # Formato texto
-    
-    # Salvar em memória
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    return buffer.read()
+    return df_final
 
 
 # =====================================================
 # 4. Interface Streamlit
 # =====================================================
 
-st.set_page_config(page_title="NC APIFARMA / PAYBACK → Importação", layout="wide")
-
-st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK")
+st.set_page_config(page_title="Gerador NC - Importação", layout="wide")
+st.title("📄 Gerador de Ficheiros de Importação - Notas de Crédito")
 
 st.markdown("""
-Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística.
-
-**✨ Gera ficheiros Excel (.xlsx) com formatação correta de zeros à esquerda.**
+### 📋 Instruções
+1. **Carrega o ficheiro de mapeamento** (Empresa → Entidade) no sidebar
+2. **Carrega o ficheiro de Notas de Crédito** (CSV ou Excel)
+3. **Revê as empresas sem mapeamento** (se existirem)
+4. **Download dos ficheiros CSV** separados por entidade
 """)
 
-try:
-    mapping_df = load_empresa_mapping(MAPPING_CSV_PATH)
-    st.success(f"✅ Mapa carregado: {len(mapping_df)} empresas")
-    with st.expander("Ver mapeamento"):
-        st.dataframe(mapping_df, use_container_width=True)
-except Exception as e:
-    st.error(f"❌ Erro no mapeamento: {e}")
-    st.stop()
+# Sidebar - Ficheiro de mapeamento
+st.sidebar.header("1️⃣ Ficheiro de Mapeamento")
+st.sidebar.markdown("Formato esperado: `Empresa;Entidade`")
 
-st.divider()
+mapping_file = st.sidebar.file_uploader(
+    "Carrega o ficheiro de mapeamento (CSV)",
+    type=["csv"],
+    key="mapping"
+)
 
-st.header("1️⃣ Tipo de Nota de Crédito")
-st.info("💡 Podes carregar ficheiros APIFARMA e PAYBACK ao mesmo tempo.")
+mapping_df = None
+if mapping_file:
+    try:
+        mapping_df = load_empresa_mapping(mapping_file)
+        st.sidebar.success(f"✅ {len(mapping_df)} mapeamentos carregados")
+        with st.sidebar.expander("Ver mapeamentos"):
+            st.dataframe(mapping_df, use_container_width=True)
+    except Exception as e:
+        st.sidebar.error(f"❌ Erro ao carregar mapeamento: {e}")
 
-col1, col2 = st.columns(2)
-with col1:
-    st.subheader("APIFARMA")
-    uploaded_apifarma = st.file_uploader(
-        "Ficheiros APIFARMA",
-        type=["xlsx", "xls", "csv", "txt"],
-        accept_multiple_files=True,
-        key="apifarma_uploader"
-    )
+# Sidebar - Configurações
+st.sidebar.header("2️⃣ Configurações")
+tipo_nc_prefix = st.sidebar.text_input(
+    "Prefixo das Observações",
+    value="Nota de Crédito",
+    help="Texto que aparece no início das observações do documento"
+)
 
-with col2:
-    st.subheader("PAYBACK")
-    uploaded_payback = st.file_uploader(
-        "Ficheiros PAYBACK",
-        type=["xlsx", "xls", "csv", "txt"],
-        accept_multiple_files=True,
-        key="payback_uploader"
-    )
+# Main - Upload de ficheiro NC
+st.header("📤 Upload do Ficheiro de Notas de Crédito")
 
-ficheiros_para_processar = []
-if uploaded_apifarma:
-    for f in uploaded_apifarma:
-        ficheiros_para_processar.append((f, "APIFARMA"))
-if uploaded_payback:
-    for f in uploaded_payback:
-        ficheiros_para_processar.append((f, "PAYBACK"))
+nc_file = st.file_uploader(
+    "Carrega o ficheiro com as Notas de Crédito (CSV ou Excel)",
+    type=["csv", "txt", "xlsx", "xls"],
+    key="nc"
+)
 
-if ficheiros_para_processar:
-    st.header("2️⃣ Pré-visualização")
-    preview_rows = []
-    for file, tipo in ficheiros_para_processar:
-        try:
-            df_nc = ler_notas_credito(file)
-            entidades_dict = separar_por_entidade(df_nc, mapping_df)
-            empresas_sem_mapa = entidades_dict.pop('_empresas_sem_mapa', [])
-            
-            entidades_str = ", ".join(sorted(entidades_dict.keys()))
+if nc_file and mapping_df is not None:
+    try:
+        with st.spinner("A processar ficheiro..."):
+            df_nc = ler_notas_credito(nc_file)
+        
+        st.success(f"✅ {len(df_nc)} Notas de Crédito carregadas")
+        
+        # Mostrar informação do ficheiro
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total de registos", len(df_nc))
+        with col2:
+            total_valor = df_nc["ValorNum"].sum()
+            st.metric("Valor total", f"{total_valor:,.2f} €")
+        with col3:
             formato = df_nc.attrs.get('formato_detectado', 'N/A')
-            
-            status = "✅ OK"
-            if empresas_sem_mapa:
-                status += f" (⚠️ {len(empresas_sem_mapa)} → 999)"
-            
-            preview_rows.append({
-                "Ficheiro": file.name,
-                "Tipo": tipo,
-                "Entidades": entidades_str,
-                "Formato": formato,
-                "NCs": len(df_nc),
-                "Estado": status
-            })
-        except Exception as e:
-            preview_rows.append({
-                "Ficheiro": file.name,
-                "Tipo": tipo,
-                "Entidades": "",
-                "Formato": "",
-                "NCs": 0,
-                "Estado": f"❌ {str(e)[:50]}..."
-            })
-
-    st.dataframe(pd.DataFrame(preview_rows), use_container_width=True)
-
-process_button = st.button("▶️ Converter ficheiros", type="primary")
-
-if process_button:
-    if not ficheiros_para_processar:
-        st.error("❌ Carrega pelo menos um ficheiro.")
-    else:
-        st.header("3️⃣ Ficheiros gerados")
+            st.metric("Formato detectado", formato)
         
-        todas_empresas_sem_mapa = set()
+        # Preview dos dados
+        with st.expander("👁️ Preview dos dados carregados"):
+            st.dataframe(df_nc.head(20), use_container_width=True)
         
-        for file, tipo_nc_prefix in ficheiros_para_processar:
-            st.subheader(f"📄 {file.name} ({tipo_nc_prefix})")
-            
-            try:
-                df_nc = ler_notas_credito(file)
-                entidades_dict = separar_por_entidade(df_nc, mapping_df)
-                empresas_sem_mapa = entidades_dict.pop('_empresas_sem_mapa', [])
+        # Separar por entidade
+        st.header("🗂️ Separação por Entidade")
+        
+        resultados = separar_por_entidade(df_nc, mapping_df)
+        empresas_sem_mapa = resultados.pop('_empresas_sem_mapa', [])
+        
+        # Avisos de empresas sem mapeamento
+        if empresas_sem_mapa:
+            st.warning(f"⚠️ {len(empresas_sem_mapa)} empresa(s) sem mapeamento (usarão entidade padrão '{ENTIDADE_PADRAO}'):")
+            for emp in sorted(set(empresas_sem_mapa)):
+                st.text(f"  • {emp}")
+        
+        # Mostrar resumo por entidade
+        st.subheader("📊 Resumo por Entidade")
+        
+        resumo_data = []
+        for entidade, (df_ent, empresas) in sorted(resultados.items()):
+            resumo_data.append({
+                "Entidade": entidade,
+                "Nº Registos": len(df_ent),
+                "Valor Total": f"{df_ent['ValorNum'].sum():,.2f} €",
+                "Nº Empresas": len(empresas)
+            })
+        
+        st.dataframe(pd.DataFrame(resumo_data), use_container_width=True)
+        
+        # Gerar e disponibilizar downloads
+        st.header("⬇️ Download dos Ficheiros CSV")
+        
+        for entidade, (df_ent, empresas) in sorted(resultados.items()):
+            with st.expander(f"📁 Entidade {entidade} ({len(df_ent)} registos)"):
+                st.markdown(f"**Empresas incluídas:** {', '.join(empresas)}")
                 
-                if empresas_sem_mapa:
-                    todas_empresas_sem_mapa.update(empresas_sem_mapa)
-                    st.warning(
-                        f"⚠️ {len(empresas_sem_mapa)} empresa(s) → código {ENTIDADE_PADRAO}: "
-                        f"{', '.join(empresas_sem_mapa)}"
-                    )
-                
-                todas_linhas_ficheiro = []
-                total_notas_ficheiro = 0
-                
-                for entidade, (df_ent, empresas) in entidades_dict.items():
-                    total_notas_ficheiro += len(df_ent)
-                    linhas = gerar_linhas_importacao_para_ficheiro(df_ent, entidade, tipo_nc_prefix)
-                    todas_linhas_ficheiro.extend(linhas)
-                
-                formato = df_nc.attrs.get('formato_detectado', 'desconhecido')
-                
-                st.success(
-                    f"✅ **Processado!**\n\n"
-                    f"- NCs: {total_notas_ficheiro}\n"
-                    f"- Linhas: {len(todas_linhas_ficheiro)}\n"
-                    f"- Formato: {formato}"
+                # Gerar DataFrame final
+                df_final = gerar_dataframe_importacao(
+                    df_ent,
+                    entidade,
+                    tipo_nc_prefix
                 )
                 
-                nome_base = os.path.splitext(file.name)[0]
-                nome_saida = f"NC_{tipo_nc_prefix}_{nome_base}_importacao.xlsx"
+                # Preview
+                st.dataframe(df_final.head(10), use_container_width=True)
                 
-                excel_bytes = escrever_excel_bytes(todas_linhas_ficheiro)
+                # Gerar CSV com to_csv do pandas
+                csv_string = df_final.to_csv(index=False, sep=";", encoding="utf-8-sig")
                 
+                # Botão de download CSV
+                filename_csv = f"NC_Entidade_{entidade}_{today_yyyymmdd()}.csv"
                 st.download_button(
-                    f"⬇️ Descarregar {nome_saida}",
-                    excel_bytes,
-                    nome_saida,
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"download_{file.name}"
+                    label=f"📥 Download CSV - Entidade {entidade}",
+                    data=csv_string.encode('utf-8-sig'),
+                    file_name=filename_csv,
+                    mime="text/csv",
+                    key=f"download_csv_{entidade}"
                 )
-                
-                st.info("💡 **Nota:** Abre o ficheiro Excel, verifica os dados e depois grava como CSV se necessário.")
-                
-            except Exception as e:
-                st.error(f"❌ Erro: {e}")
         
-        if todas_empresas_sem_mapa:
-            st.divider()
-            st.warning(
-                f"💡 **{len(todas_empresas_sem_mapa)} empresa(s) sem mapeamento.**\n\n"
-                f"Empresas: {', '.join(sorted(todas_empresas_sem_mapa))}"
+        # Download completo (todas as entidades num só ficheiro CSV)
+        st.header("📦 Download Completo CSV")
+        
+        todas_linhas = []
+        for entidade, (df_ent, _) in sorted(resultados.items()):
+            df_temp = gerar_dataframe_importacao(
+                df_ent,
+                entidade,
+                tipo_nc_prefix
             )
+            todas_linhas.append(df_temp)
+        
+        df_completo = pd.concat(todas_linhas, ignore_index=True)
+        
+        # CSV completo
+        csv_completo_string = df_completo.to_csv(index=False, sep=";", encoding="utf-8-sig")
+        
+        st.download_button(
+            label="📥 Download CSV COMPLETO (todas as entidades)",
+            data=csv_completo_string.encode('utf-8-sig'),
+            file_name=f"NC_COMPLETO_{today_yyyymmdd()}.csv",
+            mime="text/csv",
+            key="download_csv_completo"
+        )
+        
+    except Exception as e:
+        st.error(f"❌ Erro ao processar ficheiro: {e}")
+        st.exception(e)
+
+elif nc_file and mapping_df is None:
+    st.warning("⚠️ Por favor, carrega primeiro o ficheiro de mapeamento no sidebar.")
