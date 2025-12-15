@@ -1,12 +1,13 @@
-import csv
 import os
 import re
 from datetime import date
-from io import StringIO, BytesIO
 from typing import List, Dict, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
+from openpyxl import Workbook
+from openpyxl.styles import Alignment
+from io import BytesIO
 
 
 # =====================================================
@@ -193,6 +194,8 @@ def detectar_formato_ficheiro(df: pd.DataFrame) -> Dict[str, str]:
 
 def ler_notas_credito(file) -> pd.DataFrame:
     """Lê ficheiros de Notas de Crédito."""
+    from io import StringIO
+    
     fname = file.name.lower()
 
     if fname.endswith((".xlsx", ".xls")):
@@ -261,12 +264,10 @@ def format_yyyymmdd(data_str: str) -> str:
     if "-" in s:
         partes = s.split("-")
         if len(partes) == 3:
-            # Assume formato AAAA-MM-DD
-            return partes[0] + partes[1].zfill(2) + partes[2].zfill(2)
+            return partes[0] + partes[1] + partes[2]
     if "/" in s:
         partes = s.split("/")
         if len(partes) == 3:
-            # Assume formato DD/MM/AAAA
             dia, mes, ano = partes
             return ano + mes.zfill(2) + dia.zfill(2)
     return s
@@ -362,56 +363,53 @@ def gerar_linhas_importacao_para_ficheiro(
     return linhas
 
 
-def escrever_csv_bytes(linhas: List[List[str]]) -> bytes:
+def escrever_excel_bytes(linhas: List[List[str]]) -> bytes:
     """
-    Escreve CSV em bytes.
+    Escreve ficheiro Excel com colunas formatadas como texto.
+    ⚠️ Colunas 0730, 011, 022 são formatadas como TEXTO para preservar zeros.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Importação"
     
-    ⚠️ ALTERAÇÃO APLICADA: Os campos 'Classificador funcional ', 'Programa ' 
-    e 'Medida' são escritos *sem* o '\t' para evitar problemas de importação 
-    em sistemas de contabilidade estritos.
-    """
-    # Identificar índices das colunas que NÃO devem ter formatação extra (sem '\t')
-    indices_sem_tab = set()
-    colunas_sem_tab = {
+    # Identificar índices das colunas que devem ser texto
+    indices_texto = set()
+    colunas_texto = {
         "Classificador funcional ",  # 0730
-        "Programa ",                 # 011
-        "Medida"                     # 022
+        "Programa ",                  # 011
+        "Medida"                      # 022
     }
     
     for i, col in enumerate(HEADER):
-        if col in colunas_sem_tab:
-            indices_sem_tab.add(i)
-    
-    # Construir CSV manualmente
-    buffer = StringIO()
-    
-    # Escrever 'sep=;' no início para detetar o delimitador
-    buffer.write("sep=;\n") 
+        if col in colunas_texto:
+            indices_texto.add(i)
     
     # Escrever header
-    buffer.write(";".join(HEADER) + "\n")
+    ws.append(HEADER)
     
     # Escrever dados
     for linha in linhas:
-        campos_formatados = []
+        row_data = []
         for i, valor in enumerate(linha):
-            valor_str = str(valor) if valor is not None else ""
-            
-            if i in indices_sem_tab:
-                # Campos críticos (0730, 011, 022): Escritos diretamente
-                campos_formatados.append(valor_str)
+            if i in indices_texto and valor:
+                # Forçar como texto adicionando apóstrofo invisível
+                row_data.append(f"'{valor}")
             else:
-                # Campos normais - adicionar aspas se contiverem ; ou ,
-                if ";" in valor_str or "," in valor_str:
-                    campos_formatados.append(f'"{valor_str}"')
-                else:
-                    campos_formatados.append(valor_str)
-        
-        buffer.write(";".join(campos_formatados) + "\n")
+                row_data.append(valor)
+        ws.append(row_data)
     
-    # Converter para bytes em latin-1
-    csv_content = buffer.getvalue()
-    return csv_content.encode("latin-1")
+    # Formatar colunas como texto
+    for col_idx in indices_texto:
+        col_letter = chr(65 + col_idx)  # A=65, B=66, etc
+        for row in range(2, ws.max_row + 1):
+            cell = ws[f"{col_letter}{row}"]
+            cell.number_format = '@'  # Formato texto
+    
+    # Salvar em memória
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.read()
 
 
 # =====================================================
@@ -425,7 +423,7 @@ st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK")
 st.markdown("""
 Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística.
 
-**✨ Cada ficheiro carregado gera um ficheiro de saída separado.**
+**✨ Gera ficheiros Excel (.xlsx) com formatação correta de zeros à esquerda.**
 """)
 
 try:
@@ -548,17 +546,19 @@ if process_button:
                 )
                 
                 nome_base = os.path.splitext(file.name)[0]
-                nome_saida = f"NC_{tipo_nc_prefix}_{nome_base}_importacao.csv"
+                nome_saida = f"NC_{tipo_nc_prefix}_{nome_base}_importacao.xlsx"
                 
-                csv_bytes = escrever_csv_bytes(todas_linhas_ficheiro)
+                excel_bytes = escrever_excel_bytes(todas_linhas_ficheiro)
                 
                 st.download_button(
                     f"⬇️ Descarregar {nome_saida}",
-                    csv_bytes,
+                    excel_bytes,
                     nome_saida,
-                    "text/csv",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key=f"download_{file.name}"
                 )
+                
+                st.info("💡 **Nota:** Abre o ficheiro Excel, verifica os dados e depois grava como CSV se necessário.")
                 
             except Exception as e:
                 st.error(f"❌ Erro: {e}")
