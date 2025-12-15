@@ -406,17 +406,41 @@ def gerar_linhas_importacao_para_ficheiro(
         linha["Data documento"] = data_doc
         linha["Data Contabilistica"] = data_contab
         linha["Nº NC"] = numero_nc
+        linha["Série"] = ""
+        linha["Subtipo"] = ""
+        
+        # Valores com zeros à esquerda garantidos
         linha["classificador economico "] = "02.01.09.C0.00"
         linha["Classificador funcional "] = "0730"
         linha["Fonte de financiamento "] = "511"
         linha["Programa "] = "011"
         linha["Medida"] = "022"
+        linha["Projeto"] = ""
+        linha["Regionalização"] = ""
         linha["Atividade"] = "130"
+        linha["Natureza"] = ""
+        
+        linha["Departamento/Atividade"] = ""
         linha["Conta Debito"] = "21111"
         linha["Conta a Credito "] = "3186111"
         linha["Valor Lançamento"] = format_valor_port(valor)
+        linha["Centro de custo"] = ""
         linha["Observações Documento "] = observacoes_doc
+        linha["Observaçoes lançamento"] = ""
         linha["Classificação Orgânica"] = "101904000"
+        
+        linha["Litigio"] = ""
+        linha["Data Litigio"] = ""
+        linha["Data Fim Litigio"] = ""
+        linha["Plano Pagamento"] = ""
+        linha["Data Plano Pagamento"] = ""
+        linha["Data Fim Plano Pag"] = ""
+        linha["Pag Factoring"] = ""
+        
+        linha["Nº Compromisso Assumido"] = ""
+        linha["Projeto Documento"] = ""
+        linha["Ano Compromisso Assumido"] = ""
+        linha["Série Compromisso Assumido"] = ""
 
         linhas.append([linha[col] for col in HEADER])
 
