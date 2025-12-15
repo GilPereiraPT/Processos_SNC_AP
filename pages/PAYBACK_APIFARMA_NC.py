@@ -3,7 +3,7 @@ import os
 import re
 from datetime import date
 from io import StringIO, BytesIO
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -26,6 +26,7 @@ def get_mapping_path(default_path: str) -> str:
     return default_path
 
 MAPPING_CSV_PATH = get_mapping_path("mapeamento_entidades_nc.csv")
+ENTIDADE_PADRAO = "999"  # Código padrão para empresas sem mapeamento
 
 
 # =====================================================
@@ -106,20 +107,10 @@ def limpar_nome_coluna(col: str) -> str:
     return col
 
 
-def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) -> str:
+def obter_mapa_empresas(mapping_df: pd.DataFrame) -> Dict[str, str]:
     """
-    Determina o código de Entidade a partir das Empresas.
+    Cria dicionário de mapeamento Empresa → Entidade.
     """
-    empresas_file = (
-        df_nc["Empresa"]
-        .dropna()
-        .map(normalizar_texto)
-        .unique()
-    )
-
-    if len(empresas_file) == 0:
-        raise ValueError("Nenhuma 'Empresa' válida encontrada.")
-
     map_dict: Dict[str, str] = {}
     for _, row in mapping_df.iterrows():
         emp = normalizar_texto(row["Empresa"])
@@ -127,29 +118,52 @@ def get_entidade_from_empresas(df_nc: pd.DataFrame, mapping_df: pd.DataFrame) ->
         if not emp or not ent or ent.lower() in ("nan", "none"):
             continue
         map_dict[emp] = ent
+    return map_dict
 
-    entidades_encontradas = set()
+
+def separar_por_entidade(
+    df_nc: pd.DataFrame, 
+    mapping_df: pd.DataFrame
+) -> Dict[str, Tuple[pd.DataFrame, List[str]]]:
+    """
+    Separa o DataFrame por entidade.
+    
+    Retorna: 
+        Dict[entidade -> (dataframe_filtrado, lista_empresas_dessa_entidade)]
+        
+    Se uma empresa não tiver mapeamento, usa ENTIDADE_PADRAO (999).
+    """
+    map_dict = obter_mapa_empresas(mapping_df)
+    
+    # Adicionar coluna de entidade a cada linha
+    def get_entidade_para_linha(empresa):
+        emp_norm = normalizar_texto(empresa)
+        return map_dict.get(emp_norm, ENTIDADE_PADRAO)
+    
+    df_nc = df_nc.copy()
+    df_nc['_entidade_calculada'] = df_nc['Empresa'].apply(get_entidade_para_linha)
+    
+    # Agrupar por entidade
+    resultado = {}
     empresas_sem_mapa = []
-
-    for emp in empresas_file:
-        if emp in map_dict:
-            entidades_encontradas.add(map_dict[emp])
-        else:
-            empresas_sem_mapa.append(emp)
-
-    if empresas_sem_mapa:
-        raise ValueError(
-            "As seguintes empresas não têm mapeamento: "
-            + "; ".join(empresas_sem_mapa)
+    
+    for entidade in df_nc['_entidade_calculada'].unique():
+        df_ent = df_nc[df_nc['_entidade_calculada'] == entidade].copy()
+        empresas_desta_ent = sorted(
+            df_ent['Empresa'].dropna().map(normalizar_texto).unique()
         )
-
-    if len(entidades_encontradas) > 1:
-        raise ValueError(
-            "Várias entidades diferentes no mesmo ficheiro: "
-            + "; ".join(sorted(entidades_encontradas))
-        )
-
-    return entidades_encontradas.pop()
+        
+        # Identificar empresas sem mapeamento
+        for emp in empresas_desta_ent:
+            if emp not in map_dict:
+                empresas_sem_mapa.append(emp)
+        
+        resultado[entidade] = (df_ent.drop(columns=['_entidade_calculada']), empresas_desta_ent)
+    
+    # Guardar info sobre empresas sem mapeamento
+    resultado['_empresas_sem_mapa'] = empresas_sem_mapa
+    
+    return resultado
 
 
 def detectar_formato_ficheiro(df: pd.DataFrame) -> Dict[str, str]:
@@ -205,7 +219,6 @@ def detectar_formato_ficheiro(df: pd.DataFrame) -> Dict[str, str]:
 def ler_notas_credito(file) -> pd.DataFrame:
     """
     Lê ficheiros de Notas de Crédito (Excel ou CSV/TXT).
-    ⚠️ CORRIGIDO: UTF-16 em primeiro lugar!
     """
     fname = file.name.lower()
 
@@ -221,9 +234,9 @@ def ler_notas_credito(file) -> pd.DataFrame:
         text: Optional[str] = None
         encoding_usado: Optional[str] = None
 
-        # ⚠️ IMPORTANTE: UTF-16 PRIMEIRO!
+        # UTF-16 em primeiro lugar!
         encodings_para_testar = [
-            "utf-16",          # ← ADICIONADO EM PRIMEIRO!
+            "utf-16",
             "utf-16-le",
             "utf-16-be",
             "utf-8",
@@ -434,7 +447,7 @@ st.title("Conversor de Notas de Crédito APIFARMA / PAYBACK")
 st.markdown("""
 Converte ficheiros de **Notas de Crédito** (Excel ou CSV) para importação contabilística.
 
-**✨ Suporta automaticamente diferentes formatos** (APIFARMA e PAYBACK).
+**✨ Cada ficheiro carregado gera um ficheiro de saída separado.**
 """)
 
 # Carregar mapeamento
@@ -451,87 +464,141 @@ st.divider()
 
 # Tipo NC
 st.header("1️⃣ Tipo de Nota de Crédito")
-tipo_nc = st.radio("Seleciona:", ["APIFARMA", "PAYBACK"], horizontal=True)
-tipo_nc_prefix = tipo_nc
+st.info("💡 **Dica:** Podes carregar ficheiros APIFARMA e PAYBACK ao mesmo tempo - seleciona o tipo correspondente a cada grupo.")
 
-st.header("2️⃣ Carregar ficheiros")
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("APIFARMA")
+    uploaded_apifarma = st.file_uploader(
+        "Ficheiros APIFARMA",
+        type=["xlsx", "xls", "csv", "txt"],
+        accept_multiple_files=True,
+        key="apifarma_uploader"
+    )
 
-uploaded_files = st.file_uploader(
-    "Ficheiros de NC (Excel/CSV/TXT)",
-    type=["xlsx", "xls", "csv", "txt"],
-    accept_multiple_files=True,
-)
+with col2:
+    st.subheader("PAYBACK")
+    uploaded_payback = st.file_uploader(
+        "Ficheiros PAYBACK",
+        type=["xlsx", "xls", "csv", "txt"],
+        accept_multiple_files=True,
+        key="payback_uploader"
+    )
+
+# Juntar todos os ficheiros com o tipo correto
+ficheiros_para_processar = []
+if uploaded_apifarma:
+    for f in uploaded_apifarma:
+        ficheiros_para_processar.append((f, "APIFARMA"))
+if uploaded_payback:
+    for f in uploaded_payback:
+        ficheiros_para_processar.append((f, "PAYBACK"))
 
 # Pré-visualização
-if uploaded_files:
+if ficheiros_para_processar:
+    st.header("2️⃣ Pré-visualização")
     preview_rows = []
-    for file in uploaded_files:
+    for file, tipo in ficheiros_para_processar:
         try:
             df_nc = ler_notas_credito(file)
-            entidade = get_entidade_from_empresas(df_nc, mapping_df)
-            empresas = ", ".join(sorted(df_nc["Empresa"].dropna().map(normalizar_texto).unique()))
+            entidades_dict = separar_por_entidade(df_nc, mapping_df)
+            empresas_sem_mapa = entidades_dict.pop('_empresas_sem_mapa', [])
+            
+            entidades_str = ", ".join(sorted(entidades_dict.keys()))
             formato = df_nc.attrs.get('formato_detectado', 'N/A')
+            
+            status = "✅ OK"
+            if empresas_sem_mapa:
+                status += f" (⚠️ {len(empresas_sem_mapa)} → 999)"
+            
             preview_rows.append({
                 "Ficheiro": file.name,
-                "Empresas": empresas,
-                "Entidade": entidade,
+                "Tipo": tipo,
+                "Entidades": entidades_str,
                 "Formato": formato,
-                "Estado": "✅ OK"
+                "NCs": len(df_nc),
+                "Estado": status
             })
         except Exception as e:
             preview_rows.append({
                 "Ficheiro": file.name,
-                "Empresas": "",
-                "Entidade": "",
+                "Tipo": tipo,
+                "Entidades": "",
                 "Formato": "",
-                "Estado": f"❌ {str(e)[:60]}..."
+                "NCs": 0,
+                "Estado": f"❌ {str(e)[:50]}..."
             })
 
-    st.subheader("Pré-visualização")
     st.dataframe(pd.DataFrame(preview_rows), use_container_width=True)
 
-process_button = st.button("▶️ Converter", type="primary")
+process_button = st.button("▶️ Converter ficheiros", type="primary")
 
 if process_button:
-    if not uploaded_files:
-        st.error("❌ Carrega ficheiros primeiro.")
+    if not ficheiros_para_processar:
+        st.error("❌ Carrega pelo menos um ficheiro.")
     else:
-        todas_linhas = []
-        erros = []
-        total_notas = 0
-        formatos = set()
-
-        for file in uploaded_files:
+        st.header("3️⃣ Ficheiros gerados")
+        
+        avisos_globais = []
+        todas_empresas_sem_mapa = set()
+        
+        for file, tipo_nc_prefix in ficheiros_para_processar:
+            st.subheader(f"📄 {file.name} ({tipo_nc_prefix})")
+            
             try:
                 df_nc = ler_notas_credito(file)
-                entidade = get_entidade_from_empresas(df_nc, mapping_df)
-                formatos.add(df_nc.attrs.get('formato_detectado', 'N/A'))
-                total_notas += len(df_nc)
-                linhas = gerar_linhas_importacao_para_ficheiro(df_nc, entidade, tipo_nc_prefix)
-                todas_linhas.extend(linhas)
+                
+                # Separar por entidade
+                entidades_dict = separar_por_entidade(df_nc, mapping_df)
+                empresas_sem_mapa = entidades_dict.pop('_empresas_sem_mapa', [])
+                
+                if empresas_sem_mapa:
+                    todas_empresas_sem_mapa.update(empresas_sem_mapa)
+                    st.warning(
+                        f"⚠️ {len(empresas_sem_mapa)} empresa(s) sem mapeamento (usarão código {ENTIDADE_PADRAO}): "
+                        f"{', '.join(empresas_sem_mapa)}"
+                    )
+                
+                # Gerar linhas para este ficheiro
+                todas_linhas_ficheiro = []
+                total_notas_ficheiro = 0
+                
+                for entidade, (df_ent, empresas) in entidades_dict.items():
+                    total_notas_ficheiro += len(df_ent)
+                    linhas = gerar_linhas_importacao_para_ficheiro(df_ent, entidade, tipo_nc_prefix)
+                    todas_linhas_ficheiro.extend(linhas)
+                
+                formato = df_nc.attrs.get('formato_detectado', 'desconhecido')
+                
+                st.success(
+                    f"✅ **Processado com sucesso!**\n\n"
+                    f"- NCs: {total_notas_ficheiro}\n"
+                    f"- Linhas: {len(todas_linhas_ficheiro)}\n"
+                    f"- Formato: {formato}"
+                )
+                
+                # Gerar nome do ficheiro de saída
+                nome_base = os.path.splitext(file.name)[0]
+                nome_saida = f"NC_{tipo_nc_prefix}_{nome_base}_importacao.csv"
+                
+                csv_bytes = escrever_csv_bytes(todas_linhas_ficheiro)
+                
+                st.download_button(
+                    f"⬇️ Descarregar {nome_saida}",
+                    csv_bytes,
+                    nome_saida,
+                    "text/csv",
+                    key=f"download_{file.name}"
+                )
+                
             except Exception as e:
-                erros.append(f"**{file.name}**: {e}")
-
-        if erros:
-            st.error("⚠️ Problemas:")
-            for e in erros:
-                st.markdown(f"- {e}")
-
-        if todas_linhas:
-            st.success(
-                f"✅ **Sucesso!**\n\n"
-                f"- NCs: {total_notas}\n"
-                f"- Linhas: {len(todas_linhas)}\n"
-                f"- Tipo: {tipo_nc_prefix}\n"
-                f"- Formatos: {', '.join(sorted(formatos))}"
+                st.error(f"❌ Erro: {e}")
+        
+        # Avisos finais
+        if todas_empresas_sem_mapa:
+            st.divider()
+            st.warning(
+                f"💡 **Total de {len(todas_empresas_sem_mapa)} empresa(s) sem mapeamento.**\n\n"
+                f"Atualiza o ficheiro `{MAPPING_CSV_PATH}` e volta a processar os ficheiros.\n\n"
+                f"Empresas: {', '.join(sorted(todas_empresas_sem_mapa))}"
             )
-
-            csv_bytes = escrever_csv_bytes(todas_linhas)
-            st.download_button(
-                "⬇️ Descarregar ficheiro",
-                csv_bytes,
-                f"NC_{tipo_nc_prefix}_importacao.csv",
-                "text/csv"
-            )
-        else:
-            st.warning("⚠️ Nenhuma linha gerada.")
