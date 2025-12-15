@@ -5,7 +5,7 @@ from typing import List, Dict, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
-from io import StringIO, BytesIO
+from io import StringIO
 
 
 # =====================================================
@@ -30,7 +30,7 @@ ENTIDADE_PADRAO = "999"
 # 2. Cabeçalhos EXACTOS do ficheiro de importação
 # =====================================================
 
-COLUNAS_FINAIS = [
+HEADER = [
     "NC",
     "Entidade",
     "Data documento",
@@ -285,16 +285,13 @@ def apenas_algarismos(texto: str) -> str:
     return re.sub(r"\D", "", str(texto))
 
 
-def gerar_dataframe_importacao(
+def gerar_linhas_importacao_para_ficheiro(
     df_nc: pd.DataFrame,
     entidade: str,
     tipo_nc_prefix: str,
-) -> pd.DataFrame:
-    """
-    Gera DataFrame final para exportação.
-    IGUAL AO TEU EXEMPLO: usa DataFrame do pandas diretamente.
-    """
-    linhas_finais = []
+) -> List[List[str]]:
+    """Gera linhas do CSV de importação com campos de texto formatados corretamente."""
+    linhas: List[List[str]] = []
 
     tem_ano = "Ano" in df_nc.columns
     tem_tranche = "Tranche" in df_nc.columns
@@ -319,53 +316,88 @@ def gerar_dataframe_importacao(
         observacoes_base = " ".join(obs_parts).strip()
         observacoes_doc = f"{tipo_nc_prefix} {observacoes_base}".strip() if observacoes_base else tipo_nc_prefix
 
-        linha = {
-            "NC": "NC",
-            "Entidade": entidade,
-            "Data documento": data_doc,
-            "Data Contabilistica": data_contab,
-            "Nº NC": numero_nc,
-            "Série": "",
-            "Subtipo": "",
-            "classificador economico ": "02.01.09.C0.00",
-            "Classificador funcional ": "0730",
-            "Fonte de financiamento ": "511",
-            "Programa ": "011",
-            "Medida": "022",
-            "Projeto": "",
-            "Regionalização": "",
-            "Atividade": "130",
-            "Natureza": "",
-            "Departamento/Atividade": "1",
-            "Conta Debito": "221111",
-            "Conta a Credito ": "31826111",
-            "Valor Lançamento": format_valor_port(valor),
-            "Centro de custo": "",
-            "Observações Documento ": observacoes_doc,
-            "Observaçoes lançamento": "",
-            "Classificação Orgânica": "101904000",
-            "Litigio": "",
-            "Data Litigio": "",
-            "Data Fim Litigio": "",
-            "Plano Pagamento": "",
-            "Data Plano Pagamento": "",
-            "Data Fim Plano Pag": "",
-            "Pag Factoring": "",
-            "Nº Compromisso Assumido": "",
-            "Projeto Documento": "",
-            "Ano Compromisso Assumido": "",
-            "Série Compromisso Assumido": "",
-        }
-        
-        linhas_finais.append(linha)
+        linha: Dict[str, str] = {col: "" for col in HEADER}
 
-    # Criar DataFrame
-    df_final = pd.DataFrame(linhas_finais)
+        linha["NC"] = "NC"
+        linha["Entidade"] = entidade
+        linha["Data documento"] = data_doc
+        linha["Data Contabilistica"] = data_contab
+        linha["Nº NC"] = numero_nc
+        linha["Série"] = ""
+        linha["Subtipo"] = ""
+        linha["classificador economico "] = "02.01.09.C0.00"
+        linha["Classificador funcional "] = "0730"
+        linha["Fonte de financiamento "] = "511"
+        linha["Programa "] = "011"
+        linha["Medida"] = "022"
+        linha["Projeto"] = ""
+        linha["Regionalização"] = ""
+        linha["Atividade"] = "130"
+        linha["Natureza"] = ""
+        linha["Departamento/Atividade"] = "1"
+        linha["Conta Debito"] = "221111"
+        linha["Conta a Credito "] = "31826111"
+        linha["Valor Lançamento"] = format_valor_port(valor)
+        linha["Centro de custo"] = ""
+        linha["Observações Documento "] = observacoes_doc
+        linha["Observaçoes lançamento"] = ""
+        linha["Classificação Orgânica"] = "101904000"
+        linha["Litigio"] = ""
+        linha["Data Litigio"] = ""
+        linha["Data Fim Litigio"] = ""
+        linha["Plano Pagamento"] = ""
+        linha["Data Plano Pagamento"] = ""
+        linha["Data Fim Plano Pag"] = ""
+        linha["Pag Factoring"] = ""
+        linha["Nº Compromisso Assumido"] = ""
+        linha["Projeto Documento"] = ""
+        linha["Ano Compromisso Assumido"] = ""
+        linha["Série Compromisso Assumido"] = ""
+
+        linhas.append([linha[col] for col in HEADER])
+
+    return linhas
+
+
+def escrever_csv_texto(linhas: List[List[str]]) -> str:
+    """
+    Escreve CSV com campos de texto entre aspas para preservar zeros à esquerda.
+    Campos como 0730, 011, 022 são tratados como texto.
+    """
+    output = StringIO()
     
-    # Garantir a ordem correta das colunas
-    df_final = df_final[COLUNAS_FINAIS]
+    # Escrever header
+    output.write(";".join(HEADER) + "\n")
     
-    return df_final
+    # Índices das colunas que devem ser texto (preservar zeros)
+    indices_texto = set()
+    colunas_texto = {
+        "Classificador funcional ",  # 0730
+        "Programa ",                  # 011
+        "Medida",                     # 022
+        "Classificação Orgânica"      # 101904000
+    }
+    
+    for i, col in enumerate(HEADER):
+        if col in colunas_texto:
+            indices_texto.add(i)
+    
+    # Escrever linhas
+    for linha in linhas:
+        linha_formatada = []
+        for i, valor in enumerate(linha):
+            if i in indices_texto and valor:
+                # Forçar como texto: envolver em aspas
+                linha_formatada.append(f'"{valor}"')
+            elif valor and (";" in valor or "," in valor or '"' in valor):
+                # Escapar valores com caracteres especiais
+                linha_formatada.append(f'"{valor}"')
+            else:
+                linha_formatada.append(valor)
+        
+        output.write(";".join(linha_formatada) + "\n")
+    
+    return output.getvalue()
 
 
 # =====================================================
@@ -475,83 +507,50 @@ if nc_file and mapping_df is not None:
             with st.expander(f"📁 Entidade {entidade} ({len(df_ent)} registos)"):
                 st.markdown(f"**Empresas incluídas:** {', '.join(empresas)}")
                 
-                # Gerar DataFrame final
-                df_final = gerar_dataframe_importacao(
+                # Gerar linhas
+                linhas = gerar_linhas_importacao_para_ficheiro(
                     df_ent,
                     entidade,
                     tipo_nc_prefix
                 )
                 
+                # Gerar CSV
+                csv_content = escrever_csv_texto(linhas)
+                
                 # Preview
-                st.dataframe(df_final.head(10), use_container_width=True)
+                st.text("Preview das primeiras linhas:")
+                preview_lines = csv_content.split("\n")[:6]
+                st.code("\n".join(preview_lines), language="csv")
                 
-                # Gerar CSV - IGUAL AO TEU EXEMPLO
-                buffer = BytesIO()
-                df_final.to_csv(buffer, index=False, sep=";", encoding="utf-8-sig")
-                buffer.seek(0)
-                
-                # Botão de download CSV
-                filename_csv = f"NC_Entidade_{entidade}_{today_yyyymmdd()}.csv"
+                # Botão de download
+                filename = f"NC_Entidade_{entidade}_{today_yyyymmdd()}.csv"
                 st.download_button(
                     label=f"📥 Download CSV - Entidade {entidade}",
-                    data=buffer.getvalue(),
-                    file_name=filename_csv,
+                    data=csv_content.encode('utf-8-sig'),  # BOM para Excel
+                    file_name=filename,
                     mime="text/csv",
-                    key=f"download_csv_{entidade}"
-                )
-                
-                # Também disponibilizar em Excel
-                buffer_excel = BytesIO()
-                df_final.to_excel(buffer_excel, index=False)
-                buffer_excel.seek(0)
-                
-                filename_excel = f"NC_Entidade_{entidade}_{today_yyyymmdd()}.xlsx"
-                st.download_button(
-                    label=f"📥 Download Excel - Entidade {entidade}",
-                    data=buffer_excel.getvalue(),
-                    file_name=filename_excel,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"download_excel_{entidade}"
+                    key=f"download_{entidade}"
                 )
         
         # Download completo (todas as entidades num só ficheiro)
         st.header("📦 Download Completo")
-        
         todas_linhas = []
         for entidade, (df_ent, _) in sorted(resultados.items()):
-            df_temp = gerar_dataframe_importacao(
+            linhas = gerar_linhas_importacao_para_ficheiro(
                 df_ent,
                 entidade,
                 tipo_nc_prefix
             )
-            todas_linhas.append(df_temp)
+            todas_linhas.extend(linhas)
         
-        df_completo = pd.concat(todas_linhas, ignore_index=True)
-        
-        # CSV completo
-        buffer_csv_completo = BytesIO()
-        df_completo.to_csv(buffer_csv_completo, index=False, sep=";", encoding="utf-8-sig")
-        buffer_csv_completo.seek(0)
+        csv_completo = escrever_csv_texto(todas_linhas)
         
         st.download_button(
             label="📥 Download CSV COMPLETO (todas as entidades)",
-            data=buffer_csv_completo.getvalue(),
+            data=csv_completo.encode('utf-8-sig'),
             file_name=f"NC_COMPLETO_{today_yyyymmdd()}.csv",
             mime="text/csv",
-            key="download_csv_completo"
-        )
-        
-        # Excel completo
-        buffer_excel_completo = BytesIO()
-        df_completo.to_excel(buffer_excel_completo, index=False)
-        buffer_excel_completo.seek(0)
-        
-        st.download_button(
-            label="📥 Download Excel COMPLETO (todas as entidades)",
-            data=buffer_excel_completo.getvalue(),
-            file_name=f"NC_COMPLETO_{today_yyyymmdd()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_excel_completo"
+            key="download_completo"
         )
         
     except Exception as e:
