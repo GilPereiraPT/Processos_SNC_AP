@@ -10,19 +10,14 @@ import streamlit as st
 
 @st.cache_data
 def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
-    """Carrega o ficheiro mapeamentos.csv automaticamente da raiz do projeto."""
     try:
-        # O motor 'python' com sep=None deteta automaticamente ; ou ,
         df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
-        
         mapping = {}
-        # Assume-se que a Coluna 0 é Convenção e Coluna 1 é Entidade
         c_col, e_col = df.columns[0], df.columns[1]
-        
         for _, row in df.iterrows():
-            # Limpa e normaliza a convenção para 6 dígitos (ex: 407 -> 000407)
+            # Convenção com 6 dígitos (ex: 000407)
             c = re.sub(r"\D", "", str(row[c_col])).zfill(6)
-            # Limpa a entidade (remove espaços e .0 de decimais)
+            # Entidade limpa
             e = str(row[e_col]).strip().replace(".0", "").replace(" ", "")
             if c and e and e.lower() != "nan":
                 mapping[c] = e
@@ -36,27 +31,25 @@ def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str],
 
 def transform_line(line: str, mapping: Dict[str, str]) -> str:
     # 1. Ajuste Coluna 12 (Posição 11)
-    # Se for '0', substitui por espaço mantendo o alinhamento
+    # Se for '0', vira espaço. O tamanho da linha mantém-se.
     if len(line) >= 12 and line[11] == "0":
         line = line[:11] + " " + line[12:]
 
     # 2. Corrigir CC "+93  " -> "+9197"
     line = re.sub(r"\+93\s{2,}", "+9197", line)
 
-    # 3. Mapeamento de Entidades (Preservando a largura fixa)
-    # Procuramos o segundo bloco (token2) sem partir o resto da linha com .split()
+    # 3. Mapeamento de Entidades (Preservação Absoluta de Largura)
+    # Procuramos o segundo bloco onde está a convenção/entidade
     m = re.search(r"^(\S+)(\s+)(\S+)", line)
     if m:
-        token1, sep, token2 = m.group(1), m.group(2), m.group(3)
+        token2 = m.group(3)
         start_token2 = m.start(3)
-        end_token2 = m.end(3)
         
-        # Lógica de deteção flexível (para casos como o 407 deslocado)
+        # Identificar qual a convenção que está no token2
         matched_conv = None
-        # Ordenamos as chaves por tamanho para evitar falsos positivos
+        # Ordenamos para garantir que apanha o código mais longo primeiro
         sorted_convs = sorted(mapping.keys(), key=len, reverse=True)
         
-        # Verificamos se alguma convenção do CSV existe dentro do token2
         for c_code in sorted_convs:
             if c_code in token2:
                 matched_conv = c_code
@@ -65,67 +58,84 @@ def transform_line(line: str, mapping: Dict[str, str]) -> str:
         if matched_conv:
             ent_code = mapping[matched_conv]
             try:
-                # Garante que a entidade tem 7 dígitos
+                # Criamos a entidade de 7 dígitos
                 ent7 = f"{int(ent_code):07d}"
                 
-                # Substitui a convenção pela entidade dentro do token2
-                # O .replace(..., 1) garante que só muda a primeira ocorrência
-                new_token2 = token2.replace(matched_conv, ent7, 1)
+                # A chave para o alinhamento:
+                # Em vez de apenas substituir o texto, vamos reconstruir o campo
+                # com base na posição. Se o token original tinha X caracteres,
+                # o novo tem de ter exatamente os mesmos X caracteres.
                 
-                # Reconstroi a linha mantendo os espaços originais e o resto do conteúdo
-                line = line[:start_token2] + new_token2 + line[end_token2:]
+                pos_in_token = token2.find(matched_conv)
+                
+                # Caso o código 407 venha com zeros à esquerda (ex: 0000407)
+                # Ocupamos o espaço da convenção com a entidade de 7 dígitos.
+                # Se a entidade for maior que a convenção, temos de "comer" um zero à esquerda
+                # para que a data não se desloque.
+                
+                if matched_conv == "000407" and token2[pos_in_token-1:pos_in_token] == "0":
+                    # Se houver um zero antes do 407, substituímos "0000407" (7 chars) por ent7 (7 chars)
+                    new_token2 = (token2[:pos_in_token-1] + 
+                                 ent7 + 
+                                 token2[pos_in_token + len(matched_conv):])
+                else:
+                    # Substituição padrão
+                    new_token2 = (token2[:pos_in_token] + 
+                                 ent7 + 
+                                 token2[pos_in_token + len(matched_conv):])
+                
+                # Ajuste final: Se o novo token for mais comprido que o original,
+                # removemos a diferença nos espaços que o seguem para manter o alinhamento.
+                diff = len(new_token2) - len(token2)
+                
+                if diff == 0:
+                    # Alinhamento perfeito
+                    line = line[:start_token2] + new_token2 + line[m.end(3):]
+                else:
+                    # Se cresceu, cortamos os espaços à frente
+                    rest_of_line = line[m.end(3):]
+                    line = line[:start_token2] + new_token2 + rest_of_line[diff:]
+                    
             except ValueError:
                 pass
 
-    # 4. Remover NIF (9 dígitos) no fim da linha precedidos de espaço
+    # 4. Remover NIF no fim
     line = re.sub(r"(\s)\d{9}$", r"\1", line)
     
     return line
 
 # ==============================
-# Interface Streamlit
+# UI Streamlit
 # ==============================
 
 st.set_page_config(page_title="Conversor MCDT/Termas", layout="wide")
 st.title("Conversor de ficheiros MCDT/Termas")
 
-# Carregamento automático do CSV
 mapping_dict, _ = load_default_mapping("mapeamentos.csv")
 
 if not mapping_dict:
-    st.error("ERRO: O ficheiro 'mapeamentos.csv' não foi encontrado ou está mal formatado.")
+    st.error("ERRO: Ficheiro 'mapeamentos.csv' não encontrado.")
 else:
-    st.success(f"Mapeamento carregado com sucesso: {len(mapping_dict)} códigos ativos.")
+    st.success(f"Mapeamento carregado: {len(mapping_dict)} códigos.")
     
-    # Upload de múltiplos ficheiros
-    uploaded_files = st.file_uploader("Submeta os ficheiros para converter (.txt)", accept_multiple_files=True)
+    files = st.file_uploader("Submeta ficheiros .txt", accept_multiple_files=True)
 
-    if uploaded_files:
-        st.write("### Ficheiros Prontos:")
-        
-        for f in uploaded_files:
-            # Ler conteúdo com suporte a diferentes encodings
-            raw_content = f.read()
+    if files:
+        for f in files:
+            content = f.read()
             try:
-                text = raw_content.decode("utf-8")
-            except UnicodeDecodeError:
-                text = raw_content.decode("latin-1")
+                text = content.decode("utf-8")
+            except:
+                text = content.decode("latin-1")
             
-            # Processar cada linha individualmente
-            lines = text.splitlines()
-            processed_lines = [transform_line(l, mapping_dict) for l in lines]
+            # Processamento rigoroso
+            processed = [transform_line(l, mapping_dict) for l in text.splitlines()]
+            output = "\n".join(processed) + "\n"
             
-            # Gerar o texto final (adicionando a quebra de linha no fim)
-            final_txt = "\n".join(processed_lines) + "\n"
-            
-            # Criar botão de download individual para cada ficheiro
             st.download_button(
                 label=f"📥 Guardar {f.name}",
-                data=final_txt.encode("utf-8"),
+                data=output.encode("utf-8"),
                 file_name=f"CORRIGIDO_{f.name}",
                 mime="text/plain",
                 key=f.name
             )
-
-st.divider()
-st.caption("Versão: Coluna 12 corrigida | Busca de Convenção Flexível | Download Individual.")
