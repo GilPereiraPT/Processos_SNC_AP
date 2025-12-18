@@ -38,13 +38,20 @@ def df_to_mapping(df: pd.DataFrame) -> Dict[str, str]:
 
     return mapping
 
-def load_mapping_file(file) -> Tuple[Dict[str, str], pd.DataFrame]:
-    filename = file.name.lower()
-    if filename.endswith((".xlsx", ".xls")):
-        df = pd.read_excel(file)
-    else:
-        df = pd.read_csv(file, sep=None, engine="python")
-    return df_to_mapping(df), df
+@st.cache_data
+def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
+    """Carrega o ficheiro local por defeito."""
+    try:
+        # Tenta ler com deteção automática de separador (virgula ou ponto e virgula)
+        df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
+        return df_to_mapping(df), df
+    except Exception:
+        try:
+            # Segunda tentativa com latin-1 se utf-8 falhar
+            df = pd.read_csv(path, sep=None, engine="python", encoding="latin-1")
+            return df_to_mapping(df), df
+        except Exception:
+            return {}, None
 
 # ==============================
 # Regex auxiliares
@@ -66,7 +73,6 @@ def ent7_from_mapping(ent_code: str) -> str:
 
 def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]:
     # --- AJUSTE COLUNA 12 ---
-    # Se a posição 12 (índice 11) for '0', converte para espaço
     if len(line) >= 12 and line[11] == "0":
         line = line[:11] + " " + line[12:]
 
@@ -74,13 +80,11 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
     changed = False
     mapping_missing = False
 
-    # 1) Corrigir CC "+93  " → "+9197"
     s2 = re.sub(r"\+93\s{2,}", "+9197", s)
     if s2 != s:
         s = s2
         changed = True
 
-    # 2) Atualizar campos
     m = SECOND_TOKEN_RE.match(s)
     if m:
         token1, sep, token2, rest = m.group(1), m.group(2), m.group(3), m.group(4)
@@ -117,7 +121,6 @@ def transform_line(line: str, mapping: Dict[str, str]) -> Tuple[str, bool, bool]
                     changed = True
                     break
 
-    # 3) Remover último bloco de 9 dígitos
     s2 = re.sub(r"(\s)\d{9}$", r"\1", s)
     if s2 != s:
         s = s2
@@ -132,8 +135,9 @@ def transform_file_bytes(file_bytes: bytes, mapping: Dict[str, str], encoding: s
         text = file_bytes.decode("latin-1")
 
     lines = text.splitlines(keepends=False)
-    out_lines, error_lines = [], []
-    changed_count, mapping_error_count = 0, 0
+    out_lines = []
+    changed_count = 0
+    mapping_error_count = 0
 
     for line in lines:
         if not line.strip():
@@ -142,11 +146,9 @@ def transform_file_bytes(file_bytes: bytes, mapping: Dict[str, str], encoding: s
         new_line, changed, missing = transform_line(line, mapping)
         out_lines.append(new_line)
         if changed: changed_count += 1
-        if missing:
-            mapping_error_count += 1
-            error_lines.append(line)
+        if missing: mapping_error_count += 1
 
-    return "\n".join(out_lines).encode(encoding), "\n".join(error_lines).encode(encoding), changed_count, len(lines), mapping_error_count
+    return "\n".join(out_lines).encode(encoding), changed_count, len(lines), mapping_error_count
 
 # ==============================
 # UI Streamlit
@@ -155,26 +157,28 @@ def transform_file_bytes(file_bytes: bytes, mapping: Dict[str, str], encoding: s
 st.set_page_config(page_title="Conversor de ficheiros MCDT/Termas", layout="wide")
 st.title("Conversor de ficheiros MCDT/Termas")
 
-# Sidebar para carregar mapeamento
-with st.sidebar:
-    st.header("Configuração")
-    mapping_file = st.file_uploader("Ficheiro de Mapeamento", type=["csv", "xlsx"])
-    encoding = st.selectbox("Encoding", ["utf-8", "latin-1"])
+# Carregamento Automático
+mapping_dict, df_map = load_default_mapping("mapeamentos.csv")
 
-if mapping_file:
-    mapping_dict, _ = load_mapping_file(mapping_file)
-    st.success("Mapeamento carregado!")
-
-    # Área principal para ficheiros de dados
-    uploaded_files = st.file_uploader("Upload de ficheiros para converter", accept_multiple_files=True)
-
-    if uploaded_files and st.button("Converter Ficheiros"):
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w") as zf:
-            for f in uploaded_files:
-                out_b, err_b, chg, tot, miss = transform_file_bytes(f.read(), mapping_dict, encoding)
-                zf.writestr(f"CORRIGIDO_{f.name}", out_b)
-        
-        st.download_button("📥 Descarregar ZIP", zip_buffer.getvalue(), "convertidos.zip")
+if not mapping_dict:
+    st.error("ERRO: Não foi possível encontrar ou ler o ficheiro 'mapeamentos.csv' na pasta do script.")
 else:
-    st.info("Por favor, carregue o ficheiro de mapeamento no menu lateral.")
+    st.success(f"Mapeamento carregado automaticamente ({len(mapping_dict)} registos).")
+    
+    uploaded_files = st.file_uploader("Selecione os ficheiros para converter", accept_multiple_files=True)
+
+    if uploaded_files:
+        if st.button("Executar Conversão"):
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w") as zf:
+                for f in uploaded_files:
+                    # Tenta converter usando utf-8, falha para latin-1 se necessário
+                    out_b, chg, tot, miss = transform_file_bytes(f.read(), mapping_dict)
+                    zf.writestr(f"CORRIGIDO_{f.name}", out_b)
+            
+            st.download_button(
+                label="📥 Descarregar Ficheiros Corrigidos (ZIP)",
+                data=zip_buffer.getvalue(),
+                file_name="mcdt_processados.zip",
+                mime="application/zip"
+            )
