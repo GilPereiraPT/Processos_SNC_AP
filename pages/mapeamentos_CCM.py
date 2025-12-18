@@ -11,13 +11,12 @@ import streamlit as st
 @st.cache_data
 def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
     try:
+        # Deteta automaticamente ; ou , (essencial para o ficheiro no GitHub)
         df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
         mapping = {}
         c_col, e_col = df.columns[0], df.columns[1]
         for _, row in df.iterrows():
-            # Convenção com 6 dígitos (ex: 000407)
             c = re.sub(r"\D", "", str(row[c_col])).zfill(6)
-            # Entidade limpa
             e = str(row[e_col]).strip().replace(".0", "").replace(" ", "")
             if c and e and e.lower() != "nan":
                 mapping[c] = e
@@ -26,30 +25,28 @@ def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str],
         return {}, None
 
 # ==============================
-# Lógica de Transformação
+# Lógica de Transformação Rígida
 # ==============================
 
 def transform_line(line: str, mapping: Dict[str, str]) -> str:
-    # 1. Ajuste Coluna 12 (Posição 11)
-    # Se for '0', vira espaço. O tamanho da linha mantém-se.
+    # 1. Ajuste Coluna 12 (Posição 11) - Substituição direta
     if len(line) >= 12 and line[11] == "0":
         line = line[:11] + " " + line[12:]
 
-    # 2. Corrigir CC "+93  " -> "+9197"
-    line = re.sub(r"\+93\s{2,}", "+9197", line)
+    # 2. Corrigir CC "+93  " -> "+9197" (mantendo o tamanho se possível)
+    line = re.sub(r"\+93\s\s", "+9197", line)
 
-    # 3. Mapeamento de Entidades (Preservação Absoluta de Largura)
-    # Procuramos o segundo bloco onde está a convenção/entidade
+    # 3. Substituição de Entidade mantendo Alinhamento de Colunas
+    # Procuramos o segundo bloco (onde reside a convenção/entidade)
     m = re.search(r"^(\S+)(\s+)(\S+)", line)
     if m:
         token2 = m.group(3)
-        start_token2 = m.start(3)
+        start_pos = m.start(3)
+        end_pos = m.end(3)
         
-        # Identificar qual a convenção que está no token2
+        # Identificar qual a convenção do mapeamento está presente no token
         matched_conv = None
-        # Ordenamos para garantir que apanha o código mais longo primeiro
         sorted_convs = sorted(mapping.keys(), key=len, reverse=True)
-        
         for c_code in sorted_convs:
             if c_code in token2:
                 matched_conv = c_code
@@ -58,48 +55,34 @@ def transform_line(line: str, mapping: Dict[str, str]) -> str:
         if matched_conv:
             ent_code = mapping[matched_conv]
             try:
-                # Criamos a entidade de 7 dígitos
                 ent7 = f"{int(ent_code):07d}"
                 
-                # A chave para o alinhamento:
-                # Em vez de apenas substituir o texto, vamos reconstruir o campo
-                # com base na posição. Se o token original tinha X caracteres,
-                # o novo tem de ter exatamente os mesmos X caracteres.
+                # Para não desalinhara a linha, a substituição tem de ser cirúrgica.
+                # Se a entidade (7) é maior que a convenção (6), temos de verificar 
+                # se há um zero à esquerda para absorver a diferença.
+                idx = token2.find(matched_conv)
                 
-                pos_in_token = token2.find(matched_conv)
-                
-                # Caso o código 407 venha com zeros à esquerda (ex: 0000407)
-                # Ocupamos o espaço da convenção com a entidade de 7 dígitos.
-                # Se a entidade for maior que a convenção, temos de "comer" um zero à esquerda
-                # para que a data não se desloque.
-                
-                if matched_conv == "000407" and token2[pos_in_token-1:pos_in_token] == "0":
-                    # Se houver um zero antes do 407, substituímos "0000407" (7 chars) por ent7 (7 chars)
-                    new_token2 = (token2[:pos_in_token-1] + 
-                                 ent7 + 
-                                 token2[pos_in_token + len(matched_conv):])
+                if idx > 0 and token2[idx-1] == '0':
+                    # Substituímos "0" + "convenção" (7 caracteres) por "entidade" (7 caracteres)
+                    new_token2 = token2[:idx-1] + ent7 + token2[idx+len(matched_conv):]
                 else:
-                    # Substituição padrão
-                    new_token2 = (token2[:pos_in_token] + 
-                                 ent7 + 
-                                 token2[pos_in_token + len(matched_conv):])
+                    # Se não houver zero para absorver, substituímos a convenção e 
+                    # removemos um espaço do separador seguinte para compensar o aumento
+                    new_token2 = token2[:idx] + ent7 + token2[idx+len(matched_conv):]
                 
-                # Ajuste final: Se o novo token for mais comprido que o original,
-                # removemos a diferença nos espaços que o seguem para manter o alinhamento.
+                # Reconstrução da linha com verificação de comprimento
                 diff = len(new_token2) - len(token2)
-                
-                if diff == 0:
-                    # Alinhamento perfeito
-                    line = line[:start_token2] + new_token2 + line[m.end(3):]
+                if diff > 0:
+                    # Se o token cresceu, cortamos o excesso nos espaços que o seguem
+                    post_content = line[end_pos:]
+                    line = line[:start_pos] + new_token2 + post_content[diff:]
                 else:
-                    # Se cresceu, cortamos os espaços à frente
-                    rest_of_line = line[m.end(3):]
-                    line = line[:start_token2] + new_token2 + rest_of_line[diff:]
+                    line = line[:start_pos] + new_token2 + line[end_pos:]
                     
             except ValueError:
                 pass
 
-    # 4. Remover NIF no fim
+    # 4. Remover NIF (9 dígitos) no fim mantendo os espaços anteriores
     line = re.sub(r"(\s)\d{9}$", r"\1", line)
     
     return line
@@ -108,28 +91,29 @@ def transform_line(line: str, mapping: Dict[str, str]) -> str:
 # UI Streamlit
 # ==============================
 
-st.set_page_config(page_title="Conversor MCDT/Termas", layout="wide")
+st.set_page_config(page_title="Conversor MCDT (Formato Rígido)", layout="wide")
 st.title("Conversor de ficheiros MCDT/Termas")
 
 mapping_dict, _ = load_default_mapping("mapeamentos.csv")
 
 if not mapping_dict:
-    st.error("ERRO: Ficheiro 'mapeamentos.csv' não encontrado.")
+    st.error("ERRO: Ficheiro 'mapeamentos.csv' não detetado.")
 else:
     st.success(f"Mapeamento carregado: {len(mapping_dict)} códigos.")
     
-    files = st.file_uploader("Submeta ficheiros .txt", accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Submeta ficheiros para conversão individual", accept_multiple_files=True)
 
-    if files:
-        for f in files:
+    if uploaded_files:
+        for f in uploaded_files:
             content = f.read()
             try:
                 text = content.decode("utf-8")
             except:
                 text = content.decode("latin-1")
             
-            # Processamento rigoroso
-            processed = [transform_line(l, mapping_dict) for l in text.splitlines()]
+            # Processamento que garante que o comprimento da linha é respeitado
+            lines = text.splitlines()
+            processed = [transform_line(l, mapping_dict) for l in lines]
             output = "\n".join(processed) + "\n"
             
             st.download_button(
