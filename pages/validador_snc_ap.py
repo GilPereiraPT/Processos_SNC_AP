@@ -9,9 +9,9 @@ from datetime import datetime
 import time
 
 # --- Configurações ---
-st.set_page_config(page_title="Validador SNC-AP Turbo Finalíssimo v2027.1", layout="wide")
-st.title("🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo v2027.1")
-st.caption("🧩 Build atualizado — inclui deteção automática e seletor de ano")
+st.set_page_config(page_title="Validador SNC-AP Turbo Finalíssimo v2027.2", layout="wide")
+st.title("🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo v2027.2")
+st.caption("🧩 Inclui deteção automática, seletor manual, exclusão de 'Saldo Inicial' e relatório com ano de validação")
 
 CABECALHOS = [
     'Conta', 'Data Contab.', 'Data Doc.', 'Nº Lancamento', 'Entidade', 'Designação',
@@ -28,7 +28,7 @@ COLUNAS_A_PRE_LIMPAR = [
     'Projeto', 'Atividade', 'Cl. Funcional', 'Entidade', 'Tipo'
 ]
 
-# --- Funções ---
+# --- Funções auxiliares ---
 def ler_csv(f):
     return pd.read_csv(
         f, sep=';', header=9, names=CABECALHOS,
@@ -179,6 +179,10 @@ if uploaded:
         if ano_validacao and st.sidebar.button("🚀 Iniciar validação"):
             ano_validacao = int(ano_validacao)
 
+            # Ignorar linhas de "Saldo Inicial"
+            df_original = df_original[~df_original['Data Contab.'].astype(str).str.contains("Saldo Inicial", case=False, na=False)]
+
+            # --- Regras ---
             if ano_validacao >= 2026:
                 ORG_POR_FONTE = {
                     "368": "128904000", "31H": "128904000", "483": "128904000", "488": "128904000",
@@ -200,28 +204,16 @@ if uploaded:
 
             st.info(f"Validação efetuada segundo as regras do ano {ano_validacao}")
 
-            total_etapas = 3
-            barra_progresso = st.progress(0, text="A iniciar validação...")
-            tempo_inicio_total = time.time()
-
-            # --- Fase 1 ---
-            barra_progresso.progress(0.1, text="Fase 1/3: Pré-limpeza...")
+            # --- Pré-limpeza ---
             for col in COLUNAS_A_PRE_LIMPAR:
-                if col in df_original.columns:
-                    df_original[f"{col}_clean"] = df_original[col].apply(limpar)
-                else:
-                    df_original[f"{col}_clean"] = ""
-                    st.warning(f"Coluna '{col}' não encontrada no ficheiro.")
-            barra_progresso.progress(0.4)
+                df_original[f"{col}_clean"] = df_original[col].apply(limpar) if col in df_original.columns else ""
 
-            # --- Fase 2 ---
-            barra_progresso.progress(0.6, text="Fase 2/3: Validação linha a linha...")
+            # --- Validação principal ---
             df_original["Erro"] = df_original.apply(
                 lambda row: validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2), axis=1
             )
 
-            # --- Fase 3 ---
-            barra_progresso.progress(0.8, text="Fase 3/3: Validação CO...")
+            # --- Validação CO ---
             co_erros = validar_documentos_co(df_original)
             for idx, msg in co_erros:
                 if idx in df_original.index:
@@ -230,30 +222,32 @@ if uploaded:
                     else:
                         df_original.at[idx, "Erro"] += f"; {msg}"
 
-            barra_progresso.progress(1.0, text="Validação concluída ✅")
-            st.success(f"Validação concluída ({len(df_original)} linhas).")
+            st.success(f"Validação concluída ({len(df_original)} linhas processadas).")
 
-            # --- Resumo e download ---
-            with st.expander("📊 Resumo de Erros"):
-                resumo = Counter()
-                for erros_linha in df_original["Erro"]:
-                    if erros_linha != "Sem erros":
-                        for erro_msg in erros_linha.split("; "):
-                            resumo[erro_msg] += 1
+            # --- Relatório e gráfico ---
+            st.subheader(f"📊 Resumo de Erros — Ano {ano_validacao}")
 
-                if resumo:
-                    resumo_df = pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"])
-                    st.table(resumo_df)
-                    altura = max(5, len(resumo_df) * 0.35)
-                    fig, ax = plt.subplots(figsize=(10, altura))
-                    resumo_df.sort_values(by="Ocorrências", ascending=True).plot(
-                        kind="barh", x="Regra", y="Ocorrências", ax=ax, legend=False
-                    )
-                    plt.tight_layout()
-                    st.pyplot(fig)
-                else:
-                    st.info("🎉 Nenhum erro encontrado!")
+            resumo = Counter()
+            for e in df_original["Erro"]:
+                if e != "Sem erros":
+                    for msg in e.split("; "):
+                        resumo[msg] += 1
 
+            if resumo:
+                resumo_df = pd.DataFrame(resumo.most_common(), columns=["Regra", "Ocorrências"])
+                st.dataframe(resumo_df, use_container_width=True)
+                altura = max(5, len(resumo_df) * 0.35)
+                fig, ax = plt.subplots(figsize=(10, altura))
+                resumo_df.sort_values(by="Ocorrências", ascending=True).plot(
+                    kind="barh", x="Regra", y="Ocorrências", ax=ax, legend=False,
+                    title=f"Ocorrências de Erros — Ano {ano_validacao}"
+                )
+                plt.tight_layout()
+                st.pyplot(fig)
+            else:
+                st.info(f"🎉 Nenhum erro encontrado nas validações ({ano_validacao}).")
+
+            # --- Download CSV ---
             df_para_mostrar = df_original.copy()
             df_para_mostrar["Ano_Validacao"] = ano_validacao
 
