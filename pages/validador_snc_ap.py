@@ -52,6 +52,21 @@ def extrair_rubrica(conta: str) -> str:
     partes = str(conta).split('.')
     return '.'.join(partes[1:]) if len(partes) > 1 else ''
 
+def detetar_ano_validacao(df):
+    anos = []
+    for data_str in df['Data Contab.'].dropna().astype(str):
+        data_str = data_str.strip()
+        try:
+            if len(data_str) >= 10:
+                ano = int(data_str[-4:])
+                if 2000 <= ano <= 2100:
+                    anos.append(ano)
+        except:
+            continue
+    if anos:
+        return max(set(anos), key=anos.count)  # ano mais frequente
+    return 2025
+
 # --- Função principal de validação ---
 def validar_linha(row, regras):
     erros = []
@@ -105,13 +120,13 @@ def validar_linha(row, regras):
         if fonte not in ['483', '31H', '488'] and medida != '022':
             erros.append("Medida deve ser '022' exceto para fontes 483, 31H ou 488")
 
-        if org == regras['ORG_A']:  # ex-101904000 -> 121904000
+        if org == regras['ORG_A']:
             if projeto and atividade != '000':
                 erros.append('Se o Projeto estiver preenchido, a Atividade deve ser 000')
             elif not projeto and atividade != '130':
                 erros.append('Se o Projeto estiver vazio, a Atividade deve ser 130')
 
-        if org == regras['ORG_B']:  # ex-108904000 -> 128904000
+        if org == regras['ORG_B']:
             if atividade != '000' or not projeto:
                 erros.append('Atividade deve ser 000 e Projeto preenchido')
 
@@ -139,7 +154,7 @@ def validar_documentos_co(df_input):
 
 # --- App Streamlit ---
 st.set_page_config(page_title='Validador SNC-AP Turbo Finalíssimo 2026', layout='wide')
-st.title('🛡️ Validador de Lançamentos SNC-AP — Versão 2026')
+st.title('🛡️ Validador de Lançamentos SNC-AP — Versão 2026.1')
 
 st.sidebar.title('Menu')
 uploaded = st.sidebar.file_uploader('Carrega um ficheiro CSV ou ZIP', type=['csv', 'zip'])
@@ -154,10 +169,8 @@ if uploaded:
         df.reset_index(drop=True, inplace=True)
 
         # --- Deteção automática do ano ---
-        anos_detectados = df['Data Contab.'].dropna().astype(str).str.extract(r'(20\d{2})')[0].dropna()
-        ano_validacao = int(anos_detectados.mode()[0]) if not anos_detectados.empty else 2025
-
-        st.info(f"Ficheiro '{uploaded.name}' carregado. Ano detetado: **{ano_validacao}**. Total de linhas: {len(df)}")
+        ano_validacao = detetar_ano_validacao(df)
+        st.info(f"📅 Ano do extrato contabilístico detetado: **{ano_validacao}**")
 
         # --- Definições por ano ---
         if ano_validacao >= 2026:
@@ -216,12 +229,14 @@ if uploaded:
         progresso_atual += 1
         barra_progresso.progress(1.0, text='Validação concluída! ✅')
 
-        st.success(f"Validação concluída para {ano_validacao}. Total de linhas: {len(df)}. Tempo total: {time.time() - tempo_inicio_total:.2f}s")
+        st.success(f"Validação concluída para o ano {ano_validacao}. Total de linhas: {len(df)}. Tempo total: {time.time() - tempo_inicio_total:.2f}s")
 
         # --- Output ---
         df_para_mostrar = df.copy()
         colunas_a_remover = [f'{c}_clean' for c in COLUNAS_A_PRE_LIMPAR if f'{c}_clean' in df_para_mostrar.columns]
         df_para_mostrar.drop(columns=colunas_a_remover, inplace=True, errors='ignore')
+
+        df_para_mostrar.insert(0, 'Ano Detetado', ano_validacao)
 
         with st.expander('🔍 Dados Validados'):
             st.dataframe(df_para_mostrar, use_container_width=True)
