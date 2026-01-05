@@ -53,13 +53,15 @@ def extrair_rubrica(conta: str) -> str:
     return '.'.join(partes[1:]) if len(partes) > 1 else ''
 
 def detetar_ano_validacao(df):
-    try:
-        anos_validos = df['Ano'].dropna().astype(str).str.extract(r'(20\d{2})')[0].dropna()
-        if not anos_validos.empty:
-            return int(anos_validos.iloc[0])  # Primeiro ano válido encontrado
-    except Exception:
-        pass
-    raise ValueError("Não foi possível determinar o ano a partir da coluna 'Ano'. Verifique se o ficheiro contém o ano nas primeiras linhas.")
+    for valor in df['Ano']:
+        if pd.notna(valor):
+            try:
+                ano_int = int(str(valor).strip().replace('.0', ''))
+                if 2025 <= ano_int <= 2100:
+                    return ano_int
+            except ValueError:
+                continue
+    raise ValueError("Não foi possível identificar um ano válido na coluna 'Ano'.")
 
 def validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2):
     erros = []
@@ -143,8 +145,8 @@ def validar_documentos_co(df_input):
     return erros
 
 # --- App Streamlit ---
-st.set_page_config(page_title='Validador SNC-AP Turbo Finalíssimo 2026.4', layout='wide')
-st.title('🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo 2026.4')
+st.set_page_config(page_title='Validador SNC-AP Turbo Finalíssimo 2026.5', layout='wide')
+st.title('🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo 2026.5')
 
 st.sidebar.title('Menu')
 uploaded = st.sidebar.file_uploader('Carrega um ficheiro CSV ou ZIP', type=['csv', 'zip'])
@@ -157,7 +159,7 @@ if uploaded:
         df.reset_index(drop=True, inplace=True)
 
         ano_validacao = detetar_ano_validacao(df)
-        st.info(f'📘 Ano de contabilidade detetado (primeira linha preenchida): **{ano_validacao}**')
+        st.info(f'📘 Ano de contabilidade detetado: **{ano_validacao}**')
 
         if ano_validacao >= 2026:
             ORG_POR_FONTE = {
