@@ -54,14 +54,12 @@ def extrair_rubrica(conta: str) -> str:
 
 def detetar_ano_validacao(df):
     try:
-        anos = df['Ano'].dropna().astype(str).str.extract(r'(20\d{2})')[0].dropna().tolist()
-        if anos:
-            anos_int = [int(a) for a in anos if 2000 <= int(a) <= 2100]
-            if anos_int:
-                return max(set(anos_int), key=anos_int.count)
+        anos_validos = df['Ano'].dropna().astype(str).str.extract(r'(20\d{2})')[0].dropna()
+        if not anos_validos.empty:
+            return int(anos_validos.iloc[0])  # Primeiro ano válido encontrado
     except Exception:
         pass
-    return 2025
+    raise ValueError("Não foi possível determinar o ano a partir da coluna 'Ano'. Verifique se o ficheiro contém o ano nas primeiras linhas.")
 
 def validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2):
     erros = []
@@ -145,8 +143,8 @@ def validar_documentos_co(df_input):
     return erros
 
 # --- App Streamlit ---
-st.set_page_config(page_title='Validador SNC-AP Turbo Finalíssimo 2026.3', layout='wide')
-st.title('🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo 2026.3')
+st.set_page_config(page_title='Validador SNC-AP Turbo Finalíssimo 2026.4', layout='wide')
+st.title('🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo 2026.4')
 
 st.sidebar.title('Menu')
 uploaded = st.sidebar.file_uploader('Carrega um ficheiro CSV ou ZIP', type=['csv', 'zip'])
@@ -159,7 +157,7 @@ if uploaded:
         df.reset_index(drop=True, inplace=True)
 
         ano_validacao = detetar_ano_validacao(df)
-        st.info(f'📘 Ano de contabilidade detetado a partir da coluna "Ano": **{ano_validacao}**')
+        st.info(f'📘 Ano de contabilidade detetado (primeira linha preenchida): **{ano_validacao}**')
 
         if ano_validacao >= 2026:
             ORG_POR_FONTE = {
@@ -241,6 +239,8 @@ if uploaded:
 
         st.sidebar.download_button('⬇️ Descarregar CSV com Erros', data=buffer, file_name=nome_csv, mime='text/csv')
 
+    except ValueError as ve:
+        st.error(str(ve))
     except Exception as e:
         st.error(f'Erro durante o processamento: {e}')
 else:
