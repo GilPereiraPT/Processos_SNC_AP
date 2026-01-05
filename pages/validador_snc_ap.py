@@ -134,10 +134,19 @@ def validar_documentos_co(df_input):
     return erros
 
 # --- App Streamlit ---
-st.set_page_config(page_title='Validador SNC-AP Turbo Finalíssimo 2026.7', layout='wide')
-st.title('🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo 2026.7')
+st.set_page_config(page_title='Validador SNC-AP Turbo Finalíssimo 2026.8', layout='wide')
+st.title('🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo 2026.8')
 
 st.sidebar.title('Menu')
+
+# ✅ Selectbox sempre visível
+ano_validacao = st.sidebar.selectbox(
+    '📅 Selecione o ano para validação',
+    [2025, 2026, 2027],
+    index=None,
+    placeholder='Escolha o ano…'
+)
+
 uploaded = st.sidebar.file_uploader('📂 Carrega um ficheiro CSV ou ZIP', type=['csv', 'zip'])
 
 if uploaded:
@@ -146,22 +155,14 @@ if uploaded:
         st.success(f"Ficheiro '{uploaded.name}' carregado com sucesso!")
         st.dataframe(df_original.head(10), use_container_width=True)
 
-        ano_validacao = st.sidebar.selectbox(
-            '📅 Selecione o ano para validação',
-            [2025, 2026, 2027],
-            index=None,
-            placeholder='Escolha o ano…'
-        )
-
         if ano_validacao:
-            ano_validacao = int(ano_validacao)  # 🔥 Corrigido — garante que é número
-
+            ano_validacao = int(ano_validacao)  # 🔥 conversão garantida
             if st.sidebar.button('🚀 Iniciar validação'):
                 df = df_original.copy()
                 df = df[df['Conta'] != 'Conta']
                 df.reset_index(drop=True, inplace=True)
 
-                # --- Configurar regras conforme o ano ---
+                # --- Regras dinâmicas ---
                 if ano_validacao >= 2026:
                     ORG_POR_FONTE = {
                         '368': '128904000', '31H': '128904000', '483': '128904000', '488': '128904000',
@@ -184,7 +185,6 @@ if uploaded:
                 st.info(f'📘 Validação efetuada segundo as regras do ano {ano_validacao}')
 
                 # --- Validação ---
-                total_etapas = 3
                 barra_progresso = st.progress(0, text='A iniciar validação...')
                 tempo_inicio_total = time.time()
 
