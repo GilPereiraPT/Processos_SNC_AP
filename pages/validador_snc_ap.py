@@ -122,7 +122,6 @@ def validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2):
 def validar_documentos_co(df_input):
     erros = []
     df_co = df_input[df_input['Tipo_clean'] == 'CO']
-
     for docid, grp in df_co.groupby('DOCID'):
         debs = grp[grp['Conta'].str.startswith(('0281', '0282'))]
         creds = grp[grp['Conta'].str.startswith('0272')]
@@ -134,141 +133,83 @@ def validar_documentos_co(df_input):
     return erros
 
 # --- App Streamlit ---
-st.set_page_config(page_title='Validador SNC-AP Turbo 2026.7', layout='wide')
-st.title('🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo 2026.7')
+st.set_page_config(page_title='Validador SNC-AP 2026', layout='wide')
+st.title('🛡️ Validador de Lançamentos SNC-AP')
 
-st.sidebar.title('Menu de Controlo')
+# Inicializar estado se não existir
+if 'ano_selecionado' not in st.session_state:
+    st.session_state.ano_selecionado = 2026
+
+st.sidebar.title('Menu')
 uploaded = st.sidebar.file_uploader('📂 Carrega um ficheiro CSV ou ZIP', type=['csv', 'zip'])
+
+# Seleção do ano no Sidebar (agora sem index=None para evitar erros de nulos)
+ano_escolhido = st.sidebar.selectbox(
+    '📅 Selecione o ano para validação',
+    [2026, 2025, 2027],
+    key='ano_input'
+)
 
 if uploaded:
     try:
-        # Carregamento do ficheiro
         df_original = ler_ficheiro(uploaded)
-        st.success(f"Ficheiro '{uploaded.name}' carregado com sucesso!")
-        
-        with st.expander("👀 Pré-visualização dos dados (Top 10)"):
-            st.dataframe(df_original.head(10), use_container_width=True)
+        st.success(f"Ficheiro carregado: {uploaded.name}")
 
-        # Seleção do Ano com Chave de Estado (Session State)
-        ano_validacao = st.sidebar.selectbox(
-            '📅 Selecione o ano para validação',
-            [2025, 2026, 2027],
-            index=None,
-            placeholder='Escolha o ano...',
-            key='ano_regra'
-        )
+        if st.sidebar.button('🚀 Iniciar validação'):
+            df = df_original.copy()
+            df = df[df['Conta'] != 'Conta']
+            df.reset_index(drop=True, inplace=True)
 
-        # Botão de Validação
-        if st.sidebar.button('🚀 Iniciar Validação'):
-            if ano_validacao is None:
-                st.sidebar.error("⚠️ Seleção obrigatória: Escolha o ano antes de validar.")
+            # --- BLOCO DE REGRAS À PROVA DE ERRO ---
+            # Verificação direta da variável escolhida
+            if int(ano_escolhido) == 2026:
+                st.warning("⚠️ MODO 2026 ATIVO")
+                PROGRAMA_OBRIGATORIO = '015'
+                ORG_1, ORG_2 = '121904000', '128904000'
+                ORG_POR_FONTE = {
+                    '368': '128904000', '31H': '128904000', '483': '128904000', '488': '128904000',
+                    '511': '121904000', '513': '121904000', '521': '121904000', '522': '121904000',
+                    '541': '121904000', '724': '121904000', '721': '121904000',
+                    '361': '128904000', '415': '128904000'
+                }
+            elif int(ano_escolhido) == 2025:
+                st.warning("⚠️ MODO 2025 ATIVO")
+                PROGRAMA_OBRIGATORIO = '011'
+                ORG_1, ORG_2 = '101904000', '108904000'
+                ORG_POR_FONTE = {
+                    '368': '108904000', '31H': '108904000', '483': '108904000', '488': '108904000',
+                    '511': '101904000', '513': '101904000', '521': '101904000', '522': '101904000',
+                    '541': '101904000', '724': '101904000', '721': '101904000',
+                    '361': '108904000', '415': '108904000'
+                }
             else:
-                # Início do processo
-                df = df_original.copy()
-                df = df[df['Conta'] != 'Conta'] # Remove cabeçalhos repetidos se houver
-                df.reset_index(drop=True, inplace=True)
+                st.error("Ano não suportado.")
+                st.stop()
 
-                # --- Configuração de Regras por Ano ---
-                # Definimos explicitamente cada cenário para evitar que o "else" assuma valores errados
-                if ano_validacao >= 2026:
-                    st.info(f'⚙️ Configuração: Regras de {ano_validacao} ativadas (Prog: 015).')
-                    ORG_POR_FONTE = {
-                        '368': '128904000', '31H': '128904000', '483': '128904000', '488': '128904000',
-                        '511': '121904000', '513': '121904000', '521': '121904000', '522': '121904000',
-                        '541': '121904000', '724': '121904000', '721': '121904000',
-                        '361': '128904000', '415': '128904000'
-                    }
-                    PROGRAMA_OBRIGATORIO = '015'
-                    ORG_1, ORG_2 = '121904000', '128904000'
-                
-                else: # Ano 2025 ou inferior
-                    st.info(f'⚙️ Configuração: Regras de 2025 ativadas (Prog: 011).')
-                    ORG_POR_FONTE = {
-                        '368': '108904000', '31H': '108904000', '483': '108904000', '488': '108904000',
-                        '511': '101904000', '513': '101904000', '521': '101904000', '522': '101904000',
-                        '541': '101904000', '724': '101904000', '721': '101904000',
-                        '361': '108904000', '415': '108904000'
-                    }
-                    PROGRAMA_OBRIGATORIO = '011'
-                    ORG_1, ORG_2 = '101904000', '108904000'
+            # --- Processamento ---
+            for col in COLUNAS_A_PRE_LIMPAR:
+                df[f'{col}_clean'] = df[col].apply(limpar) if col in df.columns else ''
 
-                # --- Processamento ---
-                barra_progresso = st.progress(0, text='A processar...')
-                tempo_inicio = time.time()
+            df['Erro'] = df.apply(
+                lambda row: validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2), axis=1
+            )
 
-                # Fase 1: Limpeza
-                barra_progresso.progress(20, text='Limpando colunas...')
-                for col in COLUNAS_A_PRE_LIMPAR:
-                    if col in df.columns:
-                        df[f'{col}_clean'] = df[col].apply(limpar)
+            co_erros = validar_documentos_co(df)
+            for idx, msg in co_erros:
+                if idx in df.index:
+                    if df.at[idx, 'Erro'] == 'Sem erros':
+                        df.at[idx, 'Erro'] = msg
                     else:
-                        df[f'{col}_clean'] = ''
-                
-                # Fase 2: Validação de Linhas
-                barra_progresso.progress(50, text='Validando regras de negócio...')
-                df['Erro'] = df.apply(
-                    lambda row: validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2), axis=1
-                )
+                        df.at[idx, 'Erro'] += f'; {msg}'
 
-                # Fase 3: Validação de Documentos CO
-                barra_progresso.progress(80, text='Verificando integridade CO...')
-                co_erros = validar_documentos_co(df)
-                for idx, msg in co_erros:
-                    if idx in df.index:
-                        if df.at[idx, 'Erro'] == 'Sem erros':
-                            df.at[idx, 'Erro'] = msg
-                        else:
-                            df.at[idx, 'Erro'] += f'; {msg}'
-
-                barra_progresso.progress(100, text='Concluído!')
-                st.success(f"✅ Validação terminada em {time.time() - tempo_inicio:.2f} segundos.")
-
-                # --- Resultados ---
-                df_final = df.copy()
-                df_final['Ano_Regra_Aplicada'] = ano_validacao
-
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.metric("Total Linhas", len(df))
-                with col2:
-                    linhas_com_erro = len(df[df['Erro'] != 'Sem erros'])
-                    st.metric("Linhas com Erro", linhas_com_erro, delta=linhas_com_erro, delta_color="inverse")
-
-                with st.expander("📊 Relatório Detalhado de Erros"):
-                    resumo = Counter()
-                    for e in df['Erro']:
-                        if e != 'Sem erros':
-                            for sub_e in e.split('; '):
-                                resumo[sub_e] += 1
-                    
-                    if resumo:
-                        resumo_df = pd.DataFrame(resumo.most_common(), columns=['Tipo de Erro', 'Frequência'])
-                        st.table(resumo_df)
-                        
-                        # Gráfico
-                        fig, ax = plt.subplots()
-                        resumo_df.sort_values(by='Frequência').plot(kind='barh', x='Tipo de Erro', y='Frequência', ax=ax, color='salmon')
-                        plt.tight_layout()
-                        st.pyplot(fig)
-                    else:
-                        st.balloons()
-                        st.success("Fantástico! Não foram encontrados erros.")
-
-                # Download
-                buffer = io.BytesIO()
-                df_final.to_csv(buffer, index=False, sep=';', encoding='utf-8-sig')
-                buffer.seek(0)
-                
-                st.sidebar.download_button(
-                    label="⬇️ Descarregar Resultados (CSV)",
-                    data=buffer,
-                    file_name=f"validacao_{ano_validacao}_{datetime.now().strftime('%H%M%S')}.csv",
-                    mime="text/csv"
-                )
+            st.success(f"Validação concluída com regras de {ano_escolhido}!")
+            
+            # --- Exibição e Download ---
+            st.dataframe(df)
+            
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False, sep=';', encoding='utf-8-sig')
+            st.sidebar.download_button('⬇️ Baixar CSV', buffer.getvalue(), f"erros_{ano_escolhido}.csv", "text/csv")
 
     except Exception as e:
-        st.error(f"Ocorreu um erro crítico: {e}")
-
-else:
-    st.info("👈 Por favor, carrega o ficheiro CSV ou ZIP no menu lateral para começar.")
+        st.error(f"Erro: {e}")
