@@ -9,31 +9,29 @@ from datetime import datetime
 import time
 
 # --- Configurações ---
-st.set_page_config(page_title="Validador SNC-AP Turbo Finalíssimo v2027.3", layout="wide")
-st.title("🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo v2027.3")
-st.caption("🧩 Inclui deteção automática, seletor manual, barra de progresso e exclusão de 'Saldo Inicial'")
+st.set_page_config(page_title="Validador SNC-AP Turbo Finalíssimo v2027.4", layout="wide")
+st.title("🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo v2027.4")
+st.caption("🧩 Deteção automática + seletor de ano + barra de progresso + exclusão de 'Saldo Inicial'")
 
 CABECALHOS = [
-    'Conta', 'Data Contab.', 'Data Doc.', 'Nº Lancamento', 'Entidade', 'Designação',
-    'Tipo', 'Nº Documento', 'Serie', 'Ano', 'Debito', 'Credito', 'Acumulado',
-    'D/C', 'R/D', 'Observações', 'Doc. Regul', 'Cl. Funcional', 'Fonte Finan.',
-    'Programa', 'Medida', 'Projeto', 'Regionalização', 'Atividade', 'Natureza',
-    'Cl. Orgânica', 'Mes', 'Departamento', 'DOCID', 'Ordem', 'Subtipo', 'NIF',
-    'Código Parceira', 'Código Intragrupo', 'Utiliz Criação',
-    'Utiliz Ult Alteração', 'Data Ult Alteração'
+    "Conta", "Data Contab.", "Data Doc.", "Nº Lancamento", "Entidade", "Designação",
+    "Tipo", "Nº Documento", "Serie", "Ano", "Debito", "Credito", "Acumulado",
+    "D/C", "R/D", "Observações", "Doc. Regul", "Cl. Funcional", "Fonte Finan.",
+    "Programa", "Medida", "Projeto", "Regionalização", "Atividade", "Natureza",
+    "Cl. Orgânica", "Mes", "Departamento", "DOCID", "Ordem", "Subtipo", "NIF",
+    "Código Parceira", "Código Intragrupo", "Utiliz Criação",
+    "Utiliz Ult Alteração", "Data Ult Alteração"
 ]
 
 COLUNAS_A_PRE_LIMPAR = [
-    'R/D', 'Fonte Finan.', 'Cl. Orgânica', 'Programa', 'Medida',
-    'Projeto', 'Atividade', 'Cl. Funcional', 'Entidade', 'Tipo'
+    "R/D", "Fonte Finan.", "Cl. Orgânica", "Programa", "Medida",
+    "Projeto", "Atividade", "Cl. Funcional", "Entidade", "Tipo"
 ]
 
 # --- Funções auxiliares ---
 def ler_csv(f):
-    return pd.read_csv(
-        f, sep=';', header=9, names=CABECALHOS,
-        encoding='ISO-8859-1', dtype=str, low_memory=False
-    )
+    return pd.read_csv(f, sep=";", header=9, names=CABECALHOS,
+                       encoding="ISO-8859-1", dtype=str, low_memory=False)
 
 def ler_ficheiro(uploaded_file):
     if uploaded_file.name.endswith(".zip"):
@@ -57,13 +55,9 @@ def extrair_rubrica(conta: str) -> str:
 def detectar_ano(df):
     try:
         anos = (
-            df["Ano"]
-            .dropna()
-            .astype(str)
+            df["Ano"].dropna().astype(str)
             .str.extract(r"(20\d{2})")[0]
-            .dropna()
-            .astype(int)
-            .tolist()
+            .dropna().astype(int).tolist()
         )
         if anos:
             return max(anos)
@@ -73,16 +67,11 @@ def detectar_ano(df):
 
 def validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2):
     erros = []
-    rd = row["R/D_clean"]
-    fonte = row["Fonte Finan._clean"]
-    org = row["Cl. Orgânica_clean"]
-    programa = row["Programa_clean"]
-    medida = row["Medida_clean"]
-    projeto = row["Projeto_clean"]
-    atividade = row["Atividade_clean"]
-    funcional = row["Cl. Funcional_clean"]
-    entidade = row["Entidade_clean"]
-    tipo = row["Tipo_clean"]
+    rd = row["R/D_clean"]; fonte = row["Fonte Finan._clean"]
+    org = row["Cl. Orgânica_clean"]; programa = row["Programa_clean"]
+    medida = row["Medida_clean"]; projeto = row["Projeto_clean"]
+    atividade = row["Atividade_clean"]; funcional = row["Cl. Funcional_clean"]
+    entidade = row["Entidade_clean"]; tipo = row["Tipo_clean"]
 
     if not fonte:
         erros.append("Fonte de Finan. não preenchida")
@@ -123,8 +112,10 @@ def validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2):
         if org == ORG_1:
             if projeto and atividade != "000":
                 erros.append("Se o Projeto estiver preenchido, a Atividade deve ser 000")
-            elif not projeto and atividade != "130":
-                erros.append("Se o Projeto estiver vazio, a Atividade deve ser 130")
+            elif not projeto:
+                atividade_certa = "533" if PROGRAMA_OBRIGATORIO == "015" else "130"
+                if atividade != atividade_certa:
+                    erros.append(f"Se o Projeto estiver vazio, a Atividade deve ser {atividade_certa}")
 
         if org == ORG_2:
             if atividade != "000" or not projeto:
@@ -155,7 +146,6 @@ def validar_documentos_co(df_input):
 st.sidebar.header("Menu")
 uploaded = st.sidebar.file_uploader("📂 Carrega um ficheiro CSV ou ZIP", type=["csv", "zip"])
 
-# --- Deteção automática e pré-seleção do ano ---
 ano_detectado = None
 if uploaded:
     try:
@@ -185,7 +175,7 @@ if uploaded:
 
             # --- Fase 1 ---
             progresso.progress(0.1, text="Fase 1/3: Limpeza inicial e exclusão de 'Saldo Inicial'...")
-            df_original = df_original[~df_original['Data Contab.'].astype(str).str.contains("Saldo Inicial", case=False, na=False)]
+            df_original = df_original[~df_original["Data Contab."].astype(str).str.contains("Saldo Inicial", case=False, na=False)]
             for col in COLUNAS_A_PRE_LIMPAR:
                 df_original[f"{col}_clean"] = df_original[col].apply(limpar) if col in df_original.columns else ""
             time.sleep(0.3)
@@ -199,8 +189,7 @@ if uploaded:
                     "541": "121904000", "724": "121904000", "721": "121904000",
                     "361": "128904000", "415": "128904000"
                 }
-                PROGRAMA_OBRIGATORIO = "015"
-                ORG_1, ORG_2 = "121904000", "128904000"
+                PROGRAMA_OBRIGATORIO = "015"; ORG_1, ORG_2 = "121904000", "128904000"
             else:
                 ORG_POR_FONTE = {
                     "368": "108904000", "31H": "108904000", "483": "108904000", "488": "108904000",
@@ -208,8 +197,7 @@ if uploaded:
                     "541": "101904000", "724": "101904000", "721": "101904000",
                     "361": "108904000", "415": "108904000"
                 }
-                PROGRAMA_OBRIGATORIO = "011"
-                ORG_1, ORG_2 = "101904000", "108904000"
+                PROGRAMA_OBRIGATORIO = "011"; ORG_1, ORG_2 = "101904000", "108904000"
 
             df_original["Erro"] = df_original.apply(
                 lambda row: validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2), axis=1
@@ -226,13 +214,12 @@ if uploaded:
                     else:
                         df_original.at[idx, "Erro"] += f"; {msg}"
             time.sleep(0.3)
-
             progresso.progress(1.0, text="Validação concluída ✅")
 
             # --- Resultados ---
             st.success(f"Validação concluída ({len(df_original)} linhas processadas). Regras aplicadas ao ano {ano_validacao}.")
-
             st.subheader(f"📊 Resumo de Erros — Ano {ano_validacao}")
+
             resumo = Counter()
             for e in df_original["Erro"]:
                 if e != "Sem erros":
@@ -273,6 +260,5 @@ if uploaded:
 
     except Exception as e:
         st.error(f"Erro: {e}")
-
 else:
     st.info("👈 Carregue um ficheiro CSV ou ZIP para começar.")
