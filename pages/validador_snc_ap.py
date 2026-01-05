@@ -134,8 +134,8 @@ def validar_documentos_co(df_input):
     return erros
 
 # --- App Streamlit ---
-st.set_page_config(page_title='Validador SNC-AP Turbo Finalíssimo 2026.6', layout='wide')
-st.title('🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo 2026.6')
+st.set_page_config(page_title='Validador SNC-AP Turbo Finalíssimo 2026.7', layout='wide')
+st.title('🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo 2026.7')
 
 st.sidebar.title('Menu')
 uploaded = st.sidebar.file_uploader('📂 Carrega um ficheiro CSV ou ZIP', type=['csv', 'zip'])
@@ -146,19 +146,28 @@ if uploaded:
         st.success(f"Ficheiro '{uploaded.name}' carregado com sucesso!")
         st.dataframe(df_original.head(10), use_container_width=True)
 
-        ano_validacao = st.sidebar.selectbox('📅 Selecione o ano para validação', [2025, 2026, 2027], index=None, placeholder='Escolha o ano…')
+        ano_validacao = st.sidebar.selectbox(
+            '📅 Selecione o ano para validação',
+            [2025, 2026, 2027],
+            index=None,
+            placeholder='Escolha o ano…'
+        )
 
         if ano_validacao:
+            ano_validacao = int(ano_validacao)  # 🔥 Corrigido — garante que é número
+
             if st.sidebar.button('🚀 Iniciar validação'):
                 df = df_original.copy()
                 df = df[df['Conta'] != 'Conta']
                 df.reset_index(drop=True, inplace=True)
 
+                # --- Configurar regras conforme o ano ---
                 if ano_validacao >= 2026:
                     ORG_POR_FONTE = {
                         '368': '128904000', '31H': '128904000', '483': '128904000', '488': '128904000',
                         '511': '121904000', '513': '121904000', '521': '121904000', '522': '121904000',
-                        '541': '121904000', '724': '121904000', '721': '121904000', '361': '128904000', '415': '128904000'
+                        '541': '121904000', '724': '121904000', '721': '121904000',
+                        '361': '128904000', '415': '128904000'
                     }
                     PROGRAMA_OBRIGATORIO = '015'
                     ORG_1, ORG_2 = '121904000', '128904000'
@@ -166,13 +175,15 @@ if uploaded:
                     ORG_POR_FONTE = {
                         '368': '108904000', '31H': '108904000', '483': '108904000', '488': '108904000',
                         '511': '101904000', '513': '101904000', '521': '101904000', '522': '101904000',
-                        '541': '101904000', '724': '101904000', '721': '101904000', '361': '108904000', '415': '108904000'
+                        '541': '101904000', '724': '101904000', '721': '101904000',
+                        '361': '108904000', '415': '108904000'
                     }
                     PROGRAMA_OBRIGATORIO = '011'
                     ORG_1, ORG_2 = '101904000', '108904000'
 
-                st.info(f'Validação efetuada segundo as regras do ano {ano_validacao}')
+                st.info(f'📘 Validação efetuada segundo as regras do ano {ano_validacao}')
 
+                # --- Validação ---
                 total_etapas = 3
                 barra_progresso = st.progress(0, text='A iniciar validação...')
                 tempo_inicio_total = time.time()
@@ -186,7 +197,9 @@ if uploaded:
                         st.warning(f"Coluna '{col}' não encontrada no ficheiro.")
 
                 barra_progresso.progress(0.4, text='Fase 2/3: Validação linha a linha...')
-                df['Erro'] = df.apply(lambda row: validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2), axis=1)
+                df['Erro'] = df.apply(
+                    lambda row: validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2), axis=1
+                )
 
                 barra_progresso.progress(0.8, text='Fase 3/3: Validação CO...')
                 co_erros = validar_documentos_co(df)
@@ -199,7 +212,9 @@ if uploaded:
 
                 barra_progresso.progress(1.0, text='Validação concluída! ✅')
 
-                st.success(f"Validação concluída para o ano {ano_validacao}. Total de linhas: {len(df)}. Tempo total: {time.time() - tempo_inicio_total:.2f}s")
+                st.success(
+                    f"Validação concluída para o ano {ano_validacao}. Total de linhas: {len(df)}. Tempo total: {time.time() - tempo_inicio_total:.2f}s"
+                )
 
                 df_para_mostrar = df.copy()
                 df_para_mostrar['Ano_Validacao'] = ano_validacao
@@ -219,7 +234,9 @@ if uploaded:
                         st.table(resumo_df)
                         altura = max(5, len(resumo_df) * 0.35)
                         fig, ax = plt.subplots(figsize=(10, altura))
-                        resumo_df.sort_values(by='Ocorrências', ascending=True).plot(kind='barh', x='Regra', y='Ocorrências', ax=ax, legend=False)
+                        resumo_df.sort_values(by='Ocorrências', ascending=True).plot(
+                            kind='barh', x='Regra', y='Ocorrências', ax=ax, legend=False
+                        )
                         plt.tight_layout()
                         st.pyplot(fig)
                     else:
@@ -232,7 +249,9 @@ if uploaded:
                 nome_base = uploaded.name.split('.')[0].replace(' ', '_')
                 nome_csv = f"{nome_base}_output_{ano_validacao}_{ts}.csv"
 
-                st.sidebar.download_button('⬇️ Descarregar CSV com Erros', data=buffer, file_name=nome_csv, mime='text/csv')
+                st.sidebar.download_button(
+                    '⬇️ Descarregar CSV com Erros', data=buffer, file_name=nome_csv, mime='text/csv'
+                )
 
         else:
             st.warning('⚠️ Selecione um ano antes de iniciar a validação.')
