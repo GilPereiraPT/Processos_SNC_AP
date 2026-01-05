@@ -237,3 +237,21 @@ if df_original is not None and ano_validacao:
             st.dataframe(resumo_df, use_container_width=True)
         else:
             st.info("🎉 Nenhum erro encontrado!")
+# --- Exportação CSV Validado ---
+df_para_mostrar = df.copy()
+df_para_mostrar['Ano_Validacao'] = ano_validacao
+
+buffer = io.BytesIO()
+df_para_mostrar.to_csv(buffer, index=False, sep=';', encoding='utf-8-sig')
+buffer.seek(0)
+
+ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+nome_base = uploaded.name.split('.')[0].replace(' ', '_')
+nome_csv = f"{nome_base}_output_{ano_validacao}_{ts}.csv"
+
+st.sidebar.download_button(
+    "⬇️ Descarregar CSV com Erros",
+    data=buffer,
+    file_name=nome_csv,
+    mime="text/csv"
+)
