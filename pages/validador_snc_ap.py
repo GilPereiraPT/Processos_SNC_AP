@@ -9,9 +9,9 @@ from datetime import datetime
 import time
 
 # --- Configurações ---
-st.set_page_config(page_title="Validador SNC-AP Turbo Finalíssimo v2027.2", layout="wide")
-st.title("🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo v2027.2")
-st.caption("🧩 Inclui deteção automática, seletor manual, exclusão de 'Saldo Inicial' e relatório com ano de validação")
+st.set_page_config(page_title="Validador SNC-AP Turbo Finalíssimo v2027.3", layout="wide")
+st.title("🛡️ Validador de Lançamentos SNC-AP Turbo Finalíssimo v2027.3")
+st.caption("🧩 Inclui deteção automática, seletor manual, barra de progresso e exclusão de 'Saldo Inicial'")
 
 CABECALHOS = [
     'Conta', 'Data Contab.', 'Data Doc.', 'Nº Lancamento', 'Entidade', 'Designação',
@@ -155,34 +155,43 @@ def validar_documentos_co(df_input):
 st.sidebar.header("Menu")
 uploaded = st.sidebar.file_uploader("📂 Carrega um ficheiro CSV ou ZIP", type=["csv", "zip"])
 
+# --- Deteção automática e pré-seleção do ano ---
+ano_detectado = None
+if uploaded:
+    try:
+        df_preview = ler_ficheiro(uploaded)
+        ano_detectado = detectar_ano(df_preview)
+    except Exception:
+        ano_detectado = None
+
 ano_validacao = st.sidebar.selectbox(
     "📅 Selecione o ano para validação",
     [2025, 2026],
-    index=None,
-    placeholder="Escolha o ano…"
+    index=[2025, 2026].index(ano_detectado) if ano_detectado in [2025, 2026] else 0,
 )
 
 if uploaded:
     try:
         df_original = ler_ficheiro(uploaded)
-        ano_detectado = detectar_ano(df_original)
-
+        st.success(f"✅ Ficheiro '{uploaded.name}' carregado com sucesso.")
         if ano_detectado:
-            st.success(f"✅ Ano detetado automaticamente: {ano_detectado}")
-            if ano_validacao is None:
-                ano_validacao = ano_detectado
-        else:
-            st.warning("⚠️ Nenhum ano detetado — selecione manualmente.")
-
+            st.info(f"Ano detetado automaticamente: {ano_detectado}")
         st.dataframe(df_original.head(10), use_container_width=True)
 
-        if ano_validacao and st.sidebar.button("🚀 Iniciar validação"):
+        if st.sidebar.button("🚀 Iniciar validação"):
             ano_validacao = int(ano_validacao)
+            total_etapas = 3
+            progresso = st.progress(0, text="A iniciar validação...")
 
-            # Ignorar linhas de "Saldo Inicial"
+            # --- Fase 1 ---
+            progresso.progress(0.1, text="Fase 1/3: Limpeza inicial e exclusão de 'Saldo Inicial'...")
             df_original = df_original[~df_original['Data Contab.'].astype(str).str.contains("Saldo Inicial", case=False, na=False)]
+            for col in COLUNAS_A_PRE_LIMPAR:
+                df_original[f"{col}_clean"] = df_original[col].apply(limpar) if col in df_original.columns else ""
+            time.sleep(0.3)
 
-            # --- Regras ---
+            # --- Fase 2 ---
+            progresso.progress(0.5, text="Fase 2/3: Aplicar regras de validação...")
             if ano_validacao >= 2026:
                 ORG_POR_FONTE = {
                     "368": "128904000", "31H": "128904000", "483": "128904000", "488": "128904000",
@@ -202,18 +211,13 @@ if uploaded:
                 PROGRAMA_OBRIGATORIO = "011"
                 ORG_1, ORG_2 = "101904000", "108904000"
 
-            st.info(f"Validação efetuada segundo as regras do ano {ano_validacao}")
-
-            # --- Pré-limpeza ---
-            for col in COLUNAS_A_PRE_LIMPAR:
-                df_original[f"{col}_clean"] = df_original[col].apply(limpar) if col in df_original.columns else ""
-
-            # --- Validação principal ---
             df_original["Erro"] = df_original.apply(
                 lambda row: validar_linha(row, ORG_POR_FONTE, PROGRAMA_OBRIGATORIO, ORG_1, ORG_2), axis=1
             )
+            time.sleep(0.3)
 
-            # --- Validação CO ---
+            # --- Fase 3 ---
+            progresso.progress(0.8, text="Fase 3/3: Validação cruzada de documentos CO...")
             co_erros = validar_documentos_co(df_original)
             for idx, msg in co_erros:
                 if idx in df_original.index:
@@ -221,12 +225,14 @@ if uploaded:
                         df_original.at[idx, "Erro"] = msg
                     else:
                         df_original.at[idx, "Erro"] += f"; {msg}"
+            time.sleep(0.3)
 
-            st.success(f"Validação concluída ({len(df_original)} linhas processadas).")
+            progresso.progress(1.0, text="Validação concluída ✅")
 
-            # --- Relatório e gráfico ---
+            # --- Resultados ---
+            st.success(f"Validação concluída ({len(df_original)} linhas processadas). Regras aplicadas ao ano {ano_validacao}.")
+
             st.subheader(f"📊 Resumo de Erros — Ano {ano_validacao}")
-
             resumo = Counter()
             for e in df_original["Erro"]:
                 if e != "Sem erros":
@@ -247,10 +253,9 @@ if uploaded:
             else:
                 st.info(f"🎉 Nenhum erro encontrado nas validações ({ano_validacao}).")
 
-            # --- Download CSV ---
+            # --- Download ---
             df_para_mostrar = df_original.copy()
             df_para_mostrar["Ano_Validacao"] = ano_validacao
-
             buffer = io.BytesIO()
             df_para_mostrar.to_csv(buffer, index=False, sep=";", encoding="utf-8-sig")
             buffer.seek(0)
