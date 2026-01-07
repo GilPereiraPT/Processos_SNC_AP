@@ -35,9 +35,6 @@ def transform_line(line: str, mapping: Dict[str, str], expected_len: int = None)
     if expected_len is None:
         expected_len = original_len
 
-    # trabalhar sem \r
-    line = line.rstrip("\r")
-
     # 1️⃣ Corrigir Coluna 12 (Posição 11)
     if len(line) >= 12 and line[11] == "0":
         line = line[:11] + " " + line[12:]
@@ -104,14 +101,43 @@ def transform_line(line: str, mapping: Dict[str, str], expected_len: int = None)
     return line
 
 
+def split_keep_eol(text: str):
+    """
+    Divide em linhas preservando EOL (\n / \r\n).
+    Devolve lista de tuplos: (linha_sem_eol, eol_original)
+    """
+    parts = text.splitlines(keepends=True)
+    out = []
+    for p in parts:
+        if p.endswith("\r\n"):
+            out.append((p[:-2], "\r\n"))
+        elif p.endswith("\n"):
+            out.append((p[:-1], "\n"))
+        elif p.endswith("\r"):
+            out.append((p[:-1], "\r"))
+        else:
+            out.append((p, ""))  # última linha pode não ter EOL
+    return out
+
+
+def guess_default_eol(text: str) -> str:
+    """Escolhe EOL mais provável para o ficheiro."""
+    if "\r\n" in text:
+        return "\r\n"
+    if "\n" in text:
+        return "\n"
+    if "\r" in text:
+        return "\r"
+    return "\n"
+
+
 # =========================================================
 # 🎨 Interface Streamlit
 # =========================================================
 st.set_page_config(page_title="Conversor MCDT/Termas (Formato Rígido)", layout="wide")
 st.title("🏥 Conversor de ficheiros MCDT / Termas — Formato Rígido v2027.5")
-st.caption("Mantém colunas fixas, garante 1 espaço antes da entidade e verifica desalinhamentos.")
+st.caption("Mantém colunas fixas, garante 1 espaço antes da entidade e preserva EOL para o ERP.")
 
-# Carregar mapeamento
 mapping_dict, _ = load_default_mapping("mapeamentos.csv")
 
 if not mapping_dict:
@@ -125,51 +151,54 @@ else:
         for f in uploaded_files:
             content = f.read()
             try:
-                text = content.decode("utf-8")
+                text = content.decode("utf-8-sig")
             except UnicodeDecodeError:
-                text = content.decode("latin-1")
+                try:
+                    text = content.decode("utf-8")
+                except UnicodeDecodeError:
+                    text = content.decode("latin-1")
 
-            lines = text.splitlines()
-            total = len(lines)
+            default_eol = guess_default_eol(text)
+            lines_with_eol = split_keep_eol(text)
+            total = len(lines_with_eol)
+
             st.info(f"📄 Ficheiro **{f.name}** contém {total:,} linhas. A processar...")
 
             progress = st.progress(0, text="A converter...")
-            processed_lines = []
+            processed_parts = []
             len_diff = 0
 
-            for i, line in enumerate(lines):
-                if not line.strip():
-                    processed_lines.append(line)
+            for i, (line_body, eol) in enumerate(lines_with_eol):
+                if not line_body.strip():
+                    processed_parts.append(line_body + eol)
                     continue
 
-                expected_len = len(line)
-                new_line = transform_line(line, mapping_dict, expected_len)
-                processed_lines.append(new_line)
+                expected_len = len(line_body)
+                new_body = transform_line(line_body, mapping_dict, expected_len)
 
-                # Contar desalinhamentos
-                if len(new_line) != expected_len:
+                if len(new_body) != expected_len:
                     len_diff += 1
+
+                # 🔒 Preservar exactamente o EOL original
+                processed_parts.append(new_body + eol)
 
                 if i % 50 == 0 or i == total - 1:
                     progress.progress(i / total)
 
             progress.progress(1.0, text="Conversão concluída ✅")
 
-            # Mostrar resumo
+            # ✅ Garantir que o ficheiro termina com newline (muitos ERPs exigem)
+            output = "".join(processed_parts)
+            if not output.endswith(("\r\n", "\n", "\r")):
+                output += default_eol
+
             st.success(f"✅ Conversão terminada para {f.name}")
             st.write(f"📏 Linhas processadas: {total:,}")
             st.write(f"⚠️ Linhas ajustadas em comprimento: {len_diff:,}")
+            st.write(f"↩️ EOL detetado/forçado no fim: `{default_eol.encode('unicode_escape').decode()}`")
 
-            # Verificar comprimento médio
-            lengths = [len(l) for l in processed_lines if l.strip()]
-            if lengths:
-                st.write(f"📐 Comprimento médio de linha: {sum(lengths) / len(lengths):.1f} caracteres")
-
-            # Preparar ficheiro final
-            output = "\n".join(processed_lines)
             output_bytes = output.encode("utf-8")
 
-            # Botão de download
             st.download_button(
                 label=f"📥 Guardar ficheiro corrigido — {f.name}",
                 data=output_bytes,
