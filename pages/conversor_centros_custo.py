@@ -1,11 +1,14 @@
-"""Página: Conversor de Centros de Custo 2024 ➔ 2025"""
 # -*- coding: utf-8 -*-
+"""Página: Conversor de Centros de Custo 2024 ➔ 2025"""
 
 import streamlit as st
 import zipfile
 import io
 from datetime import datetime
-# 📌 TABELA DE MAPEAMENTO COMPLETA (centros de custo 2024 ➔ 2025)
+
+# =========================================================
+# 📘 Tabela de Mapeamento Completa (2024 ➜ 2025)
+# =========================================================
 MAPEAMENTO_CC = {
     '10101': '11001',
     '11002': '11002',
@@ -233,8 +236,12 @@ MAPEAMENTO_CC.update({
     '90104': '919909',
     '9194': '9197'
 })
-# --- Função para corrigir linha ---
+
+# =========================================================
+# 🧩 Funções Principais
+# =========================================================
 def corrigir_linha(linha):
+    """Corrige o código mantendo posições fixas (preenche com espaços se menor)."""
     if len(linha) > 121:
         sinal = linha[120]
         if sinal in ('+', '-'):
@@ -242,32 +249,47 @@ def corrigir_linha(linha):
             fim_codigo = inicio_codigo
             while fim_codigo < len(linha) and linha[fim_codigo] != ' ':
                 fim_codigo += 1
-            codigo_antigo = linha[inicio_codigo:fim_codigo]
+
+            codigo_antigo = linha[inicio_codigo:fim_codigo].strip()
             if codigo_antigo:
                 codigo_corrigido = MAPEAMENTO_CC.get(codigo_antigo, "919909")
+
+                tamanho_campo = fim_codigo - inicio_codigo
+                if len(codigo_corrigido) < tamanho_campo:
+                    codigo_corrigido = codigo_corrigido.ljust(tamanho_campo, " ")
+                elif len(codigo_corrigido) > tamanho_campo:
+                    codigo_corrigido = codigo_corrigido[:tamanho_campo]
+
                 linha_corrigida = (
                     linha[:120] +
                     sinal +
-                    codigo_corrigido.ljust(fim_codigo - inicio_codigo) +
+                    codigo_corrigido +
                     linha[fim_codigo:]
                 )
+
+                # Garante que o comprimento total se mantém
+                if len(linha_corrigida) != len(linha):
+                    linha_corrigida = linha_corrigida.ljust(len(linha))[:len(linha)]
+
                 return linha_corrigida
     return linha
 
-# --- Função para processar um ficheiro ---
+
 def processar_ficheiro(uploaded_file):
-    linhas_corrigidas = []
+    """Processa e corrige todas as linhas de um ficheiro TXT."""
     conteudo = uploaded_file.read().decode('utf-8', errors='ignore')
-    for linha in conteudo.splitlines(keepends=True):
-        linhas_corrigidas.append(corrigir_linha(linha))
+    linhas_corrigidas = [corrigir_linha(l) for l in conteudo.splitlines(keepends=True)]
     return ''.join(linhas_corrigidas)
 
-# --- Streamlit App ---
-st.set_page_config(page_title="Conversor de Centros de Custo", layout="wide")
-st.title("🛠️ Conversor de Centros de Custo 2024 ➔ 2025")
 
-st.sidebar.title("Menu")
-uploaded_files = st.sidebar.file_uploader("Selecionar ficheiros TXT", type=["txt"], accept_multiple_files=True)
+# =========================================================
+# 🖥️ Interface Streamlit
+# =========================================================
+st.set_page_config(page_title="Conversor de Centros de Custo 2024 ➔ 2025", layout="wide")
+st.title("🛠️ Conversor de Centros de Custo 2024 ➔ 2025 — v2027.4")
+st.caption("Mantém todas as colunas fixas e preenche com espaços se o código novo for menor.")
+
+uploaded_files = st.sidebar.file_uploader("📂 Selecionar ficheiros TXT", type=["txt"], accept_multiple_files=True)
 
 if uploaded_files:
     st.success(f"{len(uploaded_files)} ficheiro(s) carregado(s). Pronto para processar!")
@@ -277,42 +299,30 @@ if uploaded_files:
         progress_bar = st.progress(0)
 
         if len(uploaded_files) == 1:
-            # Apenas 1 ficheiro
             uploaded_file = uploaded_files[0]
-            try:
-                ficheiro_corrigido = processar_ficheiro(uploaded_file)
-                buffer_txt = io.BytesIO()
-                buffer_txt.write(ficheiro_corrigido.encode('utf-8'))
-                buffer_txt.seek(0)
-                novo_nome = uploaded_file.name.replace('.txt', '_CORRIGIDO.txt')
+            ficheiro_corrigido = processar_ficheiro(uploaded_file)
 
-                st.sidebar.download_button(
-                    "📥 Descarregar TXT Corrigido",
-                    data=buffer_txt,
-                    file_name=novo_nome,
-                    mime="text/plain"
-                )
+            buffer_txt = io.BytesIO(ficheiro_corrigido.encode('utf-8'))
+            novo_nome = uploaded_file.name.replace('.txt', '_CORRIGIDO.txt')
 
-                log.append(f"✅ {uploaded_file.name} corrigido.")
+            st.sidebar.download_button(
+                "📥 Descarregar TXT Corrigido",
+                data=buffer_txt,
+                file_name=novo_nome,
+                mime="text/plain"
+            )
 
-            except Exception as e:
-                log.append(f"❌ Erro em {uploaded_file.name}: {e}")
-
+            log.append(f"✅ {uploaded_file.name} corrigido.")
             progress_bar.progress(1.0)
 
         else:
-            # Vários ficheiros
             buffer_zip = io.BytesIO()
             with zipfile.ZipFile(buffer_zip, "w") as zipf:
                 for idx, uploaded_file in enumerate(uploaded_files):
-                    try:
-                        ficheiro_corrigido = processar_ficheiro(uploaded_file)
-                        novo_nome = uploaded_file.name.replace('.txt', '_CORRIGIDO.txt')
-                        zipf.writestr(novo_nome, ficheiro_corrigido)
-                        log.append(f"✅ {uploaded_file.name} corrigido.")
-                    except Exception as e:
-                        log.append(f"❌ Erro em {uploaded_file.name}: {e}")
-
+                    ficheiro_corrigido = processar_ficheiro(uploaded_file)
+                    novo_nome = uploaded_file.name.replace('.txt', '_CORRIGIDO.txt')
+                    zipf.writestr(novo_nome, ficheiro_corrigido)
+                    log.append(f"✅ {uploaded_file.name} corrigido.")
                     progress_bar.progress((idx + 1) / len(uploaded_files))
 
             buffer_zip.seek(0)
@@ -320,15 +330,15 @@ if uploaded_files:
             nome_zip = f"ficheiros_corrigidos_{timestamp}.zip"
 
             st.sidebar.download_button(
-                "📥 Descarregar ZIP Corrigido",
+                "📦 Descarregar ZIP Corrigido",
                 data=buffer_zip,
                 file_name=nome_zip,
                 mime="application/zip"
             )
 
-        st.subheader("Relatório de Operações:")
+        st.subheader("📋 Relatório de Operações:")
         for linha in log:
             st.write(linha)
 
 else:
-    st.info("Seleciona primeiro ficheiros .txt para iniciar a conversão!")
+    st.info("👈 Seleciona ficheiros .TXT para iniciar a conversão.")
