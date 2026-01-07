@@ -1,20 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Página: Conversor de ficheiros MCDT/Termas — v2.4 (estável)"""
+"""Conversor MCDT / Termas — v3.0 (Estável e robusto)"""
 
 import io
 import re
-from typing import Dict, Tuple, Optional
+import zipfile
 import pandas as pd
 import streamlit as st
+from typing import Dict, Tuple, Optional
+from datetime import datetime
 
 # =========================================================
-# Funções de Mapeamento
+# 🔧 Função: Carregar Mapeamento
 # =========================================================
 @st.cache_data
-def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
+def load_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
     """
-    Lê o ficheiro CSV de mapeamento (com delimitador automático).
-    Cria um dicionário de convenções -> entidades.
+    Lê o ficheiro CSV com mapeamentos (formato 824988;9809598)
+    e devolve um dicionário limpo.
     """
     try:
         df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
@@ -22,125 +24,114 @@ def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str],
         c_col, e_col = df.columns[0], df.columns[1]
 
         for _, row in df.iterrows():
-            c = re.sub(r"\D", "", str(row[c_col])).zfill(6)
-            e = str(row[e_col]).strip().replace(".0", "").replace(" ", "")
+            c = str(row[c_col]).strip().replace(" ", "").replace(".", "").replace("-", "")
+            e = str(row[e_col]).strip().replace(" ", "").replace(".0", "")
             if c and e and e.lower() != "nan":
                 mapping[c] = e
         return mapping, df
-    except Exception:
+    except Exception as e:
+        st.error(f"Erro ao ler mapeamento: {e}")
         return {}, None
 
 # =========================================================
-# Lógica de Transformação (formato rígido)
+# 🧠 Função: Substituir código dentro de linha
 # =========================================================
-def transform_line(line: str, mapping: Dict[str, str]) -> str:
+def substituir_codigo(linha: str, mapping: Dict[str, str]) -> str:
     """
-    Aplica as substituições de convenção -> entidade numa linha de formato fixo.
-    Mantém o comprimento total da linha.
+    Substitui o código de convenção (6 dígitos) pelo código da entidade (7 dígitos),
+    mesmo que estejam concatenados.
+    Mantém sempre o comprimento total da linha fixo.
     """
+    original_len = len(linha)
+    nova_linha = linha
 
-    # 1️⃣ Corrige espaços e padrões específicos
-    if len(line) >= 12 and line[11] == "0":
-        line = line[:11] + " " + line[12:]
-    line = re.sub(r"\+93\s\s", "+9197", line)
+    # Percorre o mapeamento (ordenado por comprimento descendente)
+    for antigo, novo in sorted(mapping.items(), key=lambda x: len(x[0]), reverse=True):
+        if antigo in nova_linha:
+            nova_linha = nova_linha.replace(antigo, novo, 1)
+            break  # apenas a primeira substituição por linha
 
-    # 2️⃣ Analisa o segundo bloco (token2)
-    m = re.search(r"^(\S+)(\s+)(\S+)", line)
-    if m:
-        token2 = m.group(3)
-        start_pos = m.start(3)
-        end_pos = m.end(3)
+    # Garante comprimento fixo
+    if len(nova_linha) > original_len:
+        nova_linha = nova_linha[:original_len]
+    elif len(nova_linha) < original_len:
+        nova_linha = nova_linha.ljust(original_len)
 
-        matched_conv = None
-        sorted_convs = sorted(mapping.keys(), key=len, reverse=True)
-        for c_code in sorted_convs:
-            if c_code in token2:
-                matched_conv = c_code
-                break
-
-        if matched_conv:
-            ent_code = mapping[matched_conv]
-            try:
-                ent7 = f"{int(ent_code):07d}"
-                idx = token2.find(matched_conv)
-
-                # Caso 1: há zero à esquerda (ex: "0824988")
-                if idx > 0 and token2[idx-1] == '0':
-                    new_token2 = token2[:idx-1] + ent7 + token2[idx+len(matched_conv):]
-                else:
-                    new_token2 = token2[:idx] + ent7 + token2[idx+len(matched_conv):]
-
-                diff = len(new_token2) - len(token2)
-                if diff > 0:
-                    post_content = line[end_pos:]
-                    line = line[:start_pos] + new_token2 + post_content[diff:]
-                else:
-                    line = line[:start_pos] + new_token2 + line[end_pos:]
-            except ValueError:
-                pass
-
-    # 3️⃣ Remove NIF final (9 dígitos) mantendo espaços
-    line = re.sub(r"(\s)\d{9}$", r"\1", line)
-
-    return line
+    return nova_linha
 
 # =========================================================
-# Função de processamento de ficheiros
+# 📁 Função: Processar ficheiro
 # =========================================================
-def processar_ficheiro(uploaded_file, mapping: Dict[str, str]) -> str:
+def processar_ficheiro(uploaded_file, mapping: Dict[str, str]) -> Tuple[str, int]:
     """
-    Processa o ficheiro linha a linha e devolve o conteúdo convertido.
+    Processa todas as linhas de um ficheiro de texto e aplica substituições.
+    Retorna o conteúdo corrigido e o número de substituições.
     """
-    linhas_corrigidas = []
-    conteudo = uploaded_file.read()
-
     try:
-        texto = conteudo.decode("utf-8")
+        conteudo = uploaded_file.read().decode("utf-8")
     except UnicodeDecodeError:
-        texto = conteudo.decode("latin-1")
+        conteudo = uploaded_file.read().decode("latin-1")
 
-    for linha in texto.splitlines(keepends=True):
-        linhas_corrigidas.append(transform_line(linha, mapping))
+    linhas = conteudo.splitlines(keepends=True)
+    substituicoes = 0
+    linhas_corrigidas = []
 
-    return "".join(linhas_corrigidas)
+    for linha in linhas:
+        nova = substituir_codigo(linha, mapping)
+        if nova != linha:
+            substituicoes += 1
+        linhas_corrigidas.append(nova)
+
+    return "".join(linhas_corrigidas), substituicoes
 
 # =========================================================
-# Interface Streamlit
+# 🖥️ Streamlit Interface
 # =========================================================
-st.set_page_config(page_title="Conversor MCDT (Formato Rígido)", layout="wide")
-st.title("🧾 Conversor de ficheiros MCDT / Termas — v2.4 (estável)")
+st.set_page_config(page_title="Conversor MCDT / Termas", layout="wide")
+st.title("🧾 Conversor de Ficheiros MCDT / Termas — v3.0 (Estável)")
+st.caption("Substitui códigos de convenção por entidade, mantendo formato fixo.")
 
-mapping_dict, df_mapping = load_default_mapping("mapeamentos.csv")
+mapping, df_map = load_mapping("mapeamentos.csv")
 
-if not mapping_dict:
-    st.error("❌ ERRO: Ficheiro 'mapeamentos.csv' não encontrado ou inválido.")
+if not mapping:
+    st.error("⚠️ Ficheiro 'mapeamentos.csv' não encontrado ou inválido.")
 else:
-    st.success(f"✅ Mapeamento carregado ({len(mapping_dict)} códigos lidos).")
+    st.success(f"✅ {len(mapping)} códigos carregados com sucesso.")
 
-    uploaded_files = st.file_uploader(
-        "📂 Carrega ficheiros TXT para conversão individual",
-        accept_multiple_files=True,
-        type=["txt"]
-    )
+    uploaded_files = st.file_uploader("📂 Carrega ficheiros TXT", type=["txt"], accept_multiple_files=True)
 
     if uploaded_files:
-        for f in uploaded_files:
-            content = f.read()
-            try:
-                text = content.decode("utf-8")
-            except:
-                text = content.decode("latin-1")
+        if st.button("🚀 Iniciar Conversão"):
+            log = []
+            progress = st.progress(0)
+            total_subs = 0
 
-            # Processamento
-            lines = text.splitlines()
-            processed = [transform_line(l, mapping_dict) for l in lines]
-            output = "\n".join(processed) + "\n"
+            # ZIP para vários ficheiros
+            buffer_zip = io.BytesIO()
+            with zipfile.ZipFile(buffer_zip, "w") as zipf:
+                for idx, file in enumerate(uploaded_files):
+                    resultado, subs = processar_ficheiro(file, mapping)
+                    total_subs += subs
+                    novo_nome = file.name.replace(".txt", "_CONVERTIDO.txt")
+                    zipf.writestr(novo_nome, resultado)
+                    log.append(f"✅ {file.name}: {subs} substituições")
+                    progress.progress((idx + 1) / len(uploaded_files))
 
-            # Botão de download
-            st.download_button(
-                label=f"📥 Guardar {f.name}",
-                data=output.encode("utf-8"),
-                file_name=f"CORRIGIDO_{f.name}",
-                mime="text/plain",
-                key=f.name
+            buffer_zip.seek(0)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            nome_zip = f"ficheiros_convertidos_{ts}.zip"
+
+            st.sidebar.download_button(
+                label="📦 Descarregar ZIP Convertido",
+                data=buffer_zip,
+                file_name=nome_zip,
+                mime="application/zip"
             )
+
+            st.success(f"🔁 Total de substituições: {total_subs}")
+            st.subheader("📋 Relatório de Conversão:")
+            for linha in log:
+                st.write(linha)
+
+    else:
+        st.info("👈 Carregue ficheiros TXT para iniciar a conversão.")
