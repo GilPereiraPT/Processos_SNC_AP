@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Página: Conversor de Centros de Custo 2024 ➔ 2025 (v2027.6 - bytes safe)"""
+"""Página: Conversor de Centros de Custo 2024 ➔ 2025 (v2027.9 - comprimento fixo garantido)"""
 
 import streamlit as st
 import zipfile
@@ -102,28 +102,6 @@ MAPEAMENTO_CC = {
     '1030319': '12702399',
     '1030411': '12702401',
     '1030412': '12702402',
-    '10305101': '12702501',
-    '10305102': '12702502',
-    '10305103': '12702503',
-    '10305104': '12702504',
-    '10305105': '12702505',
-    '10305106': '12702506',
-    '10305107': '12702507',
-    '10305108': '12702508',
-    '10305109': '12702509',
-    '10305110': '12702510',
-    '10305111': '12702511',
-    '10305112': '12702512',
-    '10305113': '12702513',
-    '10305119': '12702599',
-    '1030121': '127030101',
-    '1030221': '127030102',
-    '1030222': '127030103',
-    '1030321': '127030104',
-    '1030322': '127030105',
-    '1030421': '127030106',
-    '1030521': '127030107',
-    '1030522': '127030108',
     '9197': '9197',
     '103091': '1270501',
     '103092': '1270502',
@@ -233,128 +211,191 @@ MAPEAMENTO_CC = {
     '9194': '9197',
 }
 
+# ✅ Regra específica pedida:
+# +1030111 tem de ser substituído por +12702301
+MAPEAMENTO_CC["1030111"] = "12702301"
+
+
 # =========================================================
-# 🧩 Funções (bytes-safe)
+# 🧩 Funções (bytes-safe e comprimento fixo)
 # =========================================================
-def corrigir_linha_bytes(linha_b: bytes):
+def _split_eol(line_b: bytes):
+    if line_b.endswith(b"\r\n"):
+        return line_b[:-2], b"\r\n"
+    if line_b.endswith(b"\n"):
+        return line_b[:-1], b"\n"
+    if line_b.endswith(b"\r"):
+        return line_b[:-1], b"\r"
+    return line_b, b""
+
+
+def _find_last_sign_pos(body: bytes) -> int:
+    # Ignorar NIF final (espaço + 9 dígitos) para não “enganar” a procura
+    core = body
+    if len(core) >= 10 and core[-10:-9] == b" " and core[-9:].isdigit():
+        core = core[:-10] + b" "
+    return max(core.rfind(b"+"), core.rfind(b"-"))
+
+
+def corrigir_linha_bytes(line_b: bytes):
     """
-    Substitui o CC mantendo formato fixo (índices fixos) SEM perder bytes.
-    Se não existir equivalência, usa sempre '919909'.
+    Encontra o CC após o último +/− e substitui por mapeamento.
+    Se o novo CC tiver mais dígitos, consome espaços imediatamente a seguir ao CC.
+    Mantém o comprimento final igual ao original.
     """
-    # Precisamos de pelo menos 121+1 bytes para ler sinal/código
-    if len(linha_b) <= 121:
-        return linha_b, None, None
+    body, eol = _split_eol(line_b)
+    orig_len = len(body)
 
-    sinal = linha_b[120:121]  # 1 byte
-    if sinal not in (b'+', b'-'):
-        return linha_b, None, None
+    sign_pos = _find_last_sign_pos(body)
+    if sign_pos < 0 or sign_pos + 1 >= len(body):
+        return line_b, None, None, "SEM_SINAL"
 
-    inicio = 121
-    fim = inicio
-    # vai até ao próximo espaço
-    while fim < len(linha_b) and linha_b[fim:fim+1] != b' ':
-        fim += 1
+    # CC começa logo após o sinal e vai até ao próximo espaço
+    start = sign_pos + 1
+    end = start
+    while end < len(body) and body[end:end+1] != b" ":
+        end += 1
 
-    codigo_antigo_b = linha_b[inicio:fim].strip()
-    if not codigo_antigo_b:
-        return linha_b, None, None
+    cc_old_b = body[start:end]
+    if not cc_old_b or not cc_old_b.isdigit():
+        return line_b, None, None, "CC_INVALIDO"
 
-    # códigos são dígitos => decode ASCII seguro
-    codigo_antigo = codigo_antigo_b.decode("ascii", errors="ignore")
-    codigo_novo = MAPEAMENTO_CC.get(codigo_antigo, "919909")
+    cc_old = cc_old_b.decode("ascii")
+    cc_new = MAPEAMENTO_CC.get(cc_old, "919909")
+    cc_new_b = cc_new.encode("ascii")
 
-    tamanho_campo = fim - inicio
-    codigo_novo_b = codigo_novo.encode("ascii", errors="strict")
+    field_len = end - start  # comprimento original do CC (ex.: 7)
 
-    if len(codigo_novo_b) < tamanho_campo:
-        codigo_novo_b = codigo_novo_b.ljust(tamanho_campo, b' ')
-    elif len(codigo_novo_b) > tamanho_campo:
-        codigo_novo_b = codigo_novo_b[:tamanho_campo]
-
-    linha_corrigida = linha_b[:inicio] + codigo_novo_b + linha_b[fim:]
-
-    # garantir comprimento EXACTO
-    if len(linha_corrigida) != len(linha_b):
-        if len(linha_corrigida) < len(linha_b):
-            linha_corrigida = linha_corrigida.ljust(len(linha_b), b' ')
+    # ✅ Se o CC novo for maior, tenta expandir para a direita consumindo espaços
+    if len(cc_new_b) > field_len:
+        extra = len(cc_new_b) - field_len
+        if end + extra <= len(body) and body[end:end+extra] == (b" " * extra):
+            end += extra
+            field_len += extra
         else:
-            linha_corrigida = linha_corrigida[:len(linha_b)]
+            # se não houver espaços, truncar para manter comprimento
+            cc_new_b = cc_new_b[:field_len]
 
-    return linha_corrigida, codigo_antigo, codigo_novo
+    # ajustar CC ao tamanho do campo (agora pode ser maior do que o original)
+    if len(cc_new_b) < field_len:
+        cc_new_b = cc_new_b.ljust(field_len, b" ")
+    elif len(cc_new_b) > field_len:
+        cc_new_b = cc_new_b[:field_len]
+
+    new_body = body[:start] + cc_new_b + body[end:]
+
+    # 🔒 Garantir comprimento EXACTO do body
+    if len(new_body) != orig_len:
+        if len(new_body) < orig_len:
+            new_body = new_body.ljust(orig_len, b" ")
+        else:
+            new_body = new_body[:orig_len]
+
+    status = "OK" if cc_new != "919909" else "FALLBACK"
+    return new_body + eol, cc_old, cc_new, status
 
 
 def processar_ficheiro(uploaded_file):
-    data = uploaded_file.read()  # bytes puros
-    linhas = data.splitlines(keepends=True)  # bytes lines, mantém \n/\r\n
+    data = uploaded_file.read()  # bytes
+    linhas = data.splitlines(keepends=True)
+
     out = []
     total = 0
-    fallback_count = 0
+    ok = 0
+    fallback = 0
+    sem_sinal = 0
+    cc_invalido = 0
 
-    for linha_b in linhas:
-        nova_b, antigo, novo = corrigir_linha_bytes(linha_b)
-        out.append(nova_b)
+    # amostras para debug
+    samples = []
+
+    for line_b in linhas:
+        new_b, old, new, status = corrigir_linha_bytes(line_b)
+        out.append(new_b)
         total += 1
-        if novo == "919909":
-            fallback_count += 1
 
-    # se o ficheiro original não terminava com EOL, alguns ERPs implicam:
-    # aqui GARANTIMOS que termina com newline (usa \n se não houver)
+        if status == "OK":
+            ok += 1
+        elif status == "FALLBACK":
+            fallback += 1
+        elif status == "SEM_SINAL":
+            sem_sinal += 1
+            if len(samples) < 5:
+                samples.append((status, line_b[:180]))
+        elif status == "CC_INVALIDO":
+            cc_invalido += 1
+            if len(samples) < 5:
+                samples.append((status, line_b[:180]))
+
+    # ✅ Garantir newline no fim (ERP)
     if out and not out[-1].endswith((b"\n", b"\r")):
         out[-1] = out[-1] + b"\n"
 
-    return b"".join(out), total, fallback_count
+    return b"".join(out), total, ok, fallback, sem_sinal, cc_invalido, samples
 
 
 # =========================================================
 # 🖥️ Interface Streamlit
 # =========================================================
 st.set_page_config(page_title="Conversor de Centros de Custo 2024 ➔ 2025", layout="wide")
-st.title("🛠️ Conversor de Centros de Custo 2024 ➔ 2025 — v2027.6")
-st.caption("Mantém formato fixo (bytes-safe). Usa sempre '919909' quando não há equivalência.")
+st.title("🛠️ Conversor de Centros de Custo 2024 ➔ 2025 — v2027.9")
+st.caption("Mantém comprimento fixo. Substitui CC após o último +/−. Se o novo CC for maior, consome espaços a seguir. Fallback: '919909'.")
 
-uploaded_files = st.sidebar.file_uploader("📂 Selecionar ficheiros TXT", type=["txt"], accept_multiple_files=True)
+uploaded_files = st.sidebar.file_uploader(
+    "📂 Selecionar ficheiros TXT", type=["txt"], accept_multiple_files=True
+)
 
 if uploaded_files:
     st.success(f"{len(uploaded_files)} ficheiro(s) carregado(s). Pronto para processar!")
 
     if st.button("🚀 Iniciar Conversão"):
         log = []
-        progress_bar = st.progress(0)
+        progress_bar = st.progress(0.0)
 
         if len(uploaded_files) == 1:
-            uploaded_file = uploaded_files[0]
-            ficheiro_corrigido_b, total, fallback_count = processar_ficheiro(uploaded_file)
+            uf = uploaded_files[0]
+            out_b, total, ok, fallback, sem_sinal, cc_invalido, samples = processar_ficheiro(uf)
 
-            buffer_txt = io.BytesIO(ficheiro_corrigido_b)
-            novo_nome = uploaded_file.name.replace(".txt", "_CORRIGIDO.txt")
-
+            novo_nome = uf.name.replace(".txt", "_CORRIGIDO.txt")
             st.sidebar.download_button(
                 "📥 Descarregar TXT Corrigido",
-                data=buffer_txt,
+                data=io.BytesIO(out_b),
                 file_name=novo_nome,
                 mime="text/plain",
             )
-
-            log.append(f"✅ {uploaded_file.name} corrigido.")
             progress_bar.progress(1.0)
 
             st.info(f"📊 Total de linhas: {total:,}")
-            st.warning(f"⚠️ Linhas sem equivalência substituídas por '919909': {fallback_count:,}")
+            st.success(f"✅ Linhas com mapeamento: {ok:,}")
+            st.warning(f"⚠️ Fallback '919909': {fallback:,}")
+            st.error(f"❌ Sem sinal +/− encontrado: {sem_sinal:,}")
+            st.error(f"❌ CC inválido após sinal: {cc_invalido:,}")
+
+            if samples:
+                with st.expander("🔎 Amostras de linhas problemáticas (primeiros 180 bytes)"):
+                    for status, chunk in samples:
+                        st.write(status, chunk)
 
         else:
             buffer_zip = io.BytesIO()
-            total_fallback = 0
-            total_linhas = 0
+            total_all = ok_all = fallback_all = sem_sinal_all = cc_inv_all = 0
 
             with zipfile.ZipFile(buffer_zip, "w") as zipf:
-                for idx, uploaded_file in enumerate(uploaded_files):
-                    ficheiro_corrigido_b, total, fallback_count = processar_ficheiro(uploaded_file)
-                    novo_nome = uploaded_file.name.replace(".txt", "_CORRIGIDO.txt")
-                    zipf.writestr(novo_nome, ficheiro_corrigido_b)
-                    total_fallback += fallback_count
-                    total_linhas += total
-                    log.append(f"✅ {uploaded_file.name} corrigido ({fallback_count} substituições '919909').")
+                for idx, uf in enumerate(uploaded_files):
+                    out_b, total, ok, fallback, sem_sinal, cc_invalido, _ = processar_ficheiro(uf)
+                    novo_nome = uf.name.replace(".txt", "_CORRIGIDO.txt")
+                    zipf.writestr(novo_nome, out_b)
+
+                    total_all += total
+                    ok_all += ok
+                    fallback_all += fallback
+                    sem_sinal_all += sem_sinal
+                    cc_inv_all += cc_invalido
+
                     progress_bar.progress((idx + 1) / len(uploaded_files))
+                    log.append(
+                        f"✅ {uf.name} — ok:{ok} fallback:{fallback} sem_sinal:{sem_sinal} cc_invalido:{cc_invalido}"
+                    )
 
             buffer_zip.seek(0)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -367,11 +408,15 @@ if uploaded_files:
                 mime="application/zip",
             )
 
-            st.info(f"📊 Total de linhas processadas: {total_linhas:,}")
-            st.warning(f"⚠️ Linhas sem equivalência substituídas por '919909': {total_fallback:,}")
+            st.info(f"📊 Total de linhas: {total_all:,}")
+            st.success(f"✅ Linhas com mapeamento: {ok_all:,}")
+            st.warning(f"⚠️ Fallback '919909': {fallback_all:,}")
+            st.error(f"❌ Sem sinal +/−: {sem_sinal_all:,}")
+            st.error(f"❌ CC inválido: {cc_inv_all:,}")
 
-        st.subheader("📋 Relatório de Operações:")
-        for linha in log:
-            st.write(linha)
+            st.subheader("📋 Relatório por ficheiro:")
+            for l in log:
+                st.write(l)
+
 else:
     st.info("👈 Seleciona ficheiros .TXT para iniciar a conversão.")
