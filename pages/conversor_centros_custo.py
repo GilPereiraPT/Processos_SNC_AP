@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Página: Conversor de Centros de Custo 2024 ➔ 2025 (v2027.5)"""
+"""Página: Conversor de Centros de Custo 2024 ➔ 2025 (v2027.6 - bytes safe)"""
 
 import streamlit as st
 import zipfile
@@ -102,8 +102,6 @@ MAPEAMENTO_CC = {
     '1030319': '12702399',
     '1030411': '12702401',
     '1030412': '12702402',
-}
-MAPEAMENTO_CC.update({
     '10305101': '12702501',
     '10305102': '12702502',
     '10305103': '12702503',
@@ -204,8 +202,6 @@ MAPEAMENTO_CC.update({
     '40110': '4110',
     '40111': '4111',
     '40112': '4112',
-})
-MAPEAMENTO_CC.update({
     '40201': '4201',
     '402011': '4202',
     '40202': '4203',
@@ -234,67 +230,87 @@ MAPEAMENTO_CC.update({
     '90403': '919902',
     '90106': '919004',
     '90104': '919909',
-    '9194': '9197'
-})
+    '9194': '9197',
+}
 
 # =========================================================
-# 🧩 Funções
+# 🧩 Funções (bytes-safe)
 # =========================================================
-def corrigir_linha(linha):
-    """Substitui o código de centro de custo mantendo formato fixo.
+def corrigir_linha_bytes(linha_b: bytes):
+    """
+    Substitui o CC mantendo formato fixo (índices fixos) SEM perder bytes.
     Se não existir equivalência, usa sempre '919909'.
     """
-    if len(linha) > 121:
-        sinal = linha[120]
-        if sinal in ('+', '-'):
-            inicio_codigo = 121
-            fim_codigo = inicio_codigo
-            while fim_codigo < len(linha) and linha[fim_codigo] != ' ':
-                fim_codigo += 1
+    # Precisamos de pelo menos 121+1 bytes para ler sinal/código
+    if len(linha_b) <= 121:
+        return linha_b, None, None
 
-            codigo_antigo = linha[inicio_codigo:fim_codigo].strip()
-            if codigo_antigo:
-                codigo_corrigido = MAPEAMENTO_CC.get(codigo_antigo, "919909")
+    sinal = linha_b[120:121]  # 1 byte
+    if sinal not in (b'+', b'-'):
+        return linha_b, None, None
 
-                tamanho_campo = fim_codigo - inicio_codigo
-                if len(codigo_corrigido) < tamanho_campo:
-                    codigo_corrigido = codigo_corrigido.ljust(tamanho_campo, " ")
-                elif len(codigo_corrigido) > tamanho_campo:
-                    codigo_corrigido = codigo_corrigido[:tamanho_campo]
+    inicio = 121
+    fim = inicio
+    # vai até ao próximo espaço
+    while fim < len(linha_b) and linha_b[fim:fim+1] != b' ':
+        fim += 1
 
-                linha_corrigida = (
-                    linha[:120] + sinal + codigo_corrigido + linha[fim_codigo:]
-                )
+    codigo_antigo_b = linha_b[inicio:fim].strip()
+    if not codigo_antigo_b:
+        return linha_b, None, None
 
-                if len(linha_corrigida) != len(linha):
-                    linha_corrigida = linha_corrigida.ljust(len(linha))[:len(linha)]
+    # códigos são dígitos => decode ASCII seguro
+    codigo_antigo = codigo_antigo_b.decode("ascii", errors="ignore")
+    codigo_novo = MAPEAMENTO_CC.get(codigo_antigo, "919909")
 
-                return linha_corrigida, codigo_antigo, codigo_corrigido
-    return linha, None, None
+    tamanho_campo = fim - inicio
+    codigo_novo_b = codigo_novo.encode("ascii", errors="strict")
+
+    if len(codigo_novo_b) < tamanho_campo:
+        codigo_novo_b = codigo_novo_b.ljust(tamanho_campo, b' ')
+    elif len(codigo_novo_b) > tamanho_campo:
+        codigo_novo_b = codigo_novo_b[:tamanho_campo]
+
+    linha_corrigida = linha_b[:inicio] + codigo_novo_b + linha_b[fim:]
+
+    # garantir comprimento EXACTO
+    if len(linha_corrigida) != len(linha_b):
+        if len(linha_corrigida) < len(linha_b):
+            linha_corrigida = linha_corrigida.ljust(len(linha_b), b' ')
+        else:
+            linha_corrigida = linha_corrigida[:len(linha_b)]
+
+    return linha_corrigida, codigo_antigo, codigo_novo
 
 
 def processar_ficheiro(uploaded_file):
-    conteudo = uploaded_file.read().decode("utf-8", errors="ignore")
-    linhas_corrigidas = []
-    fallback_count = 0
+    data = uploaded_file.read()  # bytes puros
+    linhas = data.splitlines(keepends=True)  # bytes lines, mantém \n/\r\n
+    out = []
     total = 0
+    fallback_count = 0
 
-    for linha in conteudo.splitlines(keepends=True):
-        nova_linha, antigo, novo = corrigir_linha(linha)
-        linhas_corrigidas.append(nova_linha)
+    for linha_b in linhas:
+        nova_b, antigo, novo = corrigir_linha_bytes(linha_b)
+        out.append(nova_b)
         total += 1
         if novo == "919909":
             fallback_count += 1
 
-    return "".join(linhas_corrigidas), total, fallback_count
+    # se o ficheiro original não terminava com EOL, alguns ERPs implicam:
+    # aqui GARANTIMOS que termina com newline (usa \n se não houver)
+    if out and not out[-1].endswith((b"\n", b"\r")):
+        out[-1] = out[-1] + b"\n"
+
+    return b"".join(out), total, fallback_count
 
 
 # =========================================================
 # 🖥️ Interface Streamlit
 # =========================================================
 st.set_page_config(page_title="Conversor de Centros de Custo 2024 ➔ 2025", layout="wide")
-st.title("🛠️ Conversor de Centros de Custo 2024 ➔ 2025 — v2027.5")
-st.caption("Mantém formato fixo. Usa sempre '919909' quando não há equivalência.")
+st.title("🛠️ Conversor de Centros de Custo 2024 ➔ 2025 — v2027.6")
+st.caption("Mantém formato fixo (bytes-safe). Usa sempre '919909' quando não há equivalência.")
 
 uploaded_files = st.sidebar.file_uploader("📂 Selecionar ficheiros TXT", type=["txt"], accept_multiple_files=True)
 
@@ -307,9 +323,9 @@ if uploaded_files:
 
         if len(uploaded_files) == 1:
             uploaded_file = uploaded_files[0]
-            ficheiro_corrigido, total, fallback_count = processar_ficheiro(uploaded_file)
+            ficheiro_corrigido_b, total, fallback_count = processar_ficheiro(uploaded_file)
 
-            buffer_txt = io.BytesIO(ficheiro_corrigido.encode("utf-8"))
+            buffer_txt = io.BytesIO(ficheiro_corrigido_b)
             novo_nome = uploaded_file.name.replace(".txt", "_CORRIGIDO.txt")
 
             st.sidebar.download_button(
@@ -332,9 +348,9 @@ if uploaded_files:
 
             with zipfile.ZipFile(buffer_zip, "w") as zipf:
                 for idx, uploaded_file in enumerate(uploaded_files):
-                    ficheiro_corrigido, total, fallback_count = processar_ficheiro(uploaded_file)
+                    ficheiro_corrigido_b, total, fallback_count = processar_ficheiro(uploaded_file)
                     novo_nome = uploaded_file.name.replace(".txt", "_CORRIGIDO.txt")
-                    zipf.writestr(novo_nome, ficheiro_corrigido)
+                    zipf.writestr(novo_nome, ficheiro_corrigido_b)
                     total_fallback += fallback_count
                     total_linhas += total
                     log.append(f"✅ {uploaded_file.name} corrigido ({fallback_count} substituições '919909').")
