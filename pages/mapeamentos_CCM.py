@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-import io
 import re
-import time
 from typing import Dict, Tuple, Optional
+
 import pandas as pd
 import streamlit as st
 
@@ -36,6 +35,9 @@ def transform_line(line: str, mapping: Dict[str, str], expected_len: int = None)
     if expected_len is None:
         expected_len = original_len
 
+    # trabalhar sem \r
+    line = line.rstrip("\r")
+
     # 1️⃣ Corrigir Coluna 12 (Posição 11)
     if len(line) >= 12 and line[11] == "0":
         line = line[:11] + " " + line[12:]
@@ -49,14 +51,29 @@ def transform_line(line: str, mapping: Dict[str, str], expected_len: int = None)
         token2 = m.group(3)
         start_pos, end_pos = m.start(3), m.end(3)
 
-        matched_conv = next((c for c in sorted(mapping.keys(), key=len, reverse=True) if c in token2), None)
+        matched_conv = next(
+            (c for c in sorted(mapping.keys(), key=len, reverse=True) if c in token2),
+            None
+        )
         if matched_conv:
             ent_code = mapping[matched_conv]
             try:
                 ent7 = f"{int(ent_code):07d}"
-                idx = token2.find(matched_conv)
 
-                new_token2 = token2[:idx] + ent7 + token2[idx + len(matched_conv):]
+                # tenta substituir "0"+convenção primeiro, senão substitui a convenção
+                pattern7 = "0" + matched_conv
+                if pattern7 in token2:
+                    new_token2 = token2.replace(pattern7, ent7, 1)
+                else:
+                    idx = token2.find(matched_conv)
+                    new_token2 = token2[:idx] + ent7 + token2[idx + len(matched_conv):]
+
+                # ✅ Correção específica: linhas 903/904/906 — retirar apenas o '0' inicial do token2
+                if line.startswith(("903", "904", "906")) and new_token2.startswith("0"):
+                    new_token2 = new_token2[1:]
+
+                # manter largura original do token2 (rigidez)
+                new_token2 = new_token2.ljust(len(token2))
 
                 # Garante apenas 1 espaço antes da entidade
                 pre_space = line[:start_pos].rstrip() + " "
@@ -112,7 +129,7 @@ else:
             except UnicodeDecodeError:
                 text = content.decode("latin-1")
 
-            lines = text.split("\n")
+            lines = text.splitlines()
             total = len(lines)
             st.info(f"📄 Ficheiro **{f.name}** contém {total:,} linhas. A processar...")
 
@@ -126,7 +143,7 @@ else:
                     continue
 
                 expected_len = len(line)
-                new_line = transform_line(line.rstrip("\r"), mapping_dict, expected_len)
+                new_line = transform_line(line, mapping_dict, expected_len)
                 processed_lines.append(new_line)
 
                 # Contar desalinhamentos
