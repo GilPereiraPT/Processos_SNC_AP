@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Página: Conversor de Centros de Custo 2024 ➔ 2025"""
+"""Página: Conversor de Centros de Custo 2024 ➔ 2025 (v2027.5)"""
 
 import streamlit as st
 import zipfile
@@ -238,10 +238,12 @@ MAPEAMENTO_CC.update({
 })
 
 # =========================================================
-# 🧩 Funções Principais
+# 🧩 Funções
 # =========================================================
 def corrigir_linha(linha):
-    """Corrige o código mantendo posições fixas (preenche com espaços se menor)."""
+    """Substitui o código de centro de custo mantendo formato fixo.
+    Se não existir equivalência, usa sempre '919909'.
+    """
     if len(linha) > 121:
         sinal = linha[120]
         if sinal in ('+', '-'):
@@ -261,33 +263,38 @@ def corrigir_linha(linha):
                     codigo_corrigido = codigo_corrigido[:tamanho_campo]
 
                 linha_corrigida = (
-                    linha[:120] +
-                    sinal +
-                    codigo_corrigido +
-                    linha[fim_codigo:]
+                    linha[:120] + sinal + codigo_corrigido + linha[fim_codigo:]
                 )
 
-                # Garante que o comprimento total se mantém
                 if len(linha_corrigida) != len(linha):
                     linha_corrigida = linha_corrigida.ljust(len(linha))[:len(linha)]
 
-                return linha_corrigida
-    return linha
+                return linha_corrigida, codigo_antigo, codigo_corrigido
+    return linha, None, None
 
 
 def processar_ficheiro(uploaded_file):
-    """Processa e corrige todas as linhas de um ficheiro TXT."""
-    conteudo = uploaded_file.read().decode('utf-8', errors='ignore')
-    linhas_corrigidas = [corrigir_linha(l) for l in conteudo.splitlines(keepends=True)]
-    return ''.join(linhas_corrigidas)
+    conteudo = uploaded_file.read().decode("utf-8", errors="ignore")
+    linhas_corrigidas = []
+    fallback_count = 0
+    total = 0
+
+    for linha in conteudo.splitlines(keepends=True):
+        nova_linha, antigo, novo = corrigir_linha(linha)
+        linhas_corrigidas.append(nova_linha)
+        total += 1
+        if novo == "919909":
+            fallback_count += 1
+
+    return "".join(linhas_corrigidas), total, fallback_count
 
 
 # =========================================================
 # 🖥️ Interface Streamlit
 # =========================================================
 st.set_page_config(page_title="Conversor de Centros de Custo 2024 ➔ 2025", layout="wide")
-st.title("🛠️ Conversor de Centros de Custo 2024 ➔ 2025 — v2027.4")
-st.caption("Mantém todas as colunas fixas e preenche com espaços se o código novo for menor.")
+st.title("🛠️ Conversor de Centros de Custo 2024 ➔ 2025 — v2027.5")
+st.caption("Mantém formato fixo. Usa sempre '919909' quando não há equivalência.")
 
 uploaded_files = st.sidebar.file_uploader("📂 Selecionar ficheiros TXT", type=["txt"], accept_multiple_files=True)
 
@@ -300,29 +307,37 @@ if uploaded_files:
 
         if len(uploaded_files) == 1:
             uploaded_file = uploaded_files[0]
-            ficheiro_corrigido = processar_ficheiro(uploaded_file)
+            ficheiro_corrigido, total, fallback_count = processar_ficheiro(uploaded_file)
 
-            buffer_txt = io.BytesIO(ficheiro_corrigido.encode('utf-8'))
-            novo_nome = uploaded_file.name.replace('.txt', '_CORRIGIDO.txt')
+            buffer_txt = io.BytesIO(ficheiro_corrigido.encode("utf-8"))
+            novo_nome = uploaded_file.name.replace(".txt", "_CORRIGIDO.txt")
 
             st.sidebar.download_button(
                 "📥 Descarregar TXT Corrigido",
                 data=buffer_txt,
                 file_name=novo_nome,
-                mime="text/plain"
+                mime="text/plain",
             )
 
             log.append(f"✅ {uploaded_file.name} corrigido.")
             progress_bar.progress(1.0)
 
+            st.info(f"📊 Total de linhas: {total:,}")
+            st.warning(f"⚠️ Linhas sem equivalência substituídas por '919909': {fallback_count:,}")
+
         else:
             buffer_zip = io.BytesIO()
+            total_fallback = 0
+            total_linhas = 0
+
             with zipfile.ZipFile(buffer_zip, "w") as zipf:
                 for idx, uploaded_file in enumerate(uploaded_files):
-                    ficheiro_corrigido = processar_ficheiro(uploaded_file)
-                    novo_nome = uploaded_file.name.replace('.txt', '_CORRIGIDO.txt')
+                    ficheiro_corrigido, total, fallback_count = processar_ficheiro(uploaded_file)
+                    novo_nome = uploaded_file.name.replace(".txt", "_CORRIGIDO.txt")
                     zipf.writestr(novo_nome, ficheiro_corrigido)
-                    log.append(f"✅ {uploaded_file.name} corrigido.")
+                    total_fallback += fallback_count
+                    total_linhas += total
+                    log.append(f"✅ {uploaded_file.name} corrigido ({fallback_count} substituições '919909').")
                     progress_bar.progress((idx + 1) / len(uploaded_files))
 
             buffer_zip.seek(0)
@@ -333,12 +348,14 @@ if uploaded_files:
                 "📦 Descarregar ZIP Corrigido",
                 data=buffer_zip,
                 file_name=nome_zip,
-                mime="application/zip"
+                mime="application/zip",
             )
+
+            st.info(f"📊 Total de linhas processadas: {total_linhas:,}")
+            st.warning(f"⚠️ Linhas sem equivalência substituídas por '919909': {total_fallback:,}")
 
         st.subheader("📋 Relatório de Operações:")
         for linha in log:
             st.write(linha)
-
 else:
     st.info("👈 Seleciona ficheiros .TXT para iniciar a conversão.")
