@@ -1,20 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Página: Conversor de ficheiros MCDT/Termas — v2.0 (funcional com ficheiros 703)"""
-
 import io
 import re
+import time
 from typing import Dict, Tuple, Optional
 import pandas as pd
 import streamlit as st
 
-# ==============================
-# Funções de mapeamento
-# ==============================
-
+# =========================================================
+# ⚙️ Funções de Mapeamento
+# =========================================================
 @st.cache_data
 def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
+    """Lê o ficheiro de mapeamentos (detecta separador automaticamente)."""
     try:
-        # Deteta automaticamente ; ou , (essencial para o ficheiro no GitHub)
         df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
         mapping = {}
         c_col, e_col = df.columns[0], df.columns[1]
@@ -24,77 +22,85 @@ def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str],
             if c and e and e.lower() != "nan":
                 mapping[c] = e
         return mapping, df
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar mapeamento: {e}")
         return {}, None
 
-# ==============================
-# Lógica de Transformação Rígida
-# ==============================
 
-def transform_line(line: str, mapping: Dict[str, str]) -> str:
-    # 1️⃣ Ajuste Coluna 12 (Posição 11) - Substituição direta
+# =========================================================
+# 🧩 Lógica de Transformação Rígida
+# =========================================================
+def transform_line(line: str, mapping: Dict[str, str], expected_len: int = None) -> str:
+    """Transforma uma linha mantendo colunas fixas e apenas 1 espaço antes da entidade."""
+    original_len = len(line)
+    if expected_len is None:
+        expected_len = original_len
+
+    # 1️⃣ Corrigir Coluna 12 (Posição 11)
     if len(line) >= 12 and line[11] == "0":
         line = line[:11] + " " + line[12:]
 
     # 2️⃣ Corrigir CC "+93  " -> "+9197"
     line = re.sub(r"\+93\s\s", "+9197", line)
 
-    # 3️⃣ Substituição de Entidade mantendo Alinhamento de Colunas
+    # 3️⃣ Substituir Convenção → Entidade (mantendo alinhamento)
     m = re.search(r"^(\S+)(\s+)(\S+)", line)
     if m:
         token2 = m.group(3)
-        start_pos = m.start(3)
-        end_pos = m.end(3)
-        
-        # Identificar qual a convenção do mapeamento está presente no token
-        matched_conv = None
-        sorted_convs = sorted(mapping.keys(), key=len, reverse=True)
-        for c_code in sorted_convs:
-            if c_code in token2:
-                matched_conv = c_code
-                break
+        start_pos, end_pos = m.start(3), m.end(3)
 
+        matched_conv = next((c for c in sorted(mapping.keys(), key=len, reverse=True) if c in token2), None)
         if matched_conv:
             ent_code = mapping[matched_conv]
             try:
                 ent7 = f"{int(ent_code):07d}"
-                
-                # Verifica se há um zero à esquerda para absorver diferença
                 idx = token2.find(matched_conv)
-                
-                if idx > 0 and token2[idx-1] == '0':
-                    new_token2 = token2[:idx-1] + ent7 + token2[idx+len(matched_conv):]
-                else:
-                    new_token2 = token2[:idx] + ent7 + token2[idx+len(matched_conv):]
-                
-                diff = len(new_token2) - len(token2)
-                if diff > 0:
-                    post_content = line[end_pos:]
-                    line = line[:start_pos] + new_token2 + post_content[diff:]
-                else:
-                    line = line[:start_pos] + new_token2 + line[end_pos:]
-                    
+
+                new_token2 = token2[:idx] + ent7 + token2[idx + len(matched_conv):]
+
+                # Garante apenas 1 espaço antes da entidade
+                pre_space = line[:start_pos].rstrip() + " "
+                post_content = line[end_pos:]
+
+                new_line = pre_space + new_token2 + post_content
+
+                # Ajuste de comprimento total
+                if len(new_line) > expected_len:
+                    new_line = new_line[:expected_len]
+                elif len(new_line) < expected_len:
+                    new_line = new_line.ljust(expected_len)
+
+                line = new_line
+
             except ValueError:
                 pass
 
-    # 4️⃣ Remover NIF (9 dígitos) no fim mantendo espaços anteriores
-    line = re.sub(r"(\s)\d{9}$", r"\1", line)
-    
+    # 4️⃣ Remover NIF no fim (9 dígitos) mantendo espaço único
+    line = re.sub(r"\s\d{9}$", " ", line)
+
+    # 5️⃣ Garantir comprimento fixo final
+    if len(line) > expected_len:
+        line = line[:expected_len]
+    elif len(line) < expected_len:
+        line = line.ljust(expected_len)
+
     return line
 
-# ==============================
-# UI Streamlit
-# ==============================
 
-st.set_page_config(page_title="Conversor MCDT (Formato Rígido)", layout="wide")
-st.title("📄 Conversor de ficheiros MCDT / Termas — v2.0 (funcional para ficheiros 703)")
+# =========================================================
+# 🎨 Interface Streamlit
+# =========================================================
+st.set_page_config(page_title="Conversor MCDT/Termas (Formato Rígido)", layout="wide")
+st.title("🏥 Conversor de ficheiros MCDT / Termas — Formato Rígido v2027.5")
+st.caption("Mantém colunas fixas, garante 1 espaço antes da entidade e verifica desalinhamentos.")
 
+# Carregar mapeamento
 mapping_dict, _ = load_default_mapping("mapeamentos.csv")
 
 if not mapping_dict:
-    st.error("❌ ERRO: Ficheiro 'mapeamentos.csv' não detetado.")
+    st.error("⚠️ Ficheiro 'mapeamentos.csv' não encontrado ou inválido.")
 else:
-    st.success(f"✅ Mapeamento carregado: {len(mapping_dict)} códigos.")
+    st.success(f"✅ Mapeamento carregado com {len(mapping_dict)} códigos válidos.")
 
     uploaded_files = st.file_uploader("📂 Submeta ficheiros para conversão individual", accept_multiple_files=True)
 
@@ -103,17 +109,54 @@ else:
             content = f.read()
             try:
                 text = content.decode("utf-8")
-            except:
+            except UnicodeDecodeError:
                 text = content.decode("latin-1")
-            
-            lines = text.splitlines()
-            processed = [transform_line(l, mapping_dict) for l in lines]
-            output = "\n".join(processed) + "\n"
-            
+
+            lines = text.split("\n")
+            total = len(lines)
+            st.info(f"📄 Ficheiro **{f.name}** contém {total:,} linhas. A processar...")
+
+            progress = st.progress(0, text="A converter...")
+            processed_lines = []
+            len_diff = 0
+
+            for i, line in enumerate(lines):
+                if not line.strip():
+                    processed_lines.append(line)
+                    continue
+
+                expected_len = len(line)
+                new_line = transform_line(line.rstrip("\r"), mapping_dict, expected_len)
+                processed_lines.append(new_line)
+
+                # Contar desalinhamentos
+                if len(new_line) != expected_len:
+                    len_diff += 1
+
+                if i % 50 == 0 or i == total - 1:
+                    progress.progress(i / total)
+
+            progress.progress(1.0, text="Conversão concluída ✅")
+
+            # Mostrar resumo
+            st.success(f"✅ Conversão terminada para {f.name}")
+            st.write(f"📏 Linhas processadas: {total:,}")
+            st.write(f"⚠️ Linhas ajustadas em comprimento: {len_diff:,}")
+
+            # Verificar comprimento médio
+            lengths = [len(l) for l in processed_lines if l.strip()]
+            if lengths:
+                st.write(f"📐 Comprimento médio de linha: {sum(lengths) / len(lengths):.1f} caracteres")
+
+            # Preparar ficheiro final
+            output = "\n".join(processed_lines)
+            output_bytes = output.encode("utf-8")
+
+            # Botão de download
             st.download_button(
-                label=f"📥 Guardar {f.name}",
-                data=output.encode("utf-8"),
+                label=f"📥 Guardar ficheiro corrigido — {f.name}",
+                data=output_bytes,
                 file_name=f"CORRIGIDO_{f.name}",
                 mime="text/plain",
-                key=f.name
+                key=f"download_{f.name}"
             )
