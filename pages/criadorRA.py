@@ -147,10 +147,10 @@ if (
                     linha['Conta a Credito'] = '0272.02.02.22.H0.00'
                     linha['Classificador funcional'] = '0730'
                     linha['Fonte de financiamento'] = '511'
-                    linha['Programa'] = '011'
+                    linha['Programa'] = '015'
                     linha['Medida'] = '022'
-                    linha['Atividade'] = '130'
-                    linha['Classificação Orgânica'] = '101904000'
+                    linha['Atividade'] = '533'
+                    linha['Classificação Orgânica'] = '121904000'
                 linhas.append(linha)
             return linhas
 
