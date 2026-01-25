@@ -2,7 +2,7 @@ import io
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -16,13 +16,10 @@ from PIL import Image
 # ============================================================
 
 def formatar_data_ddmmaaaa(valor: str) -> str:
-    """
-    Converte datas para DD/MM/AAAA.
-    Suporta formatos do texto (2023-01-01) e do QR (20230101).
-    """
+    """Converte datas para DD/MM/AAAA. Suporta (2023-01-01) e (20230101)."""
     if not valor:
         return ""
-    valor = valor.strip()
+    valor = str(valor).strip()
 
     if re.fullmatch(r"\d{8}", valor):
         return f"{valor[6:8]}/{valor[4:6]}/{valor[0:4]}"
@@ -47,17 +44,13 @@ def formatar_data_ddmmaaaa(valor: str) -> str:
 
 
 def normalizar_monetario(valor: str) -> str:
-    """
-    Devolve sempre formato PT: 1234,56 (com 2 casas decimais quando possível).
-    Aceita valores com separadores ., , e espaços.
-    """
+    """Devolve sempre formato PT: 1234,56 (tenta forçar 2 casas decimais)."""
     if not valor:
         return ""
     v = re.sub(r"[^\d.,]", "", str(valor))
     if not v:
         return ""
 
-    # Se tem '.' e ',', assume último separador como decimal
     if "." in v and "," in v:
         last = max(v.rfind("."), v.rfind(","))
         inteiro = re.sub(r"[.,]", "", v[:last])
@@ -65,15 +58,13 @@ def normalizar_monetario(valor: str) -> str:
         dec = (dec + "00")[:2]
         return f"{inteiro},{dec}"
 
-    # Só vírgula
     if "," in v:
-        partes = v.split(",")
-        inteiro = re.sub(r"[^\d]", "", partes[0])
-        dec = re.sub(r"[^\d]", "", partes[1]) if len(partes) > 1 else ""
+        a, *b = v.split(",")
+        inteiro = re.sub(r"[^\d]", "", a)
+        dec = re.sub(r"[^\d]", "", b[0]) if b else ""
         dec = (dec + "00")[:2]
         return f"{inteiro},{dec}"
 
-    # Só ponto (assume decimal no último ponto)
     if "." in v:
         partes = v.split(".")
         if len(partes) == 1:
@@ -98,7 +89,7 @@ def nif_valido(nif: str) -> bool:
     if len(nif) != 9:
         return False
 
-    # Mantém o conjunto típico usado no teu código. Se precisares, pode ser alargado.
+    # Conjunto típico. Se precisares de alargar, podemos ajustar.
     if nif[0] not in "1235689":
         return False
 
@@ -115,107 +106,181 @@ def nif_valido(nif: str) -> bool:
 
 
 # ============================================================
-# 2. Processamento de Imagem e Leitura de QR
+# 2. PDF -> Imagem / QR robusto (detetar, recortar, corrigir perspetiva)
 # ============================================================
 
 def abrir_pdf_bytes(file_bytes: bytes):
     return fitz.open(stream=file_bytes, filetype="pdf")
 
 
-def primeira_pagina_para_cv2(doc) -> np.ndarray:
+def pagina_para_cv2(doc, page_index: int = 0, zoom: float = 3.0) -> np.ndarray:
     """
-    Renderiza a primeira página com ZOOM (2.0x) para melhorar a leitura do QR.
+    Renderiza uma página com zoom para melhorar leitura de QR.
+    zoom=3.0 é um bom compromisso; em fallback pode subir para 4.0.
     """
-    page = doc.load_page(0)
-    matriz = fitz.Matrix(2.0, 2.0)
+    page = doc.load_page(page_index)
+    matriz = fitz.Matrix(zoom, zoom)
     pix = page.get_pixmap(matrix=matriz)
-
     mode = "RGBA" if pix.alpha else "RGB"
     img_pil = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
-
     if img_pil.mode == "RGBA":
         img_pil = img_pil.convert("RGB")
-
-    img_cv2 = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
-    return img_cv2
+    return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
 
-def ler_qr_imagem(doc) -> Optional[str]:
+def _order_points(pts: np.ndarray) -> np.ndarray:
+    """Ordena 4 pontos (tl, tr, br, bl) para warpPerspective."""
+    pts = pts.reshape(4, 2).astype(np.float32)
+    s = pts.sum(axis=1)
+    diff = np.diff(pts, axis=1).reshape(-1)
+
+    tl = pts[np.argmin(s)]
+    br = pts[np.argmax(s)]
+    tr = pts[np.argmin(diff)]
+    bl = pts[np.argmax(diff)]
+
+    return np.array([tl, tr, br, bl], dtype=np.float32)
+
+
+def _warp_quad(image: np.ndarray, quad_pts: np.ndarray, pad: int = 10) -> np.ndarray:
     """
-    Tenta ler QR a partir da 1ª página como imagem com estratégias de fallback.
+    Faz warp de um quadrilátero para um quadrado, com padding opcional.
     """
-    try:
-        img_cv2 = primeira_pagina_para_cv2(doc)
-    except Exception:
-        return None
+    pts = _order_points(quad_pts)
 
-    detector = cv2.QRCodeDetector()
+    # dimensões alvo
+    w1 = np.linalg.norm(pts[1] - pts[0])
+    w2 = np.linalg.norm(pts[2] - pts[3])
+    h1 = np.linalg.norm(pts[3] - pts[0])
+    h2 = np.linalg.norm(pts[2] - pts[1])
+    W = int(max(w1, w2)) + pad * 2
+    H = int(max(h1, h2)) + pad * 2
+    W = max(W, 250)
+    H = max(H, 250)
 
-    data, _, _ = detector.detectAndDecode(img_cv2)
-    if data:
-        return data.strip()
-
-    gray = cv2.cvtColor(img_cv2, cv2.COLOR_BGR2GRAY)
-    data, _, _ = detector.detectAndDecode(gray)
-    if data:
-        return data.strip()
-
-    # Threshold adaptativo (melhor do que threshold fixo em muitos PDFs)
-    gray_blur = cv2.GaussianBlur(gray, (3, 3), 0)
-    thr = cv2.adaptiveThreshold(
-        gray_blur, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        31, 2
+    dst = np.array(
+        [[pad, pad], [W - pad - 1, pad], [W - pad - 1, H - pad - 1], [pad, H - pad - 1]],
+        dtype=np.float32,
     )
-    data, _, _ = detector.detectAndDecode(thr)
-    if data:
-        return data.strip()
+
+    M = cv2.getPerspectiveTransform(pts, dst)
+    warped = cv2.warpPerspective(image, M, (W, H), flags=cv2.INTER_CUBIC)
+    return warped
+
+
+def _preprocess_variants(bgr: np.ndarray) -> List[np.ndarray]:
+    """
+    Gera várias variantes de pré-processamento para maximizar taxa de descodificação.
+    Devolve lista de imagens (BGR e Gray) a testar no QRCodeDetector.
+    """
+    variants = []
+    variants.append(bgr)
+
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    variants.append(gray)
+
+    # CLAHE (contraste local)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    g_clahe = clahe.apply(gray)
+    variants.append(g_clahe)
+
+    # Blur leve + threshold adaptativo
+    g_blur = cv2.GaussianBlur(g_clahe, (3, 3), 0)
+    thr_adapt = cv2.adaptiveThreshold(
+        g_blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 2
+    )
+    variants.append(thr_adapt)
+
+    # Otsu
+    _, thr_otsu = cv2.threshold(g_clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    variants.append(thr_otsu)
+
+    # Upscale + adaptativo (muito eficaz em QR “fino” em PDFs)
+    up = cv2.resize(g_clahe, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+    up_blur = cv2.GaussianBlur(up, (3, 3), 0)
+    up_thr = cv2.adaptiveThreshold(
+        up_blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 2
+    )
+    variants.append(up_thr)
+
+    # Sharpen (unsharp mask)
+    g = g_clahe
+    blur = cv2.GaussianBlur(g, (0, 0), sigmaX=1.0)
+    sharp = cv2.addWeighted(g, 1.6, blur, -0.6, 0)
+    variants.append(sharp)
+
+    # Upscale + sharpen
+    up2 = cv2.resize(sharp, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    variants.append(up2)
+
+    return variants
+
+
+def _decode_with_detector(detector: cv2.QRCodeDetector, img) -> Optional[str]:
+    """
+    Tenta detectAndDecode (e Multi se disponível) numa imagem.
+    """
+    # OpenCV pode ter detectAndDecodeMulti (nem sempre funciona em todas as builds)
+    try:
+        ok, decoded_info, _, _ = detector.detectAndDecodeMulti(img)
+        if ok and decoded_info:
+            for d in decoded_info:
+                if d and d.strip():
+                    return d.strip()
+    except Exception:
+        pass
+
+    try:
+        data, _, _ = detector.detectAndDecode(img)
+        if data and data.strip():
+            return data.strip()
+    except Exception:
+        pass
 
     return None
 
 
-def extrair_qr_string_do_texto(texto: str) -> Optional[str]:
+def ler_qr_robusto(doc, pages_to_try: int = 1) -> Optional[str]:
     """
-    Procura string AT (A:...*B:...*...) diretamente no texto do PDF.
-    Torna a pesquisa mais robusta em PDFs com texto partido.
+    Leitura de QR o mais robusta possível:
+    - Render com múltiplos zooms
+    - Testa variantes de pré-processamento (CLAHE, adaptativo, Otsu, upscale, sharpen)
+    - Se detetar pontos do QR, recorta + corrige perspetiva e tenta novamente
+    - Opcionalmente testa mais do que a 1ª página
     """
-    if not texto:
-        return None
+    detector = cv2.QRCodeDetector()
 
-    t = re.sub(r"\s+", " ", texto).strip()
+    max_pages = min(pages_to_try, doc.page_count)
+    zooms = [3.0, 4.0, 2.5]  # ordem importa: costuma resultar melhor começar alto
 
-    # Heurística: começa em A: e tenta apanhar um bloco com vários campos.
-    # Não é perfeito, mas aumenta muito a taxa de acerto em “texto oculto”.
-    m = re.search(r"\bA:.*?\bB:.*?\bF:", t)
-    if m:
-        return m.group(0).strip()
+    for p in range(max_pages):
+        for zoom in zooms:
+            try:
+                img_bgr = pagina_para_cv2(doc, page_index=p, zoom=zoom)
+            except Exception:
+                continue
 
-    # fallback mais permissivo
-    m = re.search(r"\bA:.*?\bB:", t)
-    return m.group(0).strip() if m else None
+            # 1) tenta direto nas variantes
+            for var in _preprocess_variants(img_bgr):
+                data = _decode_with_detector(detector, var)
+                if data:
+                    return data
 
+            # 2) tenta detetar o quad do QR, warpar e voltar a descodificar
+            try:
+                # detect funciona melhor no cinzento
+                gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+                ok, pts = detector.detect(gray)
+                if ok and pts is not None and len(pts) >= 4:
+                    warped = _warp_quad(img_bgr, pts, pad=20)
+                    for var in _preprocess_variants(warped):
+                        data = _decode_with_detector(detector, var)
+                        if data:
+                            return data
+            except Exception:
+                pass
 
-def parse_qr_at(data: str) -> dict:
-    """
-    Parser robusto para o QR da AT.
-    Abordagem por split em '*' e divisão 'chave:valor' (mais resiliente do que regex).
-    """
-    if not data:
-        return {}
-
-    s = str(data).replace("|", "*")
-    s = re.sub(r"\s+", "", s)
-    partes = [p for p in s.split("*") if p]
-
-    res = {}
-    for p in partes:
-        if ":" not in p:
-            continue
-        k, v = p.split(":", 1)
-        if k and len(k) == 1 and k.isalpha():
-            res[k.upper()] = v
-    return res
+    return None
 
 
 # ============================================================
@@ -229,18 +294,65 @@ def extrair_texto_doc(doc) -> str:
     return "\n".join(texto_total)
 
 
+def extrair_qr_string_do_texto(texto: str) -> Optional[str]:
+    """
+    Alguns PDFs têm o conteúdo do QR como texto oculto.
+    Tentativa robusta: normaliza espaços e procura sequência a partir de A:.
+    """
+    if not texto:
+        return None
+    t = re.sub(r"\s+", " ", texto).strip()
+
+    # apanha um bloco que contenha pelo menos A:, B: e F:
+    m = re.search(r"\bA:.*?\bB:.*?\bF:", t)
+    if m:
+        # devolve a partir do A: (pode vir mais conteúdo depois; o parse trata disso)
+        start = m.start()
+        return t[start:].strip()
+
+    # fallback: A: ... B:
+    m = re.search(r"\bA:.*?\bB:", t)
+    if m:
+        start = m.start()
+        return t[start:].strip()
+
+    return None
+
+
+def parse_qr_at(data: str) -> dict:
+    """
+    Parser robusto para o QR da AT:
+    - normaliza | para *
+    - remove espaços
+    - split por *
+    - split por ':' (1 vez) em cada parte
+    """
+    if not data:
+        return {}
+
+    s = str(data).replace("|", "*")
+    s = re.sub(r"\s+", "", s)
+    parts = [p for p in s.split("*") if p]
+
+    res = {}
+    for p in parts:
+        if ":" not in p:
+            continue
+        k, v = p.split(":", 1)
+        if k and len(k) == 1 and k.isalpha():
+            res[k.upper()] = v
+    return res
+
+
 def extrair_nif_texto(texto: str, filename: str) -> str:
     """
-    Extrai NIF a partir do filename e/ou do texto, devolvendo o primeiro NIF válido encontrado.
-    Se não encontrar nenhum válido, devolve vazio.
+    Extrai NIF devolvendo o primeiro NIF válido (dígito de controlo).
     """
-    candidatos = []
+    candidatos: List[str] = []
 
-    # 1) Do nome do ficheiro
     base = Path(filename).stem
     candidatos.extend(re.findall(r"\b(\d{9})\b", base))
 
-    # 2) Do texto
     texto_norm = texto.replace("\n", " ")
 
     padroes = [
@@ -252,7 +364,6 @@ def extrair_nif_texto(texto: str, filename: str) -> str:
     for p in padroes:
         candidatos.extend(re.findall(p, texto_norm, flags=re.IGNORECASE))
 
-    # 3) Fallback: qualquer 9 dígitos no texto
     candidatos.extend(re.findall(r"\b(\d{9})\b", texto_norm))
 
     vistos = set()
@@ -305,44 +416,40 @@ def extrair_total_texto(texto: str) -> str:
 def extrair_numero_fatura_texto(texto: str) -> str:
     """
     Extrai o número do documento preservando tipo + série (quando existe).
-    Ex.: "FT A/1234" -> "FT A/1234"
+    Ex.: "FT 2025A/1234" ou "FT A/1234" -> mantém.
     """
     texto_norm = texto.replace("\n", " ")
 
-    # Padrões comuns PT
     m = re.search(
-        r"\b(FT|FR|FS|NC|ND|VD)\s*([A-Z0-9]{0,15})\s*[/-]\s*(\d{1,10})\b",
+        r"\b(FT|FR|FS|NC|ND|VD)\s*([A-Z0-9]{0,20})\s*[/-]\s*(\d{1,12})\b",
         texto_norm,
         flags=re.IGNORECASE,
     )
     if m:
-        tipo, serie, num = m.group(1).upper(), m.group(2).upper().strip(), m.group(3)
-        if serie:
-            return f"{tipo} {serie}/{num}"
-        return f"{tipo} {num}"
+        tipo = m.group(1).upper()
+        serie = (m.group(2) or "").upper().strip()
+        num = m.group(3)
+        return f"{tipo} {serie}/{num}".replace("  ", " ").strip()
 
-    # fallback menos estrito (linhas com “fatura” etc.)
-    linhas = texto.splitlines()
-    for linha in linhas:
-        if re.search(r"fatura|factura|invoice", linha, flags=re.IGNORECASE):
-            m2 = re.search(r"\b(FT|FR|FS|NC|ND|VD)\b.*?(\d{1,10})\b", linha, flags=re.IGNORECASE)
-            if m2:
-                return f"{m2.group(1).upper()} {m2.group(2)}"
+    # fallback: tenta apanhar “número” noutra forma
+    m = re.search(r"\bN[ºo]\.?\s*Documento[:\s]*([A-Z0-9/ -]{3,40})\b", texto_norm, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
 
     return ""
 
 
 def extrair_nota_encomenda(texto: str) -> str:
     """
-    Extrai a Nota de Encomenda, priorizando o padrão específico de 7 algarismos:
-    começa por [1,2,3,4,7,8] e termina em 25.
+    Extrai Nota de Encomenda.
+    Prioriza 7 algarismos: começa por 1,2,3,4,7,8 e termina em 25.
     """
     texto_norm = texto.replace("\n", " ")
 
     novo_padrao = r"([123478]\d{4}25)"
-    m_especifico = re.search(novo_padrao, texto_norm)
-    if m_especifico:
-        return m_especifico.group(1)
+    m = re.search(novo_padrao, texto_norm)
+    if m:
+        return m.group(1)
 
     padroes_antigos = [
         r"(?:Vossa\s+)?Encomenda[:\s\.]*(\d{3,15})",
@@ -376,10 +483,10 @@ def detetar_tipo_texto(texto: str, filename: str) -> str:
 
 
 # ============================================================
-# 4. Processamento Principal (Lógica de Decisão)
+# 4. Processamento Principal
 # ============================================================
 
-def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
+def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes, pages_to_try: int = 1) -> dict:
     doc = abrir_pdf_bytes(ficheiro_bytes)
     try:
         texto = extrair_texto_doc(doc)
@@ -388,7 +495,7 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
         campos_qr = {}
         qr_raw = ""
 
-        # 1) QR embutido em texto (quando existe)
+        # 1) QR em texto oculto (quando existe)
         qr_str = extrair_qr_string_do_texto(texto)
         if qr_str:
             campos_qr = parse_qr_at(qr_str)
@@ -396,13 +503,13 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
                 origem = "QR (Texto Oculto)"
                 qr_raw = qr_str
 
-        # 2) QR via imagem
+        # 2) QR por imagem (robusto)
         if not campos_qr:
-            qr_img = ler_qr_imagem(doc)
+            qr_img = ler_qr_robusto(doc, pages_to_try=pages_to_try)
             if qr_img and "A:" in qr_img and ("B:" in qr_img or "H:" in qr_img):
                 campos_qr = parse_qr_at(qr_img)
                 if campos_qr:
-                    origem = "QR (Imagem)"
+                    origem = "QR (Imagem - Robusto)"
                     qr_raw = qr_img
 
         nif = ""
@@ -412,13 +519,9 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
         tipo_doc = ""
         nota_enc = ""
 
-        # 3) Mapeamento de dados
         if campos_qr:
-            # --- DADOS QR ---
             nif_qr = campos_qr.get("A", "").upper().replace("PT", "").replace(" ", "")
             nif_qr = re.sub(r"\D", "", nif_qr)
-
-            # Validação do NIF (se falhar, tenta texto)
             nif = nif_qr if nif_valido(nif_qr) else extrair_nif_texto(texto, nome_ficheiro)
 
             data = formatar_data_ddmmaaaa(campos_qr.get("F", ""))
@@ -426,7 +529,6 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
             total_raw = campos_qr.get("O", "") or campos_qr.get("M", "")
             total = normalizar_monetario(total_raw)
 
-            # Preserva série quando existir
             num_fatura = (campos_qr.get("G", "") or "").strip()
 
             tipo_code = (campos_qr.get("D", "") or "").strip().upper()
@@ -443,7 +545,6 @@ def processar_pdf(nome_ficheiro: str, ficheiro_bytes: bytes) -> dict:
             nota_enc = extrair_nota_encomenda(texto)
 
         else:
-            # --- FALLBACK TEXTO ---
             nif = extrair_nif_texto(texto, nome_ficheiro)
             data = extrair_data_texto(texto)
             total = extrair_total_texto(texto)
@@ -475,9 +576,11 @@ st.set_page_config(page_title="Processar Faturas P2", layout="wide")
 st.title("📄 Processador de Faturas (AT Portugal)")
 st.markdown(
     """
-Esta ferramenta extrai dados de faturas PDF para contabilidade.  
-O campo **Encomenda** prioriza o padrão de 7 algarismos que começa por **1, 2, 3, 4, 7 ou 8** e termina em **25**.  
-O **NIF** é validado pelo **dígito de controlo** (quando não valida, tenta fallback por texto).
+Esta ferramenta extrai dados de faturas PDF para contabilidade.
+
+- Leitura **QR**: tenta texto oculto e, se necessário, **leitura por imagem com pré-processamento robusto** (CLAHE, threshold adaptativo, upscale, sharpen, recorte e correção de perspetiva).
+- **NIF**: validado com **dígito de controlo**.
+- **Encomenda**: prioriza padrão de 7 algarismos que começa por **1, 2, 3, 4, 7 ou 8** e termina em **25**.
 """
 )
 
@@ -490,6 +593,15 @@ with col1:
         accept_multiple_files=True,
     )
 
+with col2:
+    pages_to_try = st.number_input(
+        "Páginas a tentar (QR por imagem)",
+        min_value=1,
+        max_value=10,
+        value=1,
+        help="Se houver anexos/condições na 2ª página, aumenta para 2 ou 3.",
+    )
+
 if uploaded_files:
     if st.button("🚀 Iniciar Processamento", type="primary"):
         progress_bar = st.progress(0)
@@ -497,7 +609,7 @@ if uploaded_files:
 
         for i, f in enumerate(uploaded_files):
             try:
-                reg = processar_pdf(f.name, f.read())
+                reg = processar_pdf(f.name, f.read(), pages_to_try=int(pages_to_try))
                 registos.append(reg)
             except Exception as e:
                 st.error(f"Erro ao processar {f.name}: {e}")
@@ -526,17 +638,17 @@ if uploaded_files:
 
             c1, c2 = st.columns(2)
             com_qr = df[df["Origem"].str.contains("QR", na=False)].shape[0]
-            c1.metric("Lidos via QR (Alta precisão)", com_qr)
-            c2.metric("Lidos via Texto (Estimativa)", len(registos) - com_qr)
+            c1.metric("Lidos via QR", com_qr)
+            c2.metric("Lidos via Texto", len(registos) - com_qr)
 
             st.dataframe(df, use_container_width=True)
 
-            with st.expander("🛠️ Ver detalhes do último QR lido (Debug)"):
+            with st.expander("🛠️ Debug do último documento (QR)"):
                 ultimo = registos[-1]
                 if "QR" in ultimo.get("Origem", ""):
                     st.write("Dados brutos extraídos do QR:")
                     st.json(parse_qr_at(ultimo.get("Debug QR", "")))
-                    st.write("**Legenda:** A=NIF Emissor | F=Data | G=Num Doc | O/M=Total | D=Tipo")
+                    st.write("**Legenda:** A=NIF | F=Data | G=Num Doc | O/M=Total | D=Tipo")
                 else:
                     st.write("O último documento não foi lido via QR.")
 
