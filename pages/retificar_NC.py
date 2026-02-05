@@ -6,13 +6,15 @@ from datetime import datetime
 # =========================
 DATE_START_CURRENT_1B = 52
 SHIFT_SPACES = 3
-
 A_EXPECT_1B = 62
 B_EXPECT_1B = 113
 A_PREFIX = "2"
 B_PREFIX = "7"
 WINDOW = 4 
 
+# =========================
+# FUNÇÕES TÉCNICAS (MANTIDAS)
+# =========================
 def shift_for_date(line: str) -> str:
     idx = DATE_START_CURRENT_1B - 1
     has_nl = line.endswith("\n")
@@ -54,79 +56,80 @@ def find_account_pos(core: str, expect_1b: int, prefix: str, min_start_1b: int |
     return None, digits_at_expect, end_at_expect
 
 # =========================
-# PROCESSAMENTO CORRIGIDO
+# LÓGICA DE PROCESSAMENTO
 # =========================
 
 def process_line(line: str):
-    # 0. Captura o valor e CC da linha ORIGINAL (antes do shift empurrar tudo)
-    # Ajuste estas posições se o valor no seu ficheiro original estiver noutro local
-    valor_orig = line[120:150].strip() 
-    cc_orig = line[150:].strip()
+    # 1. Capturar Valor e CC ANTES de mexer na linha (Evita o sinal +)
+    # Procuramos o valor e limpamos caracteres não numéricos como o '+'
+    raw_after_accounts = line[120:].replace("+", " ").strip()
+    parts = raw_after_accounts.split()
+    
+    val_to_use = parts[0] if len(parts) > 0 else ""
+    cc_to_use = parts[1] if len(parts) > 1 else ""
 
-    # 1. Teu Shift Original
+    # 2. Executar o teu script original (Shift + Swap)
     shifted = shift_for_date(line)
     has_nl = shifted.endswith("\n")
     core = shifted[:-1] if has_nl else shifted
-
-    # 2. Teu Swap Original
+    
     a_pos, a_digits, a_end = find_account_pos(core, A_EXPECT_1B, A_PREFIX, min_start_1b=63)
     b_pos, b_digits, b_end = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
 
-    ok = (a_pos is not None) and (b_pos is not None)
-    if not ok:
+    if not a_pos or not b_pos:
         return shifted, {"OK": False}
 
     chars = list(core)
-    # Executa o swap de contas
+    # Teu swap
     write_over(chars, a_pos - 1, a_end, b_digits)
     write_over(chars, b_pos - 1, b_end, a_digits)
 
-    # 3. LIMPEZA E REALINHAMENTO FINAL (ESTRITO)
-    # Vamos limpar da coluna 89 (index 0) até ao fim para evitar duplicados
+    # 3. RECTIFICAÇÃO FINAL DE ALINHAMENTO (CONFORME O TEU EXEMPLO)
+    # Limpar tudo da coluna 90 (índice 89) para a frente para garantir fundo limpo
     for i in range(89, len(chars)):
         chars[i] = " "
 
-    # Conta Crédito na 90
+    # A. Conta Crédito (21119) na 90
     for i, ch in enumerate(a_digits):
         if 89 + i < len(chars): chars[89 + i] = ch
 
-    # Valor: Alinhado à esquerda. Como deve acabar na 119, 
-    # vamos definir o início por exemplo na 105.
-    col_valor_start = 104 # Coluna 105 (0-based)
-    for i, ch in enumerate(valor_orig):
-        if col_valor_start + i < 119: # Não passa da 119
-            chars[col_valor_start + i] = ch
+    # B. Valor: Inicia na 105, alinhado à esquerda, termina na 119
+    # (Índice 104 a 118)
+    for i, ch in enumerate(val_to_use):
+        if 104 + i < 119:
+            chars[104 + i] = ch
 
-    # Centro de Custo na 122 (0-based index 121)
-    for i, ch in enumerate(cc_orig):
+    # C. Centro de Custo: Inicia na 122 (sem o +)
+    # (Índice 121 em diante)
+    for i, ch in enumerate(cc_to_use):
         if 121 + i < len(chars):
             chars[121 + i] = ch
 
     new_line = "".join(chars).rstrip()
-    return new_line + ("\n" if has_nl else ""), {"OK": True, "A": a_digits}
+    return new_line + ("\n" if has_nl else ""), {"OK": True, "A": a_digits, "Val": val_to_use, "CC": cc_to_use}
 
 def process_text(text: str):
     lines = text.splitlines(keepends=True)
-    out_lines = []
-    diag = []
+    out_lines, diag = [], []
     for i, ln in enumerate(lines, start=1):
         new_ln, info = process_line(ln)
         out_lines.append(new_ln)
-        if i <= 20:
-            diag.append({"Linha": i, **info})
+        if i <= 20: diag.append({"Linha": i, **info})
     return "".join(out_lines), diag
 
 # =========================
-# UI STREAMLIT
+# INTERFACE STREAMLIT
 # =========================
-st.set_page_config(page_title="Corretor Contabilístico", layout="wide")
-st.title("Ajuste Final de Colunas")
+st.set_page_config(page_title="Retificar TXT", layout="wide")
+st.title("Retificador Contabilístico - Alinhamento Preciso")
 
-uploaded = st.file_uploader("Carregar TXT", type=["txt"])
+uploaded = st.file_uploader("Ficheiro TXT", type=["txt"])
 if uploaded:
-    encoding = st.selectbox("Encoding", ["cp1252", "utf-8"])
+    encoding = st.selectbox("Codificação", ["cp1252", "utf-8", "latin-1"])
     text_in = uploaded.getvalue().decode(encoding)
     text_out, diag = process_text(text_in)
     
+    st.subheader("Pré-visualização (Diagnóstico)")
     st.table(diag)
-    st.download_button("Descarregar corrigido", text_out.encode(encoding), "corrigido.txt")
+    
+    st.download_button("💾 Descarregar Ficheiro Corrigido", text_out.encode(encoding), "corrigido.txt")
