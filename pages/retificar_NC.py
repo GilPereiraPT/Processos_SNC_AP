@@ -3,33 +3,51 @@ from datetime import datetime
 
 
 # =========================
-# 1) Shift para alinhar a data
+# LAYOUT FIXO (1-based)
 # =========================
-def shift_for_date(line: str, from_col_1b: int, shift: int) -> str:
-    idx = from_col_1b - 1
+# Passo 1: data deve passar de col 52 para col 55 -> inserir 3 espaços a partir da col 52
+DATE_START_CURRENT_1B = 52
+SHIFT_SPACES = 3
+
+# Passo 2: DEPOIS do shift, as colunas corretas são estas (como disseste)
+COL_A_1B = 62   # A deve começar por '2'
+COL_B_1B = 113  # B deve começar por '7'
+
+A_PREFIX = "2"
+B_PREFIX = "7"
+
+
+# =========================
+# Core
+# =========================
+def shift_for_date(line: str) -> str:
+    """Insere SHIFT_SPACES espaços a partir de DATE_START_CURRENT_1B (1-based)."""
+    idx = DATE_START_CURRENT_1B - 1
     has_nl = line.endswith("\n")
     core = line[:-1] if has_nl else line
 
     if len(core) < idx:
         core = core + (" " * (idx - len(core)))
 
-    core = core[:idx] + (" " * shift) + core[idx:]
+    core = core[:idx] + (" " * SHIFT_SPACES) + core[idx:]
     return core + ("\n" if has_nl else "")
 
 
-# =========================
-# 2) Swap contas (runs de dígitos)
-# =========================
-def read_digits(core: str, start: int) -> tuple[str, int]:
-    if start >= len(core) or not core[start].isdigit():
-        return "", start
-    i = start
+def read_digits(core: str, start_idx: int) -> tuple[str, int]:
+    """Lê dígitos consecutivos a partir de start_idx (0-based)."""
+    if start_idx >= len(core) or not core[start_idx].isdigit():
+        return "", start_idx
+    i = start_idx
     while i < len(core) and core[i].isdigit():
         i += 1
-    return core[start:i], i
+    return core[start_idx:i], i
 
 
 def write_over(chars: list[str], start: int, old_end: int, new_text: str) -> None:
+    """
+    Substitui o run antigo por new_text sem deixar restos.
+    Limpa até max(len_antigo, len_novo).
+    """
     old_len = max(0, old_end - start)
     wipe_len = max(old_len, len(new_text))
 
@@ -44,98 +62,100 @@ def write_over(chars: list[str], start: int, old_end: int, new_text: str) -> Non
         chars[start + i] = ch
 
 
-def swap_accounts(line: str, col_a_1b: int, col_b_1b: int) -> tuple[str, str, str]:
-    """Devolve (linha_nova, conta_lida_A, conta_lida_B)"""
-    A = col_a_1b - 1
-    B = col_b_1b - 1
+def swap_accounts_after_shift(line: str) -> tuple[str, str, str, bool]:
+    """
+    1) faz shift
+    2) lê A na col 62 e B na col 113 (já após shift)
+    3) valida A começa por 2 e B por 7
+    4) troca
+    """
+    shifted = shift_for_date(line)
 
-    has_nl = line.endswith("\n")
-    core = line[:-1] if has_nl else line
+    has_nl = shifted.endswith("\n")
+    core = shifted[:-1] if has_nl else shifted
 
-    if len(core) <= max(A, B):
-        core = core + (" " * (max(A, B) - len(core) + 1))
+    A = COL_A_1B - 1
+    B = COL_B_1B - 1
+
+    min_len = max(A, B) + 1
+    if len(core) < min_len:
+        core = core + (" " * (min_len - len(core)))
 
     a_digits, a_end = read_digits(core, A)
     b_digits, b_end = read_digits(core, B)
+
+    ok = a_digits.startswith(A_PREFIX) and b_digits.startswith(B_PREFIX)
+    if not ok:
+        # devolve shift feito, mas sinaliza falha
+        return shifted, a_digits, b_digits, False
 
     chars = list(core)
     write_over(chars, A, a_end, b_digits)
     write_over(chars, B, b_end, a_digits)
 
-    return "".join(chars) + ("\n" if has_nl else ""), a_digits, b_digits
+    new_core = "".join(chars)
+    return new_core + ("\n" if has_nl else ""), a_digits, b_digits, True
 
 
-def adjusted_col(original_col_1b: int, insert_from_col_1b: int, shift: int) -> int:
-    """Se a coluna estiver a partir do ponto de inserção, ajusta-a (+shift)."""
-    return original_col_1b + shift if original_col_1b >= insert_from_col_1b else original_col_1b
-
-
-def process_text(text: str,
-                 insert_from_col_1b: int,
-                 shift: int,
-                 orig_col_a_1b: int,
-                 orig_col_b_1b: int):
+def process_text(text: str):
     lines = text.splitlines(keepends=True)
-
-    # Passo 1: shift em todas as linhas
-    shifted_lines = [shift_for_date(ln, insert_from_col_1b, shift) for ln in lines]
-
-    # Ajustar colunas para o ficheiro já com shift
-    eff_col_a = adjusted_col(orig_col_a_1b, insert_from_col_1b, shift)
-    eff_col_b = adjusted_col(orig_col_b_1b, insert_from_col_1b, shift)
-
-    # Passo 2: swap
     out_lines = []
-    diag = []
-    for i, ln in enumerate(shifted_lines, start=1):
-        new_ln, a, b = swap_accounts(ln, eff_col_a, eff_col_b)
-        out_lines.append(new_ln)
-        if i <= 20:
-            diag.append((i, a, b))
+    diag = []  # primeiras 20 linhas
+    bad = []
 
-    return "".join(out_lines), diag, eff_col_a, eff_col_b
+    for i, ln in enumerate(lines, start=1):
+        new_ln, a, b, ok = swap_accounts_after_shift(ln)
+        out_lines.append(new_ln if ok else ln)  # se falhar, mantém original (para não estragar)
+        if i <= 20:
+            diag.append((i, a, b, ok))
+        if not ok:
+            bad.append((i, a, b))
+
+    return "".join(out_lines), diag, bad
 
 
 # =========================
 # UI
 # =========================
-st.set_page_config(page_title="Retificar TXT Contabilidade", layout="centered")
-st.title("Retificação TXT – alinhar data + trocar contas")
+st.set_page_config(page_title="Retificar TXT (layout fixo)", layout="centered")
+st.title("Retificar TXT – layout fixo")
 
-with st.expander("Parâmetros", expanded=True):
-    st.markdown("### Passo 1 — alinhar a data")
-    insert_from_col_1b = st.number_input("Data começa atualmente na coluna (1-based)", min_value=1, value=52, step=1)
-    shift = st.number_input("Inserir quantos espaços (ex.: 3 para 52→55)", min_value=0, value=3, step=1)
+st.markdown(
+    f"""
+**Regras fixas aplicadas:**
+1) Inserir **{SHIFT_SPACES} espaços** a partir da **coluna {DATE_START_CURRENT_1B}** (data 52 → 55)  
+2) Após isso, trocar contas nas colunas:
+- **A = coluna {COL_A_1B}** (tem de começar por **{A_PREFIX}**)  
+- **B = coluna {COL_B_1B}** (tem de começar por **{B_PREFIX}**)
+"""
+)
 
-    st.markdown("### Passo 2 — colunas das contas (no ficheiro ORIGINAL)")
-    orig_col_a_1b = st.number_input("Coluna A (início da conta que está hoje no sítio errado)", min_value=1, value=62, step=1)
-    orig_col_b_1b = st.number_input("Coluna B (início da conta que deve trocar com A)", min_value=1, value=113, step=1)
-
-    encoding = st.selectbox("Codificação", ["cp1252", "utf-8", "latin-1"], index=0)
-
-uploaded = st.file_uploader("Upload do TXT", type=["txt"])
+encoding = st.selectbox("Codificação do ficheiro", ["cp1252", "utf-8", "latin-1"], index=0)
+uploaded = st.file_uploader("Seleciona o ficheiro TXT", type=["txt"])
 
 if uploaded:
     raw = uploaded.getvalue()
     try:
         text_in = raw.decode(encoding)
     except UnicodeDecodeError:
-        st.error("Erro de codificação. Experimenta cp1252 ou latin-1.")
+        st.error("Erro a ler o ficheiro com essa codificação. Experimenta cp1252 ou latin-1.")
         st.stop()
 
-    text_out, diag, eff_a, eff_b = process_text(
-        text_in,
-        int(insert_from_col_1b),
-        int(shift),
-        int(orig_col_a_1b),
-        int(orig_col_b_1b),
-    )
-
-    st.success(f"Processado. Após o shift, a troca foi feita nas colunas efetivas: A={eff_a} e B={eff_b} (1-based).")
+    text_out, diag, bad = process_text(text_in)
 
     st.subheader("Diagnóstico (primeiras 20 linhas)")
-    st.write("Mostra o que foi lido em A e B (antes da troca).")
-    st.table([{"Linha": n, "Lido em A": a, "Lido em B": b} for (n, a, b) in diag])
+    st.table([{"Linha": n, "A lida": a, "B lida": b, "OK": ok} for (n, a, b, ok) in diag])
+
+    if bad:
+        st.error(
+            f"Foram detetadas {len(bad)} linha(s) onde A não começa por '{A_PREFIX}' ou B não começa por '{B_PREFIX}'. "
+            "Para evitar gerar um ficheiro incorreto, o download fica bloqueado."
+        )
+        st.write("Exemplos das linhas com problema (até 200):")
+        st.table([{"Linha": n, "A lida": a, "B lida": b} for (n, a, b) in bad[:200]])
+        st.stop()
+
+    st.success("Validação OK. Ficheiro corrigido pronto.")
 
     st.subheader("Pré-visualização (primeiras 5 linhas corrigidas)")
     st.code("\n".join(text_out.splitlines()[:5]), language="text")
@@ -150,4 +170,4 @@ if uploaded:
         mime="text/plain",
     )
 else:
-    st.info("Carrega o ficheiro TXT.")
+    st.info("Carrega o TXT para processar.")
