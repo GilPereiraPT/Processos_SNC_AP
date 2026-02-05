@@ -60,13 +60,16 @@ def find_account_pos(core: str, expect_1b: int, prefix: str, min_start_1b: int |
 # =========================
 
 def process_line(line: str):
-    # 1. Capturar Valor e CC ANTES de mexer na linha (Evita o sinal +)
-    # Procuramos o valor e limpamos caracteres não numéricos como o '+'
+    # 1. Capturar Valor e CC ANTES de mexer na linha (Limpeza do '+')
     raw_after_accounts = line[120:].replace("+", " ").strip()
     parts = raw_after_accounts.split()
     
     val_to_use = parts[0] if len(parts) > 0 else ""
     cc_to_use = parts[1] if len(parts) > 1 else ""
+
+    # --- REGRA ESPECÍFICA DO CC ---
+    if cc_to_use == "1020511":
+        cc_to_use = "12201201"
 
     # 2. Executar o teu script original (Shift + Swap)
     shifted = shift_for_date(line)
@@ -80,27 +83,25 @@ def process_line(line: str):
         return shifted, {"OK": False}
 
     chars = list(core)
-    # Teu swap
+    # Teu swap original
     write_over(chars, a_pos - 1, a_end, b_digits)
     write_over(chars, b_pos - 1, b_end, a_digits)
 
-    # 3. RECTIFICAÇÃO FINAL DE ALINHAMENTO (CONFORME O TEU EXEMPLO)
-    # Limpar tudo da coluna 90 (índice 89) para a frente para garantir fundo limpo
+    # 3. RECTIFICAÇÃO FINAL DE ALINHAMENTO
+    # Limpar da coluna 90 para a frente
     for i in range(89, len(chars)):
         chars[i] = " "
 
-    # A. Conta Crédito (21119) na 90
+    # A. Conta Crédito (Ex: 21119) na 90
     for i, ch in enumerate(a_digits):
         if 89 + i < len(chars): chars[89 + i] = ch
 
-    # B. Valor: Inicia na 105, alinhado à esquerda, termina na 119
-    # (Índice 104 a 118)
+    # B. Valor: Inicia na 105, termina na 119
     for i, ch in enumerate(val_to_use):
         if 104 + i < 119:
             chars[104 + i] = ch
 
-    # C. Centro de Custo: Inicia na 122 (sem o +)
-    # (Índice 121 em diante)
+    # C. Centro de Custo: Inicia na 122
     for i, ch in enumerate(cc_to_use):
         if 121 + i < len(chars):
             chars[121 + i] = ch
@@ -121,7 +122,7 @@ def process_text(text: str):
 # INTERFACE STREAMLIT
 # =========================
 st.set_page_config(page_title="Retificar TXT", layout="wide")
-st.title("Retificador Contabilístico - Alinhamento Preciso")
+st.title("Retificador Contabilístico - Final")
 
 uploaded = st.file_uploader("Ficheiro TXT", type=["txt"])
 if uploaded:
@@ -129,7 +130,7 @@ if uploaded:
     text_in = uploaded.getvalue().decode(encoding)
     text_out, diag = process_text(text_in)
     
-    st.subheader("Pré-visualização (Diagnóstico)")
+    st.subheader("Diagnóstico")
     st.table(diag)
     
-    st.download_button("💾 Descarregar Ficheiro Corrigido", text_out.encode(encoding), "corrigido.txt")
+    st.download_button("💾 Descarregar Ficheiro Final Corrigido", text_out.encode(encoding), "corrigido_final.txt")
