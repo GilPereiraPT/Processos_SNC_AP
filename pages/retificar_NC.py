@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import datetime
+import os
 
 # =========================
 # LAYOUT FIXO (ORIGINAL)
@@ -11,6 +11,18 @@ B_EXPECT_1B = 113
 A_PREFIX = "2"
 B_PREFIX = "7"
 WINDOW = 4 
+
+# MAPEAMENTO DE CENTROS DE CUSTO (DE 2024 PARA 2025)
+CC_MAP = {
+    "1020511": "12201101",
+    "1020512": "12201102",
+    "1020513": "12201103",
+    "1020514": "12201104",
+    "1020521": "12201201",
+    "1020524": "12201202",
+    "1020522": "12201203",
+    "1020523": "12201204"
+}
 
 # =========================
 # FUNÇÕES TÉCNICAS (MANTIDAS)
@@ -65,13 +77,12 @@ def process_line(line: str):
     parts = raw_after_accounts.split()
     
     val_to_use = parts[0] if len(parts) > 0 else ""
-    cc_to_use = parts[1] if len(parts) > 1 else ""
+    cc_old = parts[1] if len(parts) > 1 else ""
 
-    # --- REGRA ESPECÍFICA DO CC ---
-    if cc_to_use == "1020511":
-        cc_to_use = "12201201"
+    # Aplicação da tabela de conversão
+    cc_new = CC_MAP.get(cc_old, cc_old)
 
-    # 2. Executar o teu script original (Shift + Swap)
+    # 2. Shift e Swap originais
     shifted = shift_for_date(line)
     has_nl = shifted.endswith("\n")
     core = shifted[:-1] if has_nl else shifted
@@ -83,54 +94,61 @@ def process_line(line: str):
         return shifted, {"OK": False}
 
     chars = list(core)
-    # Teu swap original
     write_over(chars, a_pos - 1, a_end, b_digits)
     write_over(chars, b_pos - 1, b_end, a_digits)
 
     # 3. RECTIFICAÇÃO FINAL DE ALINHAMENTO
-    # Limpar da coluna 90 para a frente
     for i in range(89, len(chars)):
         chars[i] = " "
 
-    # A. Conta Crédito (Ex: 21119) na 90
+    # Conta Crédito na 90
     for i, ch in enumerate(a_digits):
         if 89 + i < len(chars): chars[89 + i] = ch
 
-    # B. Valor: Inicia na 105, termina na 119
+    # Valor: 105 até 119
     for i, ch in enumerate(val_to_use):
         if 104 + i < 119:
             chars[104 + i] = ch
 
-    # C. Centro de Custo: Inicia na 122
-    for i, ch in enumerate(cc_to_use):
+    # Centro de Custo na 122
+    for i, ch in enumerate(cc_new):
         if 121 + i < len(chars):
             chars[121 + i] = ch
 
     new_line = "".join(chars).rstrip()
-    return new_line + ("\n" if has_nl else ""), {"OK": True, "A": a_digits, "Val": val_to_use, "CC": cc_to_use}
+    return new_line + ("\n" if has_nl else ""), {"OK": True, "CC_Novo": cc_new}
 
 def process_text(text: str):
     lines = text.splitlines(keepends=True)
-    out_lines, diag = [], []
-    for i, ln in enumerate(lines, start=1):
-        new_ln, info = process_line(ln)
+    out_lines = []
+    for ln in lines:
+        new_ln, _ = process_line(ln)
         out_lines.append(new_ln)
-        if i <= 20: diag.append({"Linha": i, **info})
-    return "".join(out_lines), diag
+    return "".join(out_lines)
 
 # =========================
 # INTERFACE STREAMLIT
 # =========================
-st.set_page_config(page_title="Retificar TXT", layout="wide")
-st.title("Retificador Contabilístico - Final")
+st.set_page_config(page_title="Retificador TXT", layout="wide")
+st.title("Retificador Contabilístico Profissional")
 
-uploaded = st.file_uploader("Ficheiro TXT", type=["txt"])
+uploaded = st.file_uploader("Selecione o ficheiro original", type=["txt"])
+
 if uploaded:
+    # Gerar o nome do ficheiro: NomeOriginal_corrigido.txt
+    file_name, file_ext = os.path.splitext(uploaded.name)
+    new_filename = f"{file_name}_corrigido{file_ext}"
+
     encoding = st.selectbox("Codificação", ["cp1252", "utf-8", "latin-1"])
     text_in = uploaded.getvalue().decode(encoding)
-    text_out, diag = process_text(text_in)
     
-    st.subheader("Diagnóstico")
-    st.table(diag)
+    text_out = process_text(text_in)
     
-    st.download_button("💾 Descarregar Ficheiro Final Corrigido", text_out.encode(encoding), "corrigido_final.txt")
+    st.success(f"Ficheiro pronto para criar: {new_filename}")
+    
+    st.download_button(
+        label=f"💾 Descarregar {new_filename}",
+        data=text_out.encode(encoding),
+        file_name=new_filename,
+        mime="text/plain"
+    )
