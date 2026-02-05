@@ -3,18 +3,14 @@ import streamlit as st
 from datetime import datetime
 
 # ============================================================
-# PASSO A (já feito convosco): SWAP + SHIFT
+# FASE 1 — Troca de contas (já validada no teu ficheiro)
 # ============================================================
-SHIFT_AT_COL_1B = 52
-SHIFT_SPACES = 3
-
-DEB_START_1B, DEB_END_1B = 60, 109
-CRE_START_1B, CRE_END_1B = 110, 159
-
-LINE_MIN_LEN = max(CRE_END_1B, SHIFT_AT_COL_1B)
+# No teu caso, o que funcionou foi trocar os runs numéricos em:
+DEBIT_COL_1B = 63
+CREDIT_COL_1B = 113
 
 # ============================================================
-# PASSO B (novo): POSIÇÕES FINAIS
+# FASE 2 — Alinhamentos finais (o que pediste agora)
 # ============================================================
 NEW_CRED_START_1B = 98
 NEW_CRED_END_1B   = 114  # 17 chars
@@ -25,19 +21,21 @@ NEW_VAL_END_1B    = 124  # 10 chars
 NEW_SIGN_COL_1B   = 125  # 1 char
 
 NEW_CC_START_1B   = 126
-NEW_CC_END_1B     = 135  # 10 chars (sem +)
+NEW_CC_END_1B     = 135  # 10 chars (sem sinal)
 
-FINAL_LEN = NEW_CC_END_1B  # vamos truncar/normalizar para 135
+FINAL_LEN = NEW_CC_END_1B
+
+# regex para extrair do texto após trocas
+AMOUNT_RE = re.compile(r"(?:\d+)?\.\d{2}")         # 85.91, .01, 0.50
+TAIL_RE   = re.compile(r"([+-])\s*(\d{1,12})\s*$") # +12201101 no fim
+ACCT_RE   = re.compile(r"\d{4,}")                  # contas com >=4 dígitos
 
 
 # ----------------------------
-# utilitários fixos (1-based)
+# utilitários (1-based)
 # ----------------------------
 def ensure_len(s: str, min_len: int) -> str:
     return s + (" " * (min_len - len(s))) if len(s) < min_len else s
-
-def slice_1b(s: str, start: int, end: int) -> str:
-    return s[start - 1:end]
 
 def replace_1b(s: str, start: int, end: int, value: str, align: str = "left") -> str:
     seg_len = end - start + 1
@@ -49,148 +47,133 @@ def replace_1b(s: str, start: int, end: int, value: str, align: str = "left") ->
 
 
 # ----------------------------
-# Passo A: swap + shift
+# Fase 1: swap runs numéricos em 63 ↔ 113
 # ----------------------------
-def swap_deb_cred(core: str) -> str:
-    deb = slice_1b(core, DEB_START_1B, DEB_END_1B)
-    cre = slice_1b(core, CRE_START_1B, CRE_END_1B)
-    out = core
-    out = replace_1b(out, DEB_START_1B, DEB_END_1B, cre, align="left")
-    out = replace_1b(out, CRE_START_1B, CRE_END_1B, deb, align="left")
-    return out
+def read_digits(core: str, start0: int) -> tuple[str, int]:
+    if start0 >= len(core) or not core[start0].isdigit():
+        return "", start0
+    i = start0
+    while i < len(core) and core[i].isdigit():
+        i += 1
+    return core[start0:i], i
 
-def shift_from_col_52(core: str) -> str:
-    idx0 = SHIFT_AT_COL_1B - 1
-    core = ensure_len(core, idx0)
-    return core[:idx0] + (" " * SHIFT_SPACES) + core[idx0:]
+def write_over(chars: list[str], start0: int, old_end0: int, new_text: str) -> None:
+    old_len = max(0, old_end0 - start0)
+    wipe_len = max(old_len, len(new_text))
+
+    need = start0 + wipe_len
+    if need > len(chars):
+        chars.extend([" "] * (need - len(chars)))
+
+    for i in range(start0, start0 + wipe_len):
+        chars[i] = " "
+    for i, ch in enumerate(new_text):
+        chars[start0 + i] = ch
+
+def swap_accounts_only(core: str) -> tuple[str, dict]:
+    d0 = DEBIT_COL_1B - 1
+    c0 = CREDIT_COL_1B - 1
+    core = ensure_len(core, max(d0, c0) + 1)
+
+    deb, deb_end = read_digits(core, d0)
+    cre, cre_end = read_digits(core, c0)
+
+    info = {"deb_antes": deb, "cred_antes": cre, "swap_ok": True}
+
+    # se não conseguir ler em algum dos lados, não mexe
+    if deb == "" or cre == "":
+        info["swap_ok"] = False
+        return core, info
+
+    chars = list(core)
+    write_over(chars, d0, deb_end, cre)
+    write_over(chars, c0, cre_end, deb)
+
+    out = "".join(chars)
+    deb2, _ = read_digits(out, d0)
+    cre2, _ = read_digits(out, c0)
+    info["deb_depois"] = deb2
+    info["cred_depois"] = cre2
+    return out, info
 
 
 # ----------------------------
-# Extração robusta (para o passo B)
+# Fase 2: alinhar Crédito / Valor / Sinal / CC
 # ----------------------------
-ACCOUNT_RE = re.compile(r"\d{4,}")          # contas (>=4 dígitos, ajusta se necessário)
-AMOUNT_RE  = re.compile(r"(?:\d+)?\.\d{2}") # valores: 85.91, .01, 0.50
-TAIL_RE    = re.compile(r"([+-])\s*(\d{1,12})\s*$")  # +12201101 no fim
-
-def extract_accounts(core: str) -> tuple[str, str]:
-    """
-    Devolve (acc2, acc7) = primeira conta a começar por 2 e primeira a começar por 7.
-    """
-    acc2 = ""
-    acc7 = ""
-    for m in ACCOUNT_RE.finditer(core):
+def extract_credit_account(core: str) -> str:
+    # regra prática: procurar a primeira conta que começa por 7
+    for m in ACCT_RE.finditer(core):
         v = m.group(0)
-        if not acc2 and v.startswith("2"):
-            acc2 = v
-        if not acc7 and v.startswith("7"):
-            acc7 = v
-        if acc2 and acc7:
-            break
-    return acc2, acc7
+        if v.startswith("7"):
+            return v
+    return ""
 
 def extract_amount(core: str) -> str:
-    """
-    Tenta apanhar o valor monetário (última ocorrência tipo 85.91 / .01).
-    """
     matches = list(AMOUNT_RE.finditer(core))
     return matches[-1].group(0) if matches else ""
 
 def extract_sign_cc(core: str) -> tuple[str, str]:
-    """
-    Procura no fim algo tipo +12201101. Devolve (sign, cc_digits).
-    """
     m = TAIL_RE.search(core)
     if not m:
         return "", ""
     return m.group(1), m.group(2)
 
-
-# ----------------------------
-# Passo B: reformatar posições finais
-# ----------------------------
-def apply_final_layout(core: str) -> tuple[str, dict]:
-    """
-    Escreve:
-      crédito 98–114
-      valor   115–124
-      sinal   125
-      CC      126–135 (sem sinal)
-    Trunca/normaliza a linha para 135 chars.
-    """
+def apply_alignments(core: str) -> tuple[str, dict]:
     core = ensure_len(core, FINAL_LEN)
 
-    acc2, acc7 = extract_accounts(core)  # débito/credito por prefixo (para validação)
+    cred = extract_credit_account(core)
     amount = extract_amount(core)
     sign, cc = extract_sign_cc(core)
 
-    # Validar mínimos para não estragar
     ok = True
     issues = []
-    if not acc7:
-        ok = False; issues.append("Não encontrei conta a começar por 7 (crédito).")
+    if not cred:
+        ok = False; issues.append("não encontrei conta crédito (a começar por 7)")
     if not amount:
-        ok = False; issues.append("Não encontrei valor no formato .dd.")
+        ok = False; issues.append("não encontrei valor no formato .dd")
     if not cc:
-        ok = False; issues.append("Não encontrei sinal+CC no fim da linha.")
-
-    if not ok:
-        info = {
-            "OK": False,
-            "issues": " | ".join(issues),
-            "acc2": acc2,
-            "acc7": acc7,
-            "amount": amount,
-            "tail_sign": sign,
-            "tail_cc": cc,
-        }
-        return core, info
-
-    # Normalizações
-    cred_out = acc7  # crédito é o que começa por 7
-    # valor em 10 chars: manter exatamente como está mas alinhado à direita
-    # exemplo ".01" vira "      .01"
-    val_out = amount
-    sign_out = sign if sign in ["+", "-"] else "+"
-    cc_out = cc.zfill(10)[-10:]  # CC a 10 dígitos, sem sinal
-
-    out = core
-    out = replace_1b(out, NEW_CRED_START_1B, NEW_CRED_END_1B, cred_out, align="left")
-    out = replace_1b(out, NEW_VAL_START_1B, NEW_VAL_END_1B, val_out, align="right")
-    out = replace_1b(out, NEW_SIGN_COL_1B, NEW_SIGN_COL_1B, sign_out, align="left")
-    out = replace_1b(out, NEW_CC_START_1B, NEW_CC_END_1B, cc_out, align="left")
-
-    # Truncar para não levar “restos” que confundem o importador
-    out = out[:FINAL_LEN]
+        ok = False; issues.append("não encontrei sinal+CC no fim da linha")
 
     info = {
-        "OK": True,
-        "cred(98)": cred_out,
-        "val(115)": val_out,
-        "sign(125)": sign_out,
-        "cc(126)": cc_out,
+        "align_ok": ok,
+        "cred(7x)": cred,
+        "valor": amount,
+        "sinal": sign,
+        "cc_raw": cc,
+        "issues": " | ".join(issues)
     }
+    if not ok:
+        return core, info
+
+    cc10 = cc.zfill(10)[-10:]
+    sign = sign if sign in ["+", "-"] else "+"
+
+    # escrever nos novos sítios
+    out = core
+    out = replace_1b(out, NEW_CRED_START_1B, NEW_CRED_END_1B, cred, align="left")
+    out = replace_1b(out, NEW_VAL_START_1B, NEW_VAL_END_1B, amount, align="right")
+    out = replace_1b(out, NEW_SIGN_COL_1B, NEW_SIGN_COL_1B, sign, align="left")
+    out = replace_1b(out, NEW_CC_START_1B, NEW_CC_END_1B, cc10, align="left")
+
+    # truncar para evitar “restos” à direita a confundir o importador
+    out = out[:FINAL_LEN]
+
+    info["cc10"] = cc10
     return out, info
 
 
-# ============================================================
-# Pipeline por linha
-# ============================================================
+# ----------------------------
+# Pipeline por linha: (1) trocas -> (2) alinhamentos
+# ----------------------------
 def process_line(line: str) -> tuple[str, dict]:
     has_nl = line.endswith("\n")
     core = line[:-1] if has_nl else line
-    core = ensure_len(core, LINE_MIN_LEN)
 
-    # 1) swap
-    core = swap_deb_cred(core)
+    core, swap_info = swap_accounts_only(core)
+    core, align_info = apply_alignments(core)
 
-    # 2) shift col 52
-    core = shift_from_col_52(core)
-
-    # 3) layout final
-    core = ensure_len(core, FINAL_LEN)
-    final_core, info = apply_final_layout(core)
-
-    return final_core + ("\n" if has_nl else ""), info
+    info = {**swap_info, **align_info}
+    return core + ("\n" if has_nl else ""), info
 
 
 def process_text(text: str):
@@ -201,31 +184,31 @@ def process_text(text: str):
 
     for i, ln in enumerate(lines, start=1):
         new_ln, info = process_line(ln)
-        out_lines.append(new_ln if info.get("OK") else ln)
+        out_lines.append(new_ln)
+
         if i <= 20:
             diag.append({"Linha": i, **info})
-        if not info.get("OK"):
+
+        if (not info.get("swap_ok", True)) or (not info.get("align_ok", True)):
             bad.append({"Linha": i, **info})
 
     return "".join(out_lines), diag, bad
 
 
 # ============================================================
-# UI Streamlit
+# UI
 # ============================================================
 st.set_page_config(page_title="Retificar TXT 905", layout="centered")
-st.title("Retificar TXT – swap + shift + reposicionar Crédito/Valor/CC")
+st.title("Retificar TXT — (1) Trocas de contas -> (2) Alinhamentos finais")
 
 st.markdown(
-    """
-**Operações fixas:**
-1) Troca **Débito 60–109** ↔ **Crédito 110–159**  
-2) Insere **3 espaços** a partir da **coluna 52**  
-3) Reposiciona no ficheiro final:
-- Crédito começa na **coluna 98**
-- Valor começa na **coluna 115**
-- Sinal em **125**
-- CC (sem +) começa na **coluna 126**
+    f"""
+**Ordem fixa (como pediste):**
+1) **Trocar contas** (runs numéricos) em **{DEBIT_COL_1B} ↔ {CREDIT_COL_1B}**
+2) **Alinhar**:
+   - Crédito começa em **{NEW_CRED_START_1B}**
+   - Valor começa em **{NEW_VAL_START_1B}**
+   - CC começa em **{NEW_CC_START_1B}** (sem '+'), com **sinal em {NEW_SIGN_COL_1B}**
 """
 )
 
@@ -246,15 +229,13 @@ if uploaded:
     st.table(diag)
 
     if bad:
-        st.error(
-            f"Falhou a extração/validação em {len(bad)} linha(s). "
-            "Nessas linhas o ficheiro NÃO foi alterado para evitar estragos."
+        st.warning(
+            f"Há {len(bad)} linha(s) com problemas de leitura/extração (swap ou alinhamentos). "
+            "Essas linhas foram exportadas na mesma (para inspeção), mas convém validar o diagnóstico."
         )
         st.table(bad[:200])
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_name = uploaded.name.rsplit(".", 1)[0] + f"_corrigido_{ts}.txt"
-
+    out_name = uploaded.name.rsplit(".", 1)[0] + f"_corrigido_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     st.download_button(
         "Descarregar TXT corrigido",
         data=text_out.encode(encoding),
