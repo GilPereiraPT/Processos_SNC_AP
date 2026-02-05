@@ -2,53 +2,37 @@ import re
 import streamlit as st
 from datetime import datetime
 
-# ============================================================
-# FASE 1 — Troca de contas (já validada no teu ficheiro)
-# ============================================================
-# No teu caso, o que funcionou foi trocar os runs numéricos em:
-DEBIT_COL_1B = 63
-CREDIT_COL_1B = 113
+# =========================
+# FASE 1: TROCAS (o que já estava certo)
+# =========================
+SWAP_A_COL_1B = 63
+SWAP_B_COL_1B = 113
 
-# ============================================================
-# FASE 2 — Alinhamentos finais (o que pediste agora)
-# ============================================================
-NEW_CRED_START_1B = 98
-NEW_CRED_END_1B   = 114  # 17 chars
+# =========================
+# FASE 2: ALINHAMENTOS FINAIS (o que pediste)
+# =========================
+CRED_START_1B = 98           # crédito começa aqui
+CRED_LEN = 17                # 98-114
 
-NEW_VAL_START_1B  = 115
-NEW_VAL_END_1B    = 124  # 10 chars
+VAL_START_1B = 115           # valor começa aqui
+VAL_LEN = 10                 # 115-124
 
-NEW_SIGN_COL_1B   = 125  # 1 char
+SIGN_COL_1B = 125            # sinal
+CC_START_1B = 126            # CC sem sinal
+CC_LEN = 10                  # 126-135
 
-NEW_CC_START_1B   = 126
-NEW_CC_END_1B     = 135  # 10 chars (sem sinal)
+FINAL_LEN = CC_START_1B - 1 + CC_LEN  # 135
 
-FINAL_LEN = NEW_CC_END_1B
-
-# regex para extrair do texto após trocas
-AMOUNT_RE = re.compile(r"(?:\d+)?\.\d{2}")         # 85.91, .01, 0.50
-TAIL_RE   = re.compile(r"([+-])\s*(\d{1,12})\s*$") # +12201101 no fim
-ACCT_RE   = re.compile(r"\d{4,}")                  # contas com >=4 dígitos
+# Extrações robustas (a partir da linha já trocada)
+AMOUNT_RE = re.compile(r"(?:\d+)?\.\d{2}")          # 85.91, .01, 0.50
+TAIL_RE   = re.compile(r"([+-])\s*(\d{1,12})\s*$")  # +12201101 no fim
+ACCT_RE   = re.compile(r"\d{4,}")                   # contas >= 4 dígitos
 
 
-# ----------------------------
-# utilitários (1-based)
-# ----------------------------
-def ensure_len(s: str, min_len: int) -> str:
-    return s + (" " * (min_len - len(s))) if len(s) < min_len else s
+# ---------- utils ----------
+def ensure_len(s: str, n: int) -> str:
+    return s + (" " * (n - len(s))) if len(s) < n else s
 
-def replace_1b(s: str, start: int, end: int, value: str, align: str = "left") -> str:
-    seg_len = end - start + 1
-    if align == "right":
-        value = value[-seg_len:].rjust(seg_len)
-    else:
-        value = value[:seg_len].ljust(seg_len)
-    return s[:start - 1] + value + s[end:]
-
-
-# ----------------------------
-# Fase 1: swap runs numéricos em 63 ↔ 113
-# ----------------------------
 def read_digits(core: str, start0: int) -> tuple[str, int]:
     if start0 >= len(core) or not core[start0].isdigit():
         return "", start0
@@ -70,38 +54,50 @@ def write_over(chars: list[str], start0: int, old_end0: int, new_text: str) -> N
     for i, ch in enumerate(new_text):
         chars[start0 + i] = ch
 
-def swap_accounts_only(core: str) -> tuple[str, dict]:
-    d0 = DEBIT_COL_1B - 1
-    c0 = CREDIT_COL_1B - 1
-    core = ensure_len(core, max(d0, c0) + 1)
+def put_field(core: str, start_1b: int, length: int, value: str, align: str = "left") -> str:
+    core = ensure_len(core, start_1b - 1 + length)
+    start0 = start_1b - 1
+    end0 = start0 + length
+    if align == "right":
+        v = value[-length:].rjust(length)
+    else:
+        v = value[:length].ljust(length)
+    return core[:start0] + v + core[end0:]
 
-    deb, deb_end = read_digits(core, d0)
-    cre, cre_end = read_digits(core, c0)
 
-    info = {"deb_antes": deb, "cred_antes": cre, "swap_ok": True}
+# ---------- Fase 1: swap em 63 ↔ 113 ----------
+def swap_63_113(line: str) -> tuple[str, dict]:
+    has_nl = line.endswith("\n")
+    core = line[:-1] if has_nl else line
 
-    # se não conseguir ler em algum dos lados, não mexe
-    if deb == "" or cre == "":
+    a0 = SWAP_A_COL_1B - 1
+    b0 = SWAP_B_COL_1B - 1
+    core = ensure_len(core, max(a0, b0) + 1)
+
+    a, a_end = read_digits(core, a0)
+    b, b_end = read_digits(core, b0)
+
+    info = {"swap_ok": True, "A_antes": a, "B_antes": b}
+
+    if a == "" or b == "":
         info["swap_ok"] = False
-        return core, info
+        return (core + ("\n" if has_nl else "")), info
 
     chars = list(core)
-    write_over(chars, d0, deb_end, cre)
-    write_over(chars, c0, cre_end, deb)
+    write_over(chars, a0, a_end, b)
+    write_over(chars, b0, b_end, a)
 
     out = "".join(chars)
-    deb2, _ = read_digits(out, d0)
-    cre2, _ = read_digits(out, c0)
-    info["deb_depois"] = deb2
-    info["cred_depois"] = cre2
-    return out, info
+    a2, _ = read_digits(out, a0)
+    b2, _ = read_digits(out, b0)
+    info["A_depois"] = a2
+    info["B_depois"] = b2
+
+    return (out + ("\n" if has_nl else "")), info
 
 
-# ----------------------------
-# Fase 2: alinhar Crédito / Valor / Sinal / CC
-# ----------------------------
+# ---------- Fase 2: alinhar crédito/valor/cc ----------
 def extract_credit_account(core: str) -> str:
-    # regra prática: procurar a primeira conta que começa por 7
     for m in ACCT_RE.finditer(core):
         v = m.group(0)
         if v.startswith("7"):
@@ -118,64 +114,54 @@ def extract_sign_cc(core: str) -> tuple[str, str]:
         return "", ""
     return m.group(1), m.group(2)
 
-def apply_alignments(core: str) -> tuple[str, dict]:
+def apply_alignments(line: str) -> tuple[str, dict]:
+    has_nl = line.endswith("\n")
+    core = line[:-1] if has_nl else line
     core = ensure_len(core, FINAL_LEN)
 
     cred = extract_credit_account(core)
-    amount = extract_amount(core)
+    val = extract_amount(core)
     sign, cc = extract_sign_cc(core)
 
     ok = True
     issues = []
     if not cred:
-        ok = False; issues.append("não encontrei conta crédito (a começar por 7)")
-    if not amount:
-        ok = False; issues.append("não encontrei valor no formato .dd")
+        ok = False; issues.append("não encontrei crédito (começa por 7)")
+    if not val:
+        ok = False; issues.append("não encontrei valor (.dd)")
     if not cc:
-        ok = False; issues.append("não encontrei sinal+CC no fim da linha")
+        ok = False; issues.append("não encontrei sinal+CC no fim")
 
     info = {
         "align_ok": ok,
-        "cred(7x)": cred,
-        "valor": amount,
+        "cred": cred,
+        "valor": val,
         "sinal": sign,
         "cc_raw": cc,
         "issues": " | ".join(issues)
     }
     if not ok:
-        return core, info
+        return (core + ("\n" if has_nl else "")), info
 
-    cc10 = cc.zfill(10)[-10:]
+    # normalizações
     sign = sign if sign in ["+", "-"] else "+"
+    cc10 = cc.zfill(CC_LEN)[-CC_LEN:]
 
-    # escrever nos novos sítios
+    # escrever nos sítios finais
     out = core
-    out = replace_1b(out, NEW_CRED_START_1B, NEW_CRED_END_1B, cred, align="left")
-    out = replace_1b(out, NEW_VAL_START_1B, NEW_VAL_END_1B, amount, align="right")
-    out = replace_1b(out, NEW_SIGN_COL_1B, NEW_SIGN_COL_1B, sign, align="left")
-    out = replace_1b(out, NEW_CC_START_1B, NEW_CC_END_1B, cc10, align="left")
+    out = put_field(out, CRED_START_1B, CRED_LEN, cred, align="left")
+    out = put_field(out, VAL_START_1B,  VAL_LEN,  val,  align="right")
+    out = put_field(out, SIGN_COL_1B,   1,        sign, align="left")
+    out = put_field(out, CC_START_1B,   CC_LEN,   cc10, align="left")
 
-    # truncar para evitar “restos” à direita a confundir o importador
+    # truncar para remover “lixo” à direita que pode baralhar o importador
     out = out[:FINAL_LEN]
 
     info["cc10"] = cc10
-    return out, info
+    return (out + ("\n" if has_nl else "")), info
 
 
-# ----------------------------
-# Pipeline por linha: (1) trocas -> (2) alinhamentos
-# ----------------------------
-def process_line(line: str) -> tuple[str, dict]:
-    has_nl = line.endswith("\n")
-    core = line[:-1] if has_nl else line
-
-    core, swap_info = swap_accounts_only(core)
-    core, align_info = apply_alignments(core)
-
-    info = {**swap_info, **align_info}
-    return core + ("\n" if has_nl else ""), info
-
-
+# ---------- Pipeline: (1) swaps -> (2) alinhamentos ----------
 def process_text(text: str):
     lines = text.splitlines(keepends=True)
     out_lines = []
@@ -183,32 +169,35 @@ def process_text(text: str):
     bad = []
 
     for i, ln in enumerate(lines, start=1):
-        new_ln, info = process_line(ln)
-        out_lines.append(new_ln)
+        ln1, info1 = swap_63_113(ln)
+        ln2, info2 = apply_alignments(ln1)
+
+        info = {"Linha": i, **info1, **info2}
+        out_lines.append(ln2)
 
         if i <= 20:
-            diag.append({"Linha": i, **info})
-
-        if (not info.get("swap_ok", True)) or (not info.get("align_ok", True)):
-            bad.append({"Linha": i, **info})
+            diag.append(info)
+        if (not info1.get("swap_ok", True)) or (not info2.get("align_ok", True)):
+            bad.append(info)
 
     return "".join(out_lines), diag, bad
 
 
-# ============================================================
+# =========================
 # UI
-# ============================================================
-st.set_page_config(page_title="Retificar TXT 905", layout="centered")
-st.title("Retificar TXT — (1) Trocas de contas -> (2) Alinhamentos finais")
+# =========================
+st.set_page_config(page_title="Retificar TXT", layout="centered")
+st.title("Retificar TXT — Trocas primeiro, alinhamentos depois")
 
 st.markdown(
     f"""
-**Ordem fixa (como pediste):**
-1) **Trocar contas** (runs numéricos) em **{DEBIT_COL_1B} ↔ {CREDIT_COL_1B}**
-2) **Alinhar**:
-   - Crédito começa em **{NEW_CRED_START_1B}**
-   - Valor começa em **{NEW_VAL_START_1B}**
-   - CC começa em **{NEW_CC_START_1B}** (sem '+'), com **sinal em {NEW_SIGN_COL_1B}**
+**Ordem fixa:**
+1) Troca contas em **{SWAP_A_COL_1B} ↔ {SWAP_B_COL_1B}**  
+2) Alinha no ficheiro final:
+- Crédito em **{CRED_START_1B}**
+- Valor em **{VAL_START_1B}**
+- Sinal em **{SIGN_COL_1B}**
+- CC (sem +) em **{CC_START_1B}**
 """
 )
 
@@ -229,10 +218,7 @@ if uploaded:
     st.table(diag)
 
     if bad:
-        st.warning(
-            f"Há {len(bad)} linha(s) com problemas de leitura/extração (swap ou alinhamentos). "
-            "Essas linhas foram exportadas na mesma (para inspeção), mas convém validar o diagnóstico."
-        )
+        st.warning(f"Há {len(bad)} linha(s) com falhas (swap ou extração para alinhamentos).")
         st.table(bad[:200])
 
     out_name = uploaded.name.rsplit(".", 1)[0] + f"_corrigido_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
