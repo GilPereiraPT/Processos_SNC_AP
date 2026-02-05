@@ -2,138 +2,113 @@ import streamlit as st
 from datetime import datetime
 
 # =========================
-# FORMATO FIXO (1-based)
+# ESPECIFICAÇÕES (1-based, inclusive)
 # =========================
-# Se o teu ficheiro original tem a data a começar na 52 e queres que fique na 55:
-INSERT_FROM_COL_1B = 52
-SHIFT_SPACES = 3
+POS_DEB_START = 60
+POS_DEB_END   = 109   # 50 chars
+POS_CRE_START = 110
+POS_CRE_END   = 159   # 50 chars
 
-# Depois do alinhamento (com base no teu exemplo correto):
-DEBIT_COL_1B = 63
-CREDIT_COL_1B = 113
+POS_CC_START  = 179
+POS_CC_END    = 188   # 10 chars
+
+POS_TYPE_START = 1
+POS_TYPE_END   = 3    # "905"
+
+LINE_MIN_LEN = POS_CC_END  # precisamos pelo menos até ao CC
 
 
-def shift_line(line: str) -> str:
-    """Insere SHIFT_SPACES espaços a partir de INSERT_FROM_COL_1B."""
-    idx = INSERT_FROM_COL_1B - 1
+def slice_1b(s: str, start: int, end: int) -> str:
+    """Slice por posições 1-based inclusive."""
+    return s[start-1:end]
+
+
+def replace_1b(s: str, start: int, end: int, value: str) -> str:
+    """Substitui o intervalo 1-based inclusive por value (ajusta ao comprimento do intervalo)."""
+    seg_len = end - start + 1
+    value = value[:seg_len].ljust(seg_len)
+    return s[:start-1] + value + s[end:]
+
+
+def ensure_len(s: str, min_len: int) -> str:
+    if len(s) < min_len:
+        return s + (" " * (min_len - len(s)))
+    return s
+
+
+def process_line(line: str) -> tuple[str, dict]:
     has_nl = line.endswith("\n")
     core = line[:-1] if has_nl else line
+    core = ensure_len(core, LINE_MIN_LEN)
 
-    if len(core) < idx:
-        core += " " * (idx - len(core))
+    tipo = slice_1b(core, POS_TYPE_START, POS_TYPE_END)
 
-    core = core[:idx] + (" " * SHIFT_SPACES) + core[idx:]
-    return core + ("\n" if has_nl else "")
+    deb = slice_1b(core, POS_DEB_START, POS_DEB_END)
+    cre = slice_1b(core, POS_CRE_START, POS_CRE_END)
+    cc  = slice_1b(core, POS_CC_START, POS_CC_END)
 
+    # Trocar sempre débito e crédito (campos completos de 50)
+    swapped = core
+    swapped = replace_1b(swapped, POS_DEB_START, POS_DEB_END, cre)
+    swapped = replace_1b(swapped, POS_CRE_START, POS_CRE_END, deb)
 
-def read_digits(core: str, start0: int) -> tuple[str, int]:
-    """Lê dígitos consecutivos a partir de start0 (0-based)."""
-    if start0 >= len(core) or not core[start0].isdigit():
-        return "", start0
-    i = start0
-    while i < len(core) and core[i].isdigit():
-        i += 1
-    return core[start0:i], i
-
-
-def write_over(chars: list[str], start0: int, old_end0: int, new_text: str) -> None:
-    """Substitui o run antigo por new_text limpando restos."""
-    old_len = max(0, old_end0 - start0)
-    wipe_len = max(old_len, len(new_text))
-
-    need = start0 + wipe_len
-    if need > len(chars):
-        chars.extend([" "] * (need - len(chars)))
-
-    for i in range(start0, start0 + wipe_len):
-        chars[i] = " "
-    for i, ch in enumerate(new_text):
-        chars[start0 + i] = ch
-
-
-def swap_always(line: str) -> tuple[str, dict]:
-    """
-    1) Alinha data (shift)
-    2) Troca SEMPRE os dígitos em DEBIT_COL_1B e CREDIT_COL_1B
-    """
-    shifted = shift_line(line)
-    has_nl = shifted.endswith("\n")
-    core = shifted[:-1] if has_nl else shifted
-
-    d0 = DEBIT_COL_1B - 1
-    c0 = CREDIT_COL_1B - 1
-
-    min_len = max(d0, c0) + 1
-    if len(core) < min_len:
-        core += " " * (min_len - len(core))
-
-    deb, deb_end = read_digits(core, d0)
-    cred, cred_end = read_digits(core, c0)
-
+    # Diagnóstico
     info = {
-        "deb_antes": deb,
-        "cred_antes": cred,
+        "Tipo": tipo.strip(),
+        "Deb_antes": deb.strip(),
+        "Cre_antes": cre.strip(),
+        "Deb_depois": cre.strip(),
+        "Cre_depois": deb.strip(),
+        "CC": cc,
+        "CC_vazio": (cc.strip() == ""),
         "OK": True
     }
 
-    # Se numa das posições não houver dígitos, bloqueia (para não estragar)
-    if deb == "" or cred == "":
-        info["OK"] = False
-        return shifted, info
+    # Se quiseres processar só linhas 905, ativa esta regra:
+    # if tipo != "905":
+    #     info["OK"] = False
+    #     return line, info
 
-    chars = list(core)
-    write_over(chars, d0, deb_end, cred)
-    write_over(chars, c0, cred_end, deb)
-
-    new_core = "".join(chars)
-
-    # Ler novamente para diagnóstico
-    deb2, _ = read_digits(new_core, d0)
-    cred2, _ = read_digits(new_core, c0)
-    info["deb_depois"] = deb2
-    info["cred_depois"] = cred2
-
-    return new_core + ("\n" if has_nl else ""), info
+    return swapped + ("\n" if has_nl else ""), info
 
 
 def process_text(text: str):
     lines = text.splitlines(keepends=True)
     out = []
     diag = []
-    bad = []
+    cc_empty = []
 
     for i, ln in enumerate(lines, start=1):
-        new_ln, info = swap_always(ln)
+        new_ln, info = process_line(ln)
+        out.append(new_ln)
 
         if i <= 20:
             diag.append({"Linha": i, **info})
 
-        if not info["OK"]:
-            bad.append({"Linha": i, **info})
-            out.append(ln)  # não mexe
-        else:
-            out.append(new_ln)
+        if info["CC_vazio"]:
+            cc_empty.append({"Linha": i, "Tipo": info["Tipo"], "CC_raw(179-188)": info["CC"]})
 
-    return "".join(out), diag, bad
+    return "".join(out), diag, cc_empty
 
 
 # =========================
 # UI
 # =========================
-st.set_page_config(page_title="Retificar TXT (swap sempre)", layout="centered")
-st.title("Retificar TXT – alinhar data + trocar Débito/Crédito")
+st.set_page_config(page_title="Retificar TXT 905", layout="centered")
+st.title("Retificar TXT 905 – troca Conta Débito / Conta Crédito")
 
 st.markdown(
-    f"""
-**Regras fixas:**
-- Inserir **{SHIFT_SPACES} espaços** a partir da **coluna {INSERT_FROM_COL_1B}** (data 52 → 55)
-- Trocar **sempre** os números em:
-  - Débito: **coluna {DEBIT_COL_1B}**
-  - Crédito: **coluna {CREDIT_COL_1B}**
+    """
+**Operação aplicada (fixa):**
+- Trocar os campos:
+  - Conta Débito **60–109 (50)**
+  - Conta Crédito **110–159 (50)**
+
+O resto da linha fica exatamente igual.
 """
 )
 
-encoding = st.selectbox("Codificação", ["cp1252", "utf-8", "latin-1"], index=0)
+encoding = st.selectbox("Codificação do ficheiro", ["cp1252", "utf-8", "latin-1"], index=0)
 uploaded = st.file_uploader("Seleciona o ficheiro TXT", type=["txt"])
 
 if uploaded:
@@ -144,25 +119,22 @@ if uploaded:
         st.error("Erro de codificação. Experimenta cp1252 ou latin-1.")
         st.stop()
 
-    text_out, diag, bad = process_text(text_in)
+    text_out, diag, cc_empty = process_text(text_in)
 
     st.subheader("Diagnóstico (primeiras 20 linhas)")
     st.table(diag)
 
-    if bad:
-        st.error(
-            f"Em {len(bad)} linha(s) não foi possível ler dígitos em débito e/ou crédito nas colunas fixas. "
-            "O download fica bloqueado para não gerar um ficheiro incorreto."
-        )
-        st.table(bad[:200])
-        st.stop()
+    if cc_empty:
+        st.warning(f"Centro de custo vazio em {len(cc_empty)} linha(s). (Campo 179–188 está só com espaços.)")
+        st.table(cc_empty[:200])
 
-    st.success("OK. Troca efetuada. Ficheiro pronto.")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_name = uploaded.name.rsplit(".", 1)[0] + f"_905_swap_{ts}.txt"
 
     st.download_button(
         "Descarregar TXT corrigido",
         data=text_out.encode(encoding),
-        file_name=uploaded.name.rsplit(".", 1)[0] + f"_corrigido_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+        file_name=out_name,
         mime="text/plain",
     )
 else:
