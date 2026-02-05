@@ -4,21 +4,17 @@ from datetime import datetime
 # =========================
 # FORMATO FIXO (1-based)
 # =========================
-# Se o teu ficheiro original tem a data a começar na 52:
+# Se o teu ficheiro original tem a data a começar na 52 e queres que fique na 55:
 INSERT_FROM_COL_1B = 52
-SHIFT_SPACES = 3  # 52 -> 55
+SHIFT_SPACES = 3
 
-# Depois do shift, segundo o teu exemplo correto:
-DATE_START_FINAL_1B = 55          # 55-62
-DEBIT_COL_1B = 63                # conta débito começa aqui
-CREDIT_COL_1B = 113              # conta crédito começa aqui
-
-DEBIT_PREFIX = "2"
-CREDIT_PREFIX = "7"
+# Depois do alinhamento (com base no teu exemplo correto):
+DEBIT_COL_1B = 63
+CREDIT_COL_1B = 113
 
 
 def shift_line(line: str) -> str:
-    """Insere 3 espaços a partir da coluna 52 (1-based)."""
+    """Insere SHIFT_SPACES espaços a partir de INSERT_FROM_COL_1B."""
     idx = INSERT_FROM_COL_1B - 1
     has_nl = line.endswith("\n")
     core = line[:-1] if has_nl else line
@@ -55,20 +51,18 @@ def write_over(chars: list[str], start0: int, old_end0: int, new_text: str) -> N
         chars[start0 + i] = ch
 
 
-def process_line(line: str) -> tuple[str, dict]:
+def swap_always(line: str) -> tuple[str, dict]:
     """
-    1) shift (52->55)
-    2) lê runs em 63 e 113
-    3) se estiverem trocadas (7 em débito e 2 em crédito), troca
-    4) valida resultado final (2 em débito, 7 em crédito)
+    1) Alinha data (shift)
+    2) Troca SEMPRE os dígitos em DEBIT_COL_1B e CREDIT_COL_1B
     """
     shifted = shift_line(line)
-
     has_nl = shifted.endswith("\n")
     core = shifted[:-1] if has_nl else shifted
 
     d0 = DEBIT_COL_1B - 1
     c0 = CREDIT_COL_1B - 1
+
     min_len = max(d0, c0) + 1
     if len(core) < min_len:
         core += " " * (min_len - len(core))
@@ -76,41 +70,30 @@ def process_line(line: str) -> tuple[str, dict]:
     deb, deb_end = read_digits(core, d0)
     cred, cred_end = read_digits(core, c0)
 
-    status = {
-        "deb_lida": deb,
-        "cred_lida": cred,
-        "acao": "",
-        "OK": False
+    info = {
+        "deb_antes": deb,
+        "cred_antes": cred,
+        "OK": True
     }
 
-    # Caso 1: já está correto
-    if deb.startswith(DEBIT_PREFIX) and cred.startswith(CREDIT_PREFIX):
-        status["acao"] = "mantida"
-        status["OK"] = True
-        return shifted, status
+    # Se numa das posições não houver dígitos, bloqueia (para não estragar)
+    if deb == "" or cred == "":
+        info["OK"] = False
+        return shifted, info
 
-    # Caso 2: está trocado -> troca
-    if deb.startswith(CREDIT_PREFIX) and cred.startswith(DEBIT_PREFIX):
-        chars = list(core)
-        write_over(chars, d0, deb_end, cred)
-        write_over(chars, c0, cred_end, deb)
-        new_core = "".join(chars)
+    chars = list(core)
+    write_over(chars, d0, deb_end, cred)
+    write_over(chars, c0, cred_end, deb)
 
-        # revalidar
-        deb2, _ = read_digits(new_core, d0)
-        cred2, _ = read_digits(new_core, c0)
+    new_core = "".join(chars)
 
-        status["acao"] = "trocada"
-        status["deb_lida"] = deb2
-        status["cred_lida"] = cred2
-        status["OK"] = deb2.startswith(DEBIT_PREFIX) and cred2.startswith(CREDIT_PREFIX)
+    # Ler novamente para diagnóstico
+    deb2, _ = read_digits(new_core, d0)
+    cred2, _ = read_digits(new_core, c0)
+    info["deb_depois"] = deb2
+    info["cred_depois"] = cred2
 
-        return new_core + ("\n" if has_nl else ""), status
-
-    # Caso 3: inesperado (não bate em 2/7) -> erro
-    status["acao"] = "erro"
-    status["OK"] = False
-    return shifted, status
+    return new_core + ("\n" if has_nl else ""), info
 
 
 def process_text(text: str):
@@ -118,35 +101,35 @@ def process_text(text: str):
     out = []
     diag = []
     bad = []
-    counts = {"mantida": 0, "trocada": 0, "erro": 0}
 
     for i, ln in enumerate(lines, start=1):
-        new_ln, stt = process_line(ln)
-        out.append(new_ln if stt["OK"] else ln)  # se erro, não mexe na linha
-        counts[stt["acao"]] += 1
+        new_ln, info = swap_always(ln)
 
         if i <= 20:
-            diag.append({"Linha": i, **stt})
-        if not stt["OK"]:
-            bad.append({"Linha": i, **stt})
+            diag.append({"Linha": i, **info})
 
-    return "".join(out), diag, bad, counts
+        if not info["OK"]:
+            bad.append({"Linha": i, **info})
+            out.append(ln)  # não mexe
+        else:
+            out.append(new_ln)
+
+    return "".join(out), diag, bad
 
 
 # =========================
 # UI
 # =========================
-st.set_page_config(page_title="Retificar TXT (fixo)", layout="centered")
-st.title("Retificar TXT – formato fixo (data + contas)")
+st.set_page_config(page_title="Retificar TXT (swap sempre)", layout="centered")
+st.title("Retificar TXT – alinhar data + trocar Débito/Crédito")
 
 st.markdown(
     f"""
-**Formato aplicado (fixo):**
-- Inserir **{SHIFT_SPACES} espaços** a partir da **coluna {INSERT_FROM_COL_1B}** (para a data ficar em **{DATE_START_FINAL_1B}–{DATE_START_FINAL_1B+7}**)
-- Contas:
-  - Débito na **coluna {DEBIT_COL_1B}** (deve começar por **{DEBIT_PREFIX}**)
-  - Crédito na **coluna {CREDIT_COL_1B}** (deve começar por **{CREDIT_PREFIX}**)
-- Se estiverem trocadas (7/2), o programa troca automaticamente.
+**Regras fixas:**
+- Inserir **{SHIFT_SPACES} espaços** a partir da **coluna {INSERT_FROM_COL_1B}** (data 52 → 55)
+- Trocar **sempre** os números em:
+  - Débito: **coluna {DEBIT_COL_1B}**
+  - Crédito: **coluna {CREDIT_COL_1B}**
 """
 )
 
@@ -161,35 +144,25 @@ if uploaded:
         st.error("Erro de codificação. Experimenta cp1252 ou latin-1.")
         st.stop()
 
-    text_out, diag, bad, counts = process_text(text_in)
-
-    st.subheader("Resumo")
-    st.write(counts)
+    text_out, diag, bad = process_text(text_in)
 
     st.subheader("Diagnóstico (primeiras 20 linhas)")
     st.table(diag)
 
     if bad:
         st.error(
-            f"Há {len(bad)} linha(s) com padrão inesperado (não bate em 2/7). "
-            "Para não gerar um ficheiro incorreto, o download fica bloqueado."
+            f"Em {len(bad)} linha(s) não foi possível ler dígitos em débito e/ou crédito nas colunas fixas. "
+            "O download fica bloqueado para não gerar um ficheiro incorreto."
         )
-        st.write("Exemplos (até 200):")
         st.table(bad[:200])
         st.stop()
 
-    st.success("OK. Ficheiro corrigido pronto a descarregar.")
-
-    st.subheader("Pré-visualização (primeiras 5 linhas)")
-    st.code("\n".join(text_out.splitlines()[:5]), language="text")
-
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_name = uploaded.name.rsplit(".", 1)[0] + f"_corrigido_{ts}.txt"
+    st.success("OK. Troca efetuada. Ficheiro pronto.")
 
     st.download_button(
         "Descarregar TXT corrigido",
         data=text_out.encode(encoding),
-        file_name=out_name,
+        file_name=uploaded.name.rsplit(".", 1)[0] + f"_corrigido_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
         mime="text/plain",
     )
 else:
