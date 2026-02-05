@@ -2,29 +2,24 @@ import streamlit as st
 from datetime import datetime
 
 # =========================
-# LAYOUT FIXO (ORIGINAL)
+# LAYOUT FIXO (TEU ORIGINAL)
 # =========================
 DATE_START_CURRENT_1B = 52
 SHIFT_SPACES = 3
 
 DATE_START_FINAL_1B = DATE_START_CURRENT_1B + SHIFT_SPACES   # 55
-DATE_LEN = 8  
+DATE_LEN = 8  # DDMMAAAA
 DATE_END_FINAL_1B = DATE_START_FINAL_1B + DATE_LEN - 1       # 62
 
 A_EXPECT_1B = 62
 B_EXPECT_1B = 113
-A_MIN_START_1B = DATE_END_FINAL_1B + 1  # 63
 
+A_MIN_START_1B = DATE_END_FINAL_1B + 1  # 63
 A_PREFIX = "2"
 B_PREFIX = "7"
-WINDOW = 4
+WINDOW = 4 
 
-# NOVOS ALINHAMENTOS SOLICITADOS
-COL_CONTA_CREDITO = 90
-COL_VALOR_START = 105
-COL_VALOR_END = 119
-COL_CENTRO_CUSTO = 122
-
+# TUA LÓGICA DE MANIPULAÇÃO (MANTIDA)
 def shift_for_date(line: str) -> str:
     idx = DATE_START_CURRENT_1B - 1
     has_nl = line.endswith("\n")
@@ -66,17 +61,20 @@ def find_account_pos(core: str, expect_1b: int, prefix: str, min_start_1b: int |
             return pos1b, digits, end
     return None, digits_at_expect, end_at_expect
 
+# =========================
+# PROCESSAMENTO COM ACERTO DE ALINHAMENTO
+# =========================
+
 def process_line(line: str):
-    # 1. Teu processo original de Shift
+    # 1. Executa exatamente o teu script original
     shifted = shift_for_date(line)
     has_nl = shifted.endswith("\n")
     core = shifted[:-1] if has_nl else shifted
 
-    min_len = max(B_EXPECT_1B, A_MIN_START_1B, 150) 
+    min_len = 160 # Garantir largura para as colunas novas
     if len(core) < min_len:
-        core = core + (" " * (min_len - len(core)))
+        core = core.ljust(min_len)
 
-    # 2. Teu processo original de Procura e Swap
     a_pos, a_digits, a_end = find_account_pos(core, A_EXPECT_1B, A_PREFIX, min_start_1b=A_MIN_START_1B)
     b_pos, b_digits, b_end = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
 
@@ -86,39 +84,42 @@ def process_line(line: str):
     if not ok:
         return shifted, info
 
+    # 2. Faz o Swap Original
     chars = list(core)
-    
-    # Executa o SWAP original
+    # Lemos os valores ANTES de apagar as zonas no swap
+    # (O valor costuma estar depois da conta B, por volta da 130 no original)
+    valor_raw = core[125:150].strip() 
+    cc_raw = core[150:170].strip()
+
+    # Teu Swap
     write_over(chars, a_pos - 1, a_end, b_digits)
     write_over(chars, b_pos - 1, b_end, a_digits)
 
-    # 3. ACERTOS DE ALINHAMENTO POSTERIORES (Novas Regras)
-    # Extrair valores antes de limpar as zonas para realinhamento
-    # Lemos o valor da zona onde ele ficou após o swap (perto da 113/115)
-    temp_core = "".join(chars)
-    # Aqui assumimos que o valor está à frente da conta B. 
-    # Para garantir, podes ajustar esta leitura se o valor vier de outra coluna:
-    valor_extraido = temp_core[114:130].strip() 
-    cc_extraido = temp_core[130:150].strip()
-
-    # Re-posicionamento Absoluto (Forçar as colunas finais)
-    # Conta a Crédito na 90
-    write_over(chars, COL_CONTA_CREDITO - 1, COL_CONTA_CREDITO + 15, a_digits) # (a_digits foi para crédito)
+    # 3. ACERTOS FINAIS DE ALINHAMENTO (As tuas regras novas)
+    # Conta a Crédito na 90 (0-based: 89)
+    write_over(chars, 89, 104, a_digits) 
     
-    # Valor: Alinhado à esquerda até 119 (começando por ex. na 105)
-    largura_valor = (COL_VALOR_END - COL_VALOR_START) + 1
-    write_over(chars, COL_VALOR_START - 1, COL_VALOR_END, valor_extraido.ljust(largura_valor))
-    
-    # Centro de Custo na 122
-    write_over(chars, COL_CENTRO_CUSTO - 1, COL_CENTRO_CUSTO + 15, cc_original := cc_extraido)
+    # Valor acaba na 119, alinhado à esquerda. 
+    # Vamos fazê-lo começar na 105 (0-based: 104) até 119 (0-based: 119)
+    # Limpamos a zona e escrevemos o valor
+    for i in range(104, 119): chars[i] = " "
+    for i, ch in enumerate(valor_raw):
+        if 104 + i < 119: chars[104 + i] = ch
 
-    new_core = "".join(chars)
+    # Centro de Custo na 122 (0-based: 121)
+    # Limpamos a zona e escrevemos
+    for i in range(121, 140): chars[i] = " "
+    for i, ch in enumerate(cc_raw):
+        if 121 + i < 160: chars[121 + i] = ch
+
+    new_core = "".join(chars).rstrip()
     return new_core + ("\n" if has_nl else ""), info
 
 def process_text(text: str):
     lines = text.splitlines(keepends=True)
     out_lines = []
     diag, bad = [], []
+
     for i, ln in enumerate(lines, start=1):
         new_ln, info = process_line(ln)
         if i <= 20: diag.append({"Linha": i, **info})
@@ -127,32 +128,27 @@ def process_text(text: str):
             out_lines.append(ln)
         else:
             out_lines.append(new_ln)
+
     return "".join(out_lines), diag, bad
 
 # =========================
-# UI (MANTIDA)
+# UI (STREAMLIT)
 # =========================
-st.set_page_config(page_title="Retificar TXT", layout="centered")
-st.title("Retificar TXT – Original + Alinhamentos")
+st.set_page_config(page_title="Retificar TXT", layout="wide")
+st.title("Retificar TXT – Alinhamento Final")
 
-encoding = st.selectbox("Codificação", ["cp1252", "utf-8", "latin-1"], index=0)
-uploaded = st.file_uploader("Seleciona o ficheiro TXT", type=["txt"])
+uploaded = st.file_uploader("Ficheiro TXT", type=["txt"])
+encoding = st.selectbox("Codificação", ["cp1252", "utf-8", "latin-1"])
 
 if uploaded:
-    raw = uploaded.getvalue()
-    try:
-        text_in = raw.decode(encoding)
-    except:
-        st.error("Erro de codificação.")
-        st.stop()
-
+    text_in = uploaded.getvalue().decode(encoding)
     text_out, diag, bad = process_text(text_in)
+
     st.subheader("Diagnóstico")
     st.table(diag)
 
-    if not bad:
-        st.success("Tudo OK.")
-        st.download_button("Descarregar TXT", data=text_out.encode(encoding), file_name="corrigido.txt")
+    if bad:
+        st.error(f"Erro em {len(bad)} linhas.")
     else:
-        st.error(f"Erros em {len(bad)} linhas.")
-        st.table(bad[:50])
+        st.success("Tudo OK!")
+        st.download_button("Descarregar Corrigido", text_out.encode(encoding), "corrigido.txt")
