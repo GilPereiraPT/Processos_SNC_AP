@@ -2,162 +2,151 @@ import streamlit as st
 from datetime import datetime
 
 # =========================
-# LAYOUT FIXO
+# FORMATO FIXO (1-based)
 # =========================
-DATE_START_CURRENT_1B = 52
-SHIFT_SPACES = 3
+# Se o teu ficheiro original tem a data a começar na 52:
+INSERT_FROM_COL_1B = 52
+SHIFT_SPACES = 3  # 52 -> 55
 
-# Depois do shift:
-DATE_START_FINAL_1B = DATE_START_CURRENT_1B + SHIFT_SPACES   # 55
-DATE_LEN = 8  # DDMMAAAA
-DATE_END_FINAL_1B = DATE_START_FINAL_1B + DATE_LEN - 1       # 62
+# Depois do shift, segundo o teu exemplo correto:
+DATE_START_FINAL_1B = 55          # 55-62
+DEBIT_COL_1B = 63                # conta débito começa aqui
+CREDIT_COL_1B = 113              # conta crédito começa aqui
 
-# Contas (referência que tens usado)
-A_EXPECT_1B = 62
-B_EXPECT_1B = 113
-
-# Restrição CRÍTICA: A nunca pode começar dentro da data
-A_MIN_START_1B = DATE_END_FINAL_1B + 1  # 63
-
-A_PREFIX = "2"
-B_PREFIX = "7"
-WINDOW = 4  # procura um pouco mais larga, mas com limite mínimo para A
+DEBIT_PREFIX = "2"
+CREDIT_PREFIX = "7"
 
 
-def shift_for_date(line: str) -> str:
-    idx = DATE_START_CURRENT_1B - 1
+def shift_line(line: str) -> str:
+    """Insere 3 espaços a partir da coluna 52 (1-based)."""
+    idx = INSERT_FROM_COL_1B - 1
     has_nl = line.endswith("\n")
     core = line[:-1] if has_nl else line
 
     if len(core) < idx:
-        core = core + (" " * (idx - len(core)))
+        core += " " * (idx - len(core))
 
     core = core[:idx] + (" " * SHIFT_SPACES) + core[idx:]
     return core + ("\n" if has_nl else "")
 
 
-def read_digits(core: str, start_idx: int) -> tuple[str, int]:
-    if start_idx >= len(core) or not core[start_idx].isdigit():
-        return "", start_idx
-    i = start_idx
+def read_digits(core: str, start0: int) -> tuple[str, int]:
+    """Lê dígitos consecutivos a partir de start0 (0-based)."""
+    if start0 >= len(core) or not core[start0].isdigit():
+        return "", start0
+    i = start0
     while i < len(core) and core[i].isdigit():
         i += 1
-    return core[start_idx:i], i
+    return core[start0:i], i
 
 
-def write_over(chars: list[str], start: int, old_end: int, new_text: str) -> None:
-    old_len = max(0, old_end - start)
+def write_over(chars: list[str], start0: int, old_end0: int, new_text: str) -> None:
+    """Substitui o run antigo por new_text limpando restos."""
+    old_len = max(0, old_end0 - start0)
     wipe_len = max(old_len, len(new_text))
 
-    needed = start + wipe_len
-    if needed > len(chars):
-        chars.extend([" "] * (needed - len(chars)))
+    need = start0 + wipe_len
+    if need > len(chars):
+        chars.extend([" "] * (need - len(chars)))
 
-    for i in range(start, start + wipe_len):
+    for i in range(start0, start0 + wipe_len):
         chars[i] = " "
-
     for i, ch in enumerate(new_text):
-        chars[start + i] = ch
+        chars[start0 + i] = ch
 
 
-def find_account_pos(core: str, expect_1b: int, prefix: str, min_start_1b: int | None = None):
+def process_line(line: str) -> tuple[str, dict]:
     """
-    Procura na janela +/- WINDOW um run de dígitos que comece por prefix.
-    Se min_start_1b estiver definido, ignora posições antes desse mínimo.
-    Devolve (pos_1b, digits, end_idx_0based) ou (None, digits_na_expect, end_na_expect).
+    1) shift (52->55)
+    2) lê runs em 63 e 113
+    3) se estiverem trocadas (7 em débito e 2 em crédito), troca
+    4) valida resultado final (2 em débito, 7 em crédito)
     """
-    expect0 = expect_1b - 1
-    digits_at_expect, end_at_expect = read_digits(core, expect0)
+    shifted = shift_line(line)
 
-    for delta in range(-WINDOW, WINDOW + 1):
-        pos0 = expect0 + delta
-        pos1b = pos0 + 1
-        if pos0 < 0:
-            continue
-        if min_start_1b is not None and pos1b < min_start_1b:
-            continue
-
-        digits, end = read_digits(core, pos0)
-        if digits.startswith(prefix):
-            return pos1b, digits, end
-
-    return None, digits_at_expect, end_at_expect
-
-
-def process_line(line: str):
-    shifted = shift_for_date(line)
     has_nl = shifted.endswith("\n")
     core = shifted[:-1] if has_nl else shifted
 
-    # garantir tamanho mínimo para as leituras
-    min_len = max(B_EXPECT_1B, A_MIN_START_1B)  # 1-based
+    d0 = DEBIT_COL_1B - 1
+    c0 = CREDIT_COL_1B - 1
+    min_len = max(d0, c0) + 1
     if len(core) < min_len:
-        core = core + (" " * (min_len - len(core)))
+        core += " " * (min_len - len(core))
 
-    # A: só pode começar a partir da col 63
-    a_pos, a_digits, a_end = find_account_pos(core, A_EXPECT_1B, A_PREFIX, min_start_1b=A_MIN_START_1B)
-    # B: sem mínimo extra (mas podes pôr um mínimo semelhante se quiseres)
-    b_pos, b_digits, b_end = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
+    deb, deb_end = read_digits(core, d0)
+    cred, cred_end = read_digits(core, c0)
 
-    ok = (a_pos is not None) and (b_pos is not None)
-
-    info = {
-        "A_col": a_pos,
-        "A_lida": a_digits,
-        "B_col": b_pos,
-        "B_lida": b_digits,
-        "OK": ok,
+    status = {
+        "deb_lida": deb,
+        "cred_lida": cred,
+        "acao": "",
+        "OK": False
     }
 
-    if not ok:
-        # devolve só shift para inspeção
-        return shifted, info
+    # Caso 1: já está correto
+    if deb.startswith(DEBIT_PREFIX) and cred.startswith(CREDIT_PREFIX):
+        status["acao"] = "mantida"
+        status["OK"] = True
+        return shifted, status
 
-    A0 = a_pos - 1
-    B0 = b_pos - 1
+    # Caso 2: está trocado -> troca
+    if deb.startswith(CREDIT_PREFIX) and cred.startswith(DEBIT_PREFIX):
+        chars = list(core)
+        write_over(chars, d0, deb_end, cred)
+        write_over(chars, c0, cred_end, deb)
+        new_core = "".join(chars)
 
-    chars = list(core)
-    write_over(chars, A0, a_end, b_digits)
-    write_over(chars, B0, b_end, a_digits)
+        # revalidar
+        deb2, _ = read_digits(new_core, d0)
+        cred2, _ = read_digits(new_core, c0)
 
-    new_core = "".join(chars)
-    return new_core + ("\n" if has_nl else ""), info
+        status["acao"] = "trocada"
+        status["deb_lida"] = deb2
+        status["cred_lida"] = cred2
+        status["OK"] = deb2.startswith(DEBIT_PREFIX) and cred2.startswith(CREDIT_PREFIX)
+
+        return new_core + ("\n" if has_nl else ""), status
+
+    # Caso 3: inesperado (não bate em 2/7) -> erro
+    status["acao"] = "erro"
+    status["OK"] = False
+    return shifted, status
 
 
 def process_text(text: str):
     lines = text.splitlines(keepends=True)
-    out_lines = []
+    out = []
     diag = []
     bad = []
+    counts = {"mantida": 0, "trocada": 0, "erro": 0}
 
     for i, ln in enumerate(lines, start=1):
-        new_ln, info = process_line(ln)
+        new_ln, stt = process_line(ln)
+        out.append(new_ln if stt["OK"] else ln)  # se erro, não mexe na linha
+        counts[stt["acao"]] += 1
 
         if i <= 20:
-            diag.append({"Linha": i, **info})
+            diag.append({"Linha": i, **stt})
+        if not stt["OK"]:
+            bad.append({"Linha": i, **stt})
 
-        if not info["OK"]:
-            bad.append({"Linha": i, **info})
-            out_lines.append(ln)  # não mexe nessa linha
-        else:
-            out_lines.append(new_ln)
-
-    return "".join(out_lines), diag, bad
+    return "".join(out), diag, bad, counts
 
 
 # =========================
 # UI
 # =========================
 st.set_page_config(page_title="Retificar TXT (fixo)", layout="centered")
-st.title("Retificar TXT – alinhamento + troca (fixo e seguro)")
+st.title("Retificar TXT – formato fixo (data + contas)")
 
 st.markdown(
     f"""
-**Regras fixas:**
-- Inserir **{SHIFT_SPACES} espaços** a partir da **coluna {DATE_START_CURRENT_1B}** ⇒ data passa a começar na **{DATE_START_FINAL_1B}**
-- Data ocupa 8 dígitos ⇒ termina na **coluna {DATE_END_FINAL_1B}**
-- **A (prefixo 2) só pode começar a partir da coluna {A_MIN_START_1B}** (para nunca apanhar o ano)
-- B (prefixo 7) é procurada perto da coluna {B_EXPECT_1B}
+**Formato aplicado (fixo):**
+- Inserir **{SHIFT_SPACES} espaços** a partir da **coluna {INSERT_FROM_COL_1B}** (para a data ficar em **{DATE_START_FINAL_1B}–{DATE_START_FINAL_1B+7}**)
+- Contas:
+  - Débito na **coluna {DEBIT_COL_1B}** (deve começar por **{DEBIT_PREFIX}**)
+  - Crédito na **coluna {CREDIT_COL_1B}** (deve começar por **{CREDIT_PREFIX}**)
+- Se estiverem trocadas (7/2), o programa troca automaticamente.
 """
 )
 
@@ -172,23 +161,26 @@ if uploaded:
         st.error("Erro de codificação. Experimenta cp1252 ou latin-1.")
         st.stop()
 
-    text_out, diag, bad = process_text(text_in)
+    text_out, diag, bad, counts = process_text(text_in)
+
+    st.subheader("Resumo")
+    st.write(counts)
 
     st.subheader("Diagnóstico (primeiras 20 linhas)")
     st.table(diag)
 
     if bad:
         st.error(
-            f"Falhou a deteção/validação em {len(bad)} linha(s). "
-            "O download fica bloqueado para não gerar um ficheiro incorreto."
+            f"Há {len(bad)} linha(s) com padrão inesperado (não bate em 2/7). "
+            "Para não gerar um ficheiro incorreto, o download fica bloqueado."
         )
         st.write("Exemplos (até 200):")
         st.table(bad[:200])
         st.stop()
 
-    st.success("Tudo OK. Ficheiro corrigido pronto.")
+    st.success("OK. Ficheiro corrigido pronto a descarregar.")
 
-    st.subheader("Pré-visualização (primeiras 5 linhas corrigidas)")
+    st.subheader("Pré-visualização (primeiras 5 linhas)")
     st.code("\n".join(text_out.splitlines()[:5]), language="text")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
