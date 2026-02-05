@@ -3,25 +3,26 @@ from datetime import datetime
 
 
 # =========================
-# LAYOUT FIXO (1-based)
+# LAYOUT FIXO (sem opções no UI)
 # =========================
-# Passo 1: data deve passar de col 52 para col 55 -> inserir 3 espaços a partir da col 52
 DATE_START_CURRENT_1B = 52
 SHIFT_SPACES = 3
 
-# Passo 2: DEPOIS do shift, as colunas corretas são estas (como disseste)
-COL_A_1B = 62   # A deve começar por '2'
-COL_B_1B = 113  # B deve começar por '7'
+# posições “esperadas” após o shift (as tuas)
+A_EXPECT_1B = 62
+B_EXPECT_1B = 113
 
 A_PREFIX = "2"
 B_PREFIX = "7"
 
+# tolerância de procura (em colunas)
+WINDOW = 2  # procura em [expect-WINDOW, expect+WINDOW]
+
 
 # =========================
-# Core
+# Helpers
 # =========================
 def shift_for_date(line: str) -> str:
-    """Insere SHIFT_SPACES espaços a partir de DATE_START_CURRENT_1B (1-based)."""
     idx = DATE_START_CURRENT_1B - 1
     has_nl = line.endswith("\n")
     core = line[:-1] if has_nl else line
@@ -34,7 +35,6 @@ def shift_for_date(line: str) -> str:
 
 
 def read_digits(core: str, start_idx: int) -> tuple[str, int]:
-    """Lê dígitos consecutivos a partir de start_idx (0-based)."""
     if start_idx >= len(core) or not core[start_idx].isdigit():
         return "", start_idx
     i = start_idx
@@ -44,10 +44,6 @@ def read_digits(core: str, start_idx: int) -> tuple[str, int]:
 
 
 def write_over(chars: list[str], start: int, old_end: int, new_text: str) -> None:
-    """
-    Substitui o run antigo por new_text sem deixar restos.
-    Limpa até max(len_antigo, len_novo).
-    """
     old_len = max(0, old_end - start)
     wipe_len = max(old_len, len(new_text))
 
@@ -62,54 +58,85 @@ def write_over(chars: list[str], start: int, old_end: int, new_text: str) -> Non
         chars[start + i] = ch
 
 
-def swap_accounts_after_shift(line: str) -> tuple[str, str, str, bool]:
+def find_account_pos(core: str, expect_1b: int, prefix: str) -> tuple[int | None, str, int]:
     """
-    1) faz shift
-    2) lê A na col 62 e B na col 113 (já após shift)
-    3) valida A começa por 2 e B por 7
-    4) troca
+    Procura, numa janela +/- WINDOW, um run de dígitos que comece por prefix.
+    Devolve (pos_1b, digits, end_idx_0based). Se não encontrar: (None, digits_lidos_na_expectativa, end_idx).
+    """
+    expect0 = expect_1b - 1
+
+    # garantir que conseguimos ler na expectativa
+    digits_at_expect, end_at_expect = read_digits(core, expect0)
+
+    for delta in range(-WINDOW, WINDOW + 1):
+        pos0 = expect0 + delta
+        if pos0 < 0:
+            continue
+        digits, end = read_digits(core, pos0)
+        if digits.startswith(prefix):
+            return pos0 + 1, digits, end  # 1-based
+
+    return None, digits_at_expect, end_at_expect
+
+
+def process_line(line: str) -> tuple[str, dict]:
+    """
+    1) shift
+    2) encontra A (prefix 2) perto de 62 e B (prefix 7) perto de 113
+    3) troca
     """
     shifted = shift_for_date(line)
-
     has_nl = shifted.endswith("\n")
     core = shifted[:-1] if has_nl else shifted
 
-    A = COL_A_1B - 1
-    B = COL_B_1B - 1
-
-    min_len = max(A, B) + 1
+    # assegurar comprimento mínimo até B_EXPECT
+    min_len = (B_EXPECT_1B - 1) + 1
     if len(core) < min_len:
         core = core + (" " * (min_len - len(core)))
 
-    a_digits, a_end = read_digits(core, A)
-    b_digits, b_end = read_digits(core, B)
+    a_pos_1b, a_digits, a_end = find_account_pos(core, A_EXPECT_1B, A_PREFIX)
+    b_pos_1b, b_digits, b_end = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
 
-    ok = a_digits.startswith(A_PREFIX) and b_digits.startswith(B_PREFIX)
+    ok = (a_pos_1b is not None) and (b_pos_1b is not None)
+
+    info = {
+        "A_col": a_pos_1b,
+        "A_lida": a_digits,
+        "B_col": b_pos_1b,
+        "B_lida": b_digits,
+        "OK": ok,
+    }
+
     if not ok:
-        # devolve shift feito, mas sinaliza falha
-        return shifted, a_digits, b_digits, False
+        # não altera: devolve só com shift (para inspeção)
+        return shifted, info
+
+    A0 = a_pos_1b - 1
+    B0 = b_pos_1b - 1
 
     chars = list(core)
-    write_over(chars, A, a_end, b_digits)
-    write_over(chars, B, b_end, a_digits)
+    write_over(chars, A0, a_end, b_digits)
+    write_over(chars, B0, b_end, a_digits)
 
     new_core = "".join(chars)
-    return new_core + ("\n" if has_nl else ""), a_digits, b_digits, True
+    return new_core + ("\n" if has_nl else ""), info
 
 
 def process_text(text: str):
     lines = text.splitlines(keepends=True)
     out_lines = []
-    diag = []  # primeiras 20 linhas
+    diag = []
     bad = []
 
     for i, ln in enumerate(lines, start=1):
-        new_ln, a, b, ok = swap_accounts_after_shift(ln)
-        out_lines.append(new_ln if ok else ln)  # se falhar, mantém original (para não estragar)
+        new_ln, info = process_line(ln)
+        out_lines.append(new_ln if info["OK"] else ln)  # se falhar, mantém original
+
         if i <= 20:
-            diag.append((i, a, b, ok))
-        if not ok:
-            bad.append((i, a, b))
+            diag.append({"Linha": i, **info})
+
+        if not info["OK"]:
+            bad.append({"Linha": i, **info})
 
     return "".join(out_lines), diag, bad
 
@@ -117,16 +144,17 @@ def process_text(text: str):
 # =========================
 # UI
 # =========================
-st.set_page_config(page_title="Retificar TXT (layout fixo)", layout="centered")
-st.title("Retificar TXT – layout fixo")
+st.set_page_config(page_title="Retificar TXT (robusto)", layout="centered")
+st.title("Retificar TXT – alinhamento + troca (robusto)")
 
 st.markdown(
     f"""
-**Regras fixas aplicadas:**
-1) Inserir **{SHIFT_SPACES} espaços** a partir da **coluna {DATE_START_CURRENT_1B}** (data 52 → 55)  
-2) Após isso, trocar contas nas colunas:
-- **A = coluna {COL_A_1B}** (tem de começar por **{A_PREFIX}**)  
-- **B = coluna {COL_B_1B}** (tem de começar por **{B_PREFIX}**)
+**Regras fixas:**
+- Inserir **{SHIFT_SPACES} espaços** a partir da **coluna {DATE_START_CURRENT_1B}** (data 52 → 55)
+- Depois, procurar e trocar:
+  - **A** perto da coluna **{A_EXPECT_1B}**, conta começa por **{A_PREFIX}**
+  - **B** perto da coluna **{B_EXPECT_1B}**, conta começa por **{B_PREFIX}**
+- Procura automática numa janela de **±{WINDOW} colunas**.
 """
 )
 
@@ -138,24 +166,24 @@ if uploaded:
     try:
         text_in = raw.decode(encoding)
     except UnicodeDecodeError:
-        st.error("Erro a ler o ficheiro com essa codificação. Experimenta cp1252 ou latin-1.")
+        st.error("Erro a ler o ficheiro. Experimenta cp1252 ou latin-1.")
         st.stop()
 
     text_out, diag, bad = process_text(text_in)
 
     st.subheader("Diagnóstico (primeiras 20 linhas)")
-    st.table([{"Linha": n, "A lida": a, "B lida": b, "OK": ok} for (n, a, b, ok) in diag])
+    st.table(diag)
 
     if bad:
         st.error(
-            f"Foram detetadas {len(bad)} linha(s) onde A não começa por '{A_PREFIX}' ou B não começa por '{B_PREFIX}'. "
-            "Para evitar gerar um ficheiro incorreto, o download fica bloqueado."
+            f"Falhou a deteção/validação em {len(bad)} linha(s). "
+            "O download fica bloqueado para não gerar um ficheiro incorreto."
         )
-        st.write("Exemplos das linhas com problema (até 200):")
-        st.table([{"Linha": n, "A lida": a, "B lida": b} for (n, a, b) in bad[:200]])
+        st.write("Exemplos (até 200):")
+        st.table(bad[:200])
         st.stop()
 
-    st.success("Validação OK. Ficheiro corrigido pronto.")
+    st.success("Tudo OK. Ficheiro corrigido pronto.")
 
     st.subheader("Pré-visualização (primeiras 5 linhas corrigidas)")
     st.code("\n".join(text_out.splitlines()[:5]), language="text")
