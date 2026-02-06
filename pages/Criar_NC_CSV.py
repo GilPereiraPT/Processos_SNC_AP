@@ -24,7 +24,7 @@ CC_MAP = {
     "1020521": "12201201",
     "1020524": "12201202",
     "1020522": "12201203",
-    "1020523": "12201204"
+    "1020523": "12201204",
 }
 
 # =========================
@@ -53,11 +53,11 @@ def shift_for_date(line: str) -> str:
     has_nl = line.endswith("\n")
     core = line[:-1] if has_nl else line
     if len(core) < idx:
-        core = core + (" " * (idx - len(core)))
+        core += " " * (idx - len(core))
     core = core[:idx] + (" " * SHIFT_SPACES) + core[idx:]
     return core + ("\n" if has_nl else "")
 
-def read_digits(core: str, start_idx: int) -> tuple[str, int]:
+def read_digits(core: str, start_idx: int):
     if start_idx >= len(core) or not core[start_idx].isdigit():
         return "", start_idx
     i = start_idx
@@ -65,44 +65,40 @@ def read_digits(core: str, start_idx: int) -> tuple[str, int]:
         i += 1
     return core[start_idx:i], i
 
-def write_over(chars: list[str], start: int, old_end: int, new_text: str) -> None:
+def write_over(chars, start, old_end, new_text):
     old_len = max(0, old_end - start)
     wipe_len = max(old_len, len(new_text))
-    needed = start + wipe_len
-    if needed > len(chars):
-        chars.extend([" "] * (needed - len(chars)))
+    need = start + wipe_len
+    if need > len(chars):
+        chars.extend([" "] * (need - len(chars)))
     for i in range(start, start + wipe_len):
         chars[i] = " "
     for i, ch in enumerate(new_text):
         chars[start + i] = ch
 
-def find_account_pos(core: str, expect_1b: int, prefix: str, min_start_1b: int | None = None):
+def find_account_pos(core, expect_1b, prefix, min_start_1b=None):
     expect0 = expect_1b - 1
-    digits_at_expect, end_at_expect = read_digits(core, expect0)
     for delta in range(-WINDOW, WINDOW + 1):
         pos0 = expect0 + delta
-        if pos0 < 0: continue
-        if min_start_1b is not None and (pos0 + 1) < min_start_1b: continue
+        if pos0 < 0:
+            continue
+        if min_start_1b and (pos0 + 1) < min_start_1b:
+            continue
         digits, end = read_digits(core, pos0)
         if digits.startswith(prefix):
             return pos0 + 1, digits, end
-    return None, digits_at_expect, end_at_expect
+    return None, "", 0
 
 # =========================
-# LÓGICA DE PROCESSAMENTO TXT (MANTIDA)
+# PROCESSAMENTO TXT (IGUAL AO TEU)
 # =========================
 def process_line(line: str):
-    # 1. Capturar Valor e CC ANTES de mexer na linha (Limpeza do '+')
-    raw_after_accounts = line[120:].replace("+", " ").strip()
-    parts = raw_after_accounts.split()
-
-    val_to_use = parts[0] if len(parts) > 0 else ""
+    raw = line[120:].replace("+", " ").strip()
+    parts = raw.split()
+    val = parts[0] if len(parts) > 0 else ""
     cc_old = parts[1] if len(parts) > 1 else ""
-
-    # Aplicação da tabela de conversão
     cc_new = CC_MAP.get(cc_old, cc_old)
 
-    # 2. Shift e Swap originais
     shifted = shift_for_date(line)
     has_nl = shifted.endswith("\n")
     core = shifted[:-1] if has_nl else shifted
@@ -111,151 +107,94 @@ def process_line(line: str):
     b_pos, b_digits, b_end = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
 
     if not a_pos or not b_pos:
-        return shifted, {"OK": False}
+        return shifted
 
     chars = list(core)
     write_over(chars, a_pos - 1, a_end, b_digits)
     write_over(chars, b_pos - 1, b_end, a_digits)
 
-    # 3. RECTIFICAÇÃO FINAL DE ALINHAMENTO
     for i in range(89, len(chars)):
         chars[i] = " "
 
-    # Conta Crédito na 90
     for i, ch in enumerate(a_digits):
         if 89 + i < len(chars): chars[89 + i] = ch
 
-    # Valor: 105 até 119
-    for i, ch in enumerate(val_to_use):
+    for i, ch in enumerate(val):
         if 104 + i < 119:
             chars[104 + i] = ch
 
-    # Centro de Custo na 122
     for i, ch in enumerate(cc_new):
         if 121 + i < len(chars):
             chars[121 + i] = ch
 
-    new_line = "".join(chars).rstrip()
-    return new_line + ("\n" if has_nl else ""), {"OK": True, "CC_Novo": cc_new}
+    out = "".join(chars).rstrip()
+    return out + ("\n" if has_nl else "")
 
 def process_text(text: str):
-    lines = text.splitlines(keepends=True)
-    out_lines = []
-    for ln in lines:
-        new_ln, _ = process_line(ln)
-        out_lines.append(new_ln)
-    return "".join(out_lines)
+    return "".join(process_line(l) for l in text.splitlines(keepends=True))
 
 # =========================
-# NOVO: CONVERSÃO PARA CSV (A PARTIR DA MESMA LÓGICA)
+# CSV
 # =========================
-def ddmmaaaa_to_aaaammdd(s: str) -> str:
-    s = (s or "").strip()
-    if len(s) != 8 or not s.isdigit():
-        return ""
-    dd, mm, aaaa = s[0:2], s[2:4], s[4:8]
-    return f"{aaaa}{mm}{dd}"
+def ddmmaaaa_to_aaaammdd(s):
+    return f"{s[4:8]}{s[2:4]}{s[0:2]}" if len(s) == 8 and s.isdigit() else ""
 
-def valor_pt(v: str) -> str:
-    v = (v or "").strip()
-    if v == "":
-        return ""
-    # garantir 0 antes de "."
+def valor_pt(v):
     if v.startswith("."):
         v = "0" + v
     return v.replace(".", ",")
 
-def cc_10(s: str) -> str:
-    s = (s or "").strip()
-    if s == "":
-        return ""
-    # só dígitos
-    s = "".join(ch for ch in s if ch.isdigit())
-    return s.zfill(10)[-10:]
+def line_to_csv_row(line: str):
+    entidade = line[11:19].strip()
+    num_cc = line[27:39].strip()
 
-def line_to_csv_row(original_line: str):
-    """
-    Usa a tua extração original:
-      - entidade: col 12-19 do TXT original
-      - Nº CC: col 28-39 do TXT original
-      - data doc: após shift -> col 55-62 (DDMMAAAA) -> AAAAMMDD
-      - data contabilistica: hoje AAAAMMDD
-      - valor: parts[0] do teu método, convertido para PT
-      - centro custo: parts[1] mapeado e normalizado para 10
-      - contas: após swap (b_digits = débito, a_digits = crédito)
-    """
-    # Entidade / Nº CC do original (posições fixas)
-    entidade = original_line[11:19].strip() if len(original_line) >= 19 else ""
-    num_cc = original_line[27:39].strip() if len(original_line) >= 39 else ""
-
-    # Reutilizar a tua extração de valor + cc (antes de mexer)
-    raw_after_accounts = original_line[120:].replace("+", " ").strip()
-    parts = raw_after_accounts.split()
-    val_raw = parts[0] if len(parts) > 0 else ""
+    raw = line[120:].replace("+", " ").strip()
+    parts = raw.split()
+    val = valor_pt(parts[0]) if len(parts) > 0 else ""
     cc_old = parts[1] if len(parts) > 1 else ""
-    cc_new = CC_MAP.get(cc_old, cc_old)
-    cc_final = cc_10(cc_new)
+    cc = CC_MAP.get(cc_old, cc_old).zfill(10)
 
-    # Shift para ir buscar a data doc em 55-62
-    shifted = shift_for_date(original_line)
-    core = shifted.rstrip("\n")
-    data_ddmmaaaa = core[54:62].strip() if len(core) >= 62 else ""
-    data_doc = ddmmaaaa_to_aaaammdd(data_ddmmaaaa)
-
+    shifted = shift_for_date(line)
+    data_doc = ddmmaaaa_to_aaaammdd(shifted[54:62])
     data_contab = datetime.now().strftime("%Y%m%d")
 
-    # Apurar contas por swap
-    a_pos, a_digits, a_end = find_account_pos(core, A_EXPECT_1B, A_PREFIX, min_start_1b=63)
-    b_pos, b_digits, b_end = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
+    core = shifted.rstrip("\n")
+    a_pos, a_digits, _ = find_account_pos(core, A_EXPECT_1B, A_PREFIX, min_start_1b=63)
+    b_pos, b_digits, _ = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
     if not a_pos or not b_pos:
-        return None  # linha inválida
-
-    conta_debito = b_digits
-    conta_credito = a_digits
+        return None
 
     row = {h: "" for h in CSV_HEADER}
-
-    # Campo "CC" = Crédito a Cliente (literal)
     row["CC"] = "CC"
-
     row["Entidade"] = entidade
     row["Data documento"] = data_doc
     row["Data Contabilistica"] = data_contab
     row["Nº CC"] = num_cc
-
-    # Série/Subtipo vazios (já está)
     row["classificador economico"] = CONST_CLASS_ECON
     row["Fonte de financiamento"] = CONST_FONTE_FIN
     row["Programa"] = CONST_PROGRAMA
     row["Medida"] = CONST_MEDIDA
     row["Departamento/Atividade"] = CONST_DEP_ATIV
     row["Classificação Orgânica"] = CONST_CLASS_ORG
-
-    row["Conta Debito"] = conta_debito
-    row["Conta a Credito"] = conta_credito
-    row["Valor Lançamento"] = valor_pt(val_raw)
-    row["Centro de custo"] = cc_final
-
+    row["Conta Debito"] = b_digits
+    row["Conta a Credito"] = a_digits
+    row["Valor Lançamento"] = val
+    row["Centro de custo"] = cc
     return row
 
-def build_csv(text_in: str, delimiter: str = ";") -> tuple[str, int, int]:
-    lines = text_in.splitlines(keepends=True)
+def build_csv(text):
     rows = []
-    bad = 0
-    for ln in lines:
+    for ln in text.splitlines(keepends=True):
         r = line_to_csv_row(ln)
-        if r is None:
-            bad += 1
-            continue
-        rows.append(r)
+        if r:
+            rows.append(r)
 
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=CSV_HEADER, delimiter=delimiter, quoting=csv.QUOTE_MINIMAL)
+    writer = csv.DictWriter(buf, fieldnames=CSV_HEADER, delimiter=";")
     writer.writeheader()
     for r in rows:
         writer.writerow(r)
-
-    return buf.getvalue(), len(rows), bad
+    return buf.getvalue(), len(rows)
 
 # =========================
 # INTERFACE STREAMLIT
@@ -266,37 +205,26 @@ st.title("Retificador Contabilístico Profissional")
 uploaded = st.file_uploader("Selecione o ficheiro original", type=["txt"])
 
 if uploaded:
-    file_name, file_ext = os.path.splitext(uploaded.name)
+    name, ext = os.path.splitext(uploaded.name)
+    encoding = st.selectbox("Codificação (entrada)", ["cp1252", "utf-8", "latin-1"], index=0)
+    text_in = uploaded.getvalue().decode(encoding)
 
-    encoding = st.selectbox("Codificação (entrada/saída)", ["cp1252", "utf-8", "latin-1"], index=0)
-    try:
-        text_in = uploaded.getvalue().decode(encoding)
-    except UnicodeDecodeError:
-        st.error("Não consegui ler o ficheiro com essa codificação. Experimenta cp1252 ou latin-1.")
-        st.stop()
+    formato = st.radio("Formato de saída", ["TXT corrigido", "CSV (Excel, separador ;)"])
 
-    output_type = st.radio("Formato de saída", ["TXT corrigido", "CSV (Excel, separador ;)"], index=0)
-
-    if output_type == "TXT corrigido":
-        text_out = process_text(text_in)
-        new_filename = f"{file_name}_corrigido{file_ext}"
-
-        st.success(f"Ficheiro pronto: {new_filename}")
+    if formato == "TXT corrigido":
+        txt_out = process_text(text_in)
         st.download_button(
-            label=f"💾 Descarregar {new_filename}",
-            data=text_out.encode(encoding),
-            file_name=new_filename,
+            "💾 Descarregar TXT corrigido",
+            data=txt_out.encode(encoding),
+            file_name=f"{name}_corrigido{ext}",
             mime="text/plain"
         )
-
     else:
-        csv_out, ok_count, bad_count = build_csv(text_in, delimiter=";")
-        new_filename = f"{file_name}_corrigido.csv"
-
-        st.success(f"CSV pronto: {new_filename} | Linhas: {ok_count} | Ignoradas: {bad_count}")
+        csv_out, n = build_csv(text_in)
         st.download_button(
-            label=f"💾 Descarregar {new_filename}",
-            data=csv_out.encode(OUT_ENCODING),
-            file_name=new_filename,
+            "💾 Descarregar CSV",
+            data=csv_out.encode("cp1252"),
+            file_name=f"{name}_corrigido.csv",
             mime="text/csv"
         )
+        st.success(f"CSV gerado com {n} linhas")
