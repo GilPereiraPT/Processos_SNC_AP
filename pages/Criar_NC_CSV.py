@@ -38,10 +38,12 @@ CSV_HEADER = [
     "Observaçoes lançamento","Classificação Orgânica","Ano FD","Numero FD","Série FD","Projeto Documento"
 ]
 
+# Constantes pedidas
 CONST_CLASS_ECON = "07.02.05.01.78"
 CONST_FONTE_FIN  = "513"
-CONST_PROGRAMA   = "015"
-CONST_MEDIDA     = "022"
+# IMPORTANTE: para o Excel não "comer" zeros à esquerda, forçar texto:
+CONST_PROGRAMA   = '="015"'
+CONST_MEDIDA     = '="022"'
 CONST_DEP_ATIV   = "1"
 CONST_CLASS_ORG  = "121904000"
 
@@ -116,13 +118,17 @@ def process_line(line: str):
     for i in range(89, len(chars)):
         chars[i] = " "
 
+    # Conta Crédito na 90
     for i, ch in enumerate(a_digits):
-        if 89 + i < len(chars): chars[89 + i] = ch
+        if 89 + i < len(chars):
+            chars[89 + i] = ch
 
+    # Valor: 105 até 119
     for i, ch in enumerate(val):
         if 104 + i < 119:
             chars[104 + i] = ch
 
+    # Centro de Custo na 122
     for i, ch in enumerate(cc_new):
         if 121 + i < len(chars):
             chars[121 + i] = ch
@@ -137,27 +143,38 @@ def process_text(text: str):
 # CSV
 # =========================
 def ddmmaaaa_to_aaaammdd(s):
+    s = (s or "").strip()
     return f"{s[4:8]}{s[2:4]}{s[0:2]}" if len(s) == 8 and s.isdigit() else ""
 
 def valor_pt(v):
+    v = (v or "").strip()
     if v.startswith("."):
         v = "0" + v
     return v.replace(".", ",")
 
 def line_to_csv_row(line: str):
-    entidade = line[11:19].strip()
-    num_cc = line[27:39].strip()
+    # Campos do TXT original por posição
+    entidade = line[11:19].strip() if len(line) >= 19 else ""
+    num_cc = line[27:39].strip() if len(line) >= 39 else ""
 
+    # Valor e CC (pelo método que já tinhas validado)
     raw = line[120:].replace("+", " ").strip()
     parts = raw.split()
-    val = valor_pt(parts[0]) if len(parts) > 0 else ""
+    val_raw = parts[0] if len(parts) > 0 else ""
     cc_old = parts[1] if len(parts) > 1 else ""
-    cc = CC_MAP.get(cc_old, cc_old).zfill(10)
+    cc = CC_MAP.get(cc_old, cc_old)
+    # normalizar CC a 10 dígitos (texto)
+    cc = "".join(ch for ch in cc if ch.isdigit()).zfill(10)[-10:]
 
+    # Data documento (após shift: 55-62 => índices 54-61)
     shifted = shift_for_date(line)
-    data_doc = ddmmaaaa_to_aaaammdd(shifted[54:62])
+    data_ddmmaaaa = shifted[54:62].strip() if len(shifted) >= 62 else ""
+    data_doc = ddmmaaaa_to_aaaammdd(data_ddmmaaaa)
+
+    # Data contabilística = hoje
     data_contab = datetime.now().strftime("%Y%m%d")
 
+    # Contas (após swap: débito=b_digits, crédito=a_digits)
     core = shifted.rstrip("\n")
     a_pos, a_digits, _ = find_account_pos(core, A_EXPECT_1B, A_PREFIX, min_start_1b=63)
     b_pos, b_digits, _ = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
@@ -165,21 +182,29 @@ def line_to_csv_row(line: str):
         return None
 
     row = {h: "" for h in CSV_HEADER}
+
+    # CC = Crédito a Cliente (literal)
     row["CC"] = "CC"
+
     row["Entidade"] = entidade
     row["Data documento"] = data_doc
     row["Data Contabilistica"] = data_contab
     row["Nº CC"] = num_cc
+
+    # Constantes
     row["classificador economico"] = CONST_CLASS_ECON
     row["Fonte de financiamento"] = CONST_FONTE_FIN
-    row["Programa"] = CONST_PROGRAMA
-    row["Medida"] = CONST_MEDIDA
+    row["Programa"] = CONST_PROGRAMA     # forçado a texto no Excel
+    row["Medida"] = CONST_MEDIDA         # forçado a texto no Excel
     row["Departamento/Atividade"] = CONST_DEP_ATIV
     row["Classificação Orgânica"] = CONST_CLASS_ORG
+
+    # Contas e valores
     row["Conta Debito"] = b_digits
     row["Conta a Credito"] = a_digits
-    row["Valor Lançamento"] = val
+    row["Valor Lançamento"] = valor_pt(val_raw)
     row["Centro de custo"] = cc
+
     return row
 
 def build_csv(text):
@@ -190,10 +215,17 @@ def build_csv(text):
             rows.append(r)
 
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=CSV_HEADER, delimiter=";")
+    writer = csv.DictWriter(
+        buf,
+        fieldnames=CSV_HEADER,
+        delimiter=";",
+        quoting=csv.QUOTE_MINIMAL,
+        lineterminator="\n"
+    )
     writer.writeheader()
     for r in rows:
         writer.writerow(r)
+
     return buf.getvalue(), len(rows)
 
 # =========================
@@ -206,10 +238,15 @@ uploaded = st.file_uploader("Selecione o ficheiro original", type=["txt"])
 
 if uploaded:
     name, ext = os.path.splitext(uploaded.name)
-    encoding = st.selectbox("Codificação (entrada)", ["cp1252", "utf-8", "latin-1"], index=0)
-    text_in = uploaded.getvalue().decode(encoding)
 
-    formato = st.radio("Formato de saída", ["TXT corrigido", "CSV (Excel, separador ;)"])
+    encoding = st.selectbox("Codificação (entrada/saída TXT)", ["cp1252", "utf-8", "latin-1"], index=0)
+    try:
+        text_in = uploaded.getvalue().decode(encoding)
+    except UnicodeDecodeError:
+        st.error("Não consegui ler o ficheiro com essa codificação. Experimenta cp1252 ou latin-1.")
+        st.stop()
+
+    formato = st.radio("Formato de saída", ["TXT corrigido", "CSV (Excel, separador ;)"], index=0)
 
     if formato == "TXT corrigido":
         txt_out = process_text(text_in)
@@ -221,6 +258,7 @@ if uploaded:
         )
     else:
         csv_out, n = build_csv(text_in)
+        # Excel/PT: cp1252 costuma ser o mais compatível
         st.download_button(
             "💾 Descarregar CSV",
             data=csv_out.encode("cp1252"),
