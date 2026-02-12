@@ -135,7 +135,7 @@ def guess_default_eol(text: str) -> str:
 # 🎨 Interface Streamlit
 # =========================================================
 st.set_page_config(page_title="Conversor MCDT/Termas (Formato Rígido)", layout="wide")
-st.title("🏥 Conversor de ficheiros MCDT / Termas — Formato Rígido v2027.5")
+st.title("🏥 Conversor de ficheiros MCDT / Termas — Formato Rígido v2026")
 st.caption("Mantém colunas fixas, garante 1 espaço antes da entidade e preserva EOL para o ERP.")
 
 mapping_dict, _ = load_default_mapping("mapeamentos.csv")
