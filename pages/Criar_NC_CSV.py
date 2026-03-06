@@ -5,7 +5,7 @@ import io
 from datetime import datetime
 
 # =========================
-# LAYOUT FIXO (ORIGINAL)
+# LAYOUT FIXO
 # =========================
 DATE_START_CURRENT_1B = 52
 SHIFT_SPACES = 3
@@ -15,7 +15,7 @@ A_PREFIX = "2"
 B_PREFIX = "7"
 WINDOW = 4
 
-# MAPEAMENTO DE CENTROS DE CUSTO (DE 2024 PARA 2025)
+# MAPEAMENTO DE CENTROS DE CUSTO
 CC_MAP = {
     "1020511": "12201101",
     "1020512": "12201102",
@@ -38,17 +38,15 @@ CSV_HEADER = [
     "Observaçoes lançamento","Classificação Orgânica","Ano FD","Numero FD","Série FD","Projeto Documento"
 ]
 
-# Constantes pedidas
 CONST_CLASS_ECON = "07.02.05.01.78"
 CONST_FONTE_FIN  = "513"
-# IMPORTANTE: para o Excel não "comer" zeros à esquerda, forçar texto:
 CONST_PROGRAMA   = '="015"'
 CONST_MEDIDA     = '="022"'
 CONST_DEP_ATIV   = "1"
 CONST_CLASS_ORG  = "121904000"
 
 # =========================
-# FUNÇÕES TÉCNICAS (MANTIDAS)
+# FUNÇÕES TÉCNICAS
 # =========================
 def shift_for_date(line: str) -> str:
     idx = DATE_START_CURRENT_1B - 1
@@ -92,7 +90,8 @@ def find_account_pos(core, expect_1b, prefix, min_start_1b=None):
     return None, "", 0
 
 # =========================
-# PROCESSAMENTO TXT (IGUAL AO TEU)
+# PROCESSAMENTO TXT
+# AGORA SEM TROCA DE CONTAS
 # =========================
 def process_line(line: str):
     raw = line[120:].replace("+", " ").strip()
@@ -112,14 +111,13 @@ def process_line(line: str):
         return shifted
 
     chars = list(core)
-    write_over(chars, a_pos - 1, a_end, b_digits)
-    write_over(chars, b_pos - 1, b_end, a_digits)
 
+    # Limpar desde a posição 90
     for i in range(89, len(chars)):
         chars[i] = " "
 
-    # Conta Crédito na 90
-    for i, ch in enumerate(a_digits):
+    # Conta Crédito na posição 90 (mantida como vem no ficheiro)
+    for i, ch in enumerate(b_digits):
         if 89 + i < len(chars):
             chars[89 + i] = ch
 
@@ -153,55 +151,48 @@ def valor_pt(v):
     return v.replace(".", ",")
 
 def line_to_csv_row(line: str):
-    # Campos do TXT original por posição
     entidade = line[11:19].strip() if len(line) >= 19 else ""
     num_cc = line[27:39].strip() if len(line) >= 39 else ""
 
-    # Valor e CC (pelo método que já tinhas validado)
     raw = line[120:].replace("+", " ").strip()
     parts = raw.split()
     val_raw = parts[0] if len(parts) > 0 else ""
     cc_old = parts[1] if len(parts) > 1 else ""
     cc = CC_MAP.get(cc_old, cc_old)
-    # normalizar CC a 10 dígitos (texto)
+
     cc = "".join(ch for ch in cc if ch.isdigit()).zfill(10)[-10:]
 
-    # Data documento (após shift: 55-62 => índices 54-61)
     shifted = shift_for_date(line)
     data_ddmmaaaa = shifted[54:62].strip() if len(shifted) >= 62 else ""
     data_doc = ddmmaaaa_to_aaaammdd(data_ddmmaaaa)
 
-    # Data contabilística = hoje
     data_contab = datetime.now().strftime("%Y%m%d")
 
-    # Contas (após swap: débito=b_digits, crédito=a_digits)
     core = shifted.rstrip("\n")
     a_pos, a_digits, _ = find_account_pos(core, A_EXPECT_1B, A_PREFIX, min_start_1b=63)
     b_pos, b_digits, _ = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
+
     if not a_pos or not b_pos:
         return None
 
     row = {h: "" for h in CSV_HEADER}
 
-    # CC = Crédito a Cliente (literal)
     row["CC"] = "CC"
-
     row["Entidade"] = entidade
     row["Data documento"] = data_doc
     row["Data Contabilistica"] = data_contab
     row["Nº CC"] = num_cc
 
-    # Constantes
     row["classificador economico"] = CONST_CLASS_ECON
     row["Fonte de financiamento"] = CONST_FONTE_FIN
-    row["Programa"] = CONST_PROGRAMA     # forçado a texto no Excel
-    row["Medida"] = CONST_MEDIDA         # forçado a texto no Excel
+    row["Programa"] = CONST_PROGRAMA
+    row["Medida"] = CONST_MEDIDA
     row["Departamento/Atividade"] = CONST_DEP_ATIV
     row["Classificação Orgânica"] = CONST_CLASS_ORG
 
-    # Contas e valores
-    row["Conta Debito"] = b_digits
-    row["Conta a Credito"] = a_digits
+    # SEM TROCA
+    row["Conta Debito"] = a_digits
+    row["Conta a Credito"] = b_digits
     row["Valor Lançamento"] = valor_pt(val_raw)
     row["Centro de custo"] = cc
 
@@ -258,7 +249,6 @@ if uploaded:
         )
     else:
         csv_out, n = build_csv(text_in)
-        # Excel/PT: cp1252 costuma ser o mais compatível
         st.download_button(
             "💾 Descarregar CSV",
             data=csv_out.encode("cp1252"),
