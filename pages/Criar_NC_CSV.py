@@ -5,7 +5,7 @@ import io
 from datetime import datetime
 
 # =========================
-# LAYOUT FIXO
+# LAYOUT FIXO (ORIGINAL)
 # =========================
 DATE_START_CURRENT_1B = 52
 SHIFT_SPACES = 3
@@ -14,8 +14,9 @@ B_EXPECT_1B = 113
 A_PREFIX = "2"
 B_PREFIX = "7"
 WINDOW = 4
+RAW_TAIL_START = 120  # índice Python
 
-# MAPEAMENTO DE CENTROS DE CUSTO
+# MAPEAMENTO DE CENTROS DE CUSTO (DE 2024 PARA 2025)
 CC_MAP = {
     "1020511": "12201101",
     "1020512": "12201102",
@@ -65,17 +66,6 @@ def read_digits(core: str, start_idx: int):
         i += 1
     return core[start_idx:i], i
 
-def write_over(chars, start, old_end, new_text):
-    old_len = max(0, old_end - start)
-    wipe_len = max(old_len, len(new_text))
-    need = start + wipe_len
-    if need > len(chars):
-        chars.extend([" "] * (need - len(chars)))
-    for i in range(start, start + wipe_len):
-        chars[i] = " "
-    for i, ch in enumerate(new_text):
-        chars[start + i] = ch
-
 def find_account_pos(core, expect_1b, prefix, min_start_1b=None):
     expect0 = expect_1b - 1
     for delta in range(-WINDOW, WINDOW + 1):
@@ -89,57 +79,6 @@ def find_account_pos(core, expect_1b, prefix, min_start_1b=None):
             return pos0 + 1, digits, end
     return None, "", 0
 
-# =========================
-# PROCESSAMENTO TXT
-# AGORA SEM TROCA DE CONTAS
-# =========================
-def process_line(line: str):
-    raw = line[120:].replace("+", " ").strip()
-    parts = raw.split()
-    val = parts[0] if len(parts) > 0 else ""
-    cc_old = parts[1] if len(parts) > 1 else ""
-    cc_new = CC_MAP.get(cc_old, cc_old)
-
-    shifted = shift_for_date(line)
-    has_nl = shifted.endswith("\n")
-    core = shifted[:-1] if has_nl else shifted
-
-    a_pos, a_digits, a_end = find_account_pos(core, A_EXPECT_1B, A_PREFIX, min_start_1b=63)
-    b_pos, b_digits, b_end = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
-
-    if not a_pos or not b_pos:
-        return shifted
-
-    chars = list(core)
-
-    # Limpar desde a posição 90
-    for i in range(89, len(chars)):
-        chars[i] = " "
-
-    # Conta Crédito na posição 90 (mantida como vem no ficheiro)
-    for i, ch in enumerate(b_digits):
-        if 89 + i < len(chars):
-            chars[89 + i] = ch
-
-    # Valor: 105 até 119
-    for i, ch in enumerate(val):
-        if 104 + i < 119:
-            chars[104 + i] = ch
-
-    # Centro de Custo na 122
-    for i, ch in enumerate(cc_new):
-        if 121 + i < len(chars):
-            chars[121 + i] = ch
-
-    out = "".join(chars).rstrip()
-    return out + ("\n" if has_nl else "")
-
-def process_text(text: str):
-    return "".join(process_line(l) for l in text.splitlines(keepends=True))
-
-# =========================
-# CSV
-# =========================
 def ddmmaaaa_to_aaaammdd(s):
     s = (s or "").strip()
     return f"{s[4:8]}{s[2:4]}{s[0:2]}" if len(s) == 8 and s.isdigit() else ""
@@ -150,25 +89,106 @@ def valor_pt(v):
         v = "0" + v
     return v.replace(".", ",")
 
+# =========================
+# TAIL: preservar a linha e só trocar o CC
+# =========================
+def split_tail_tokens_with_positions(tail: str):
+    """
+    Devolve lista de tokens não-espaço com posições:
+    [(token, start, end), ...]
+    """
+    out = []
+    in_token = False
+    start = 0
+    for i, ch in enumerate(tail):
+        if not ch.isspace() and not in_token:
+            start = i
+            in_token = True
+        elif ch.isspace() and in_token:
+            out.append((tail[start:i], start, i))
+            in_token = False
+    if in_token:
+        out.append((tail[start:], start, len(tail)))
+    return out
+
+def replace_cc_in_tail_preserving_layout(tail: str):
+    """
+    Na zona final da linha assume:
+      token 1 = valor
+      token 2 = centro de custo
+    Só substitui o token 2 se estiver no mapa.
+    Mantém o resto da tail igual.
+    """
+    tokens = split_tail_tokens_with_positions(tail)
+    if len(tokens) < 2:
+        return tail, "", ""
+
+    val = tokens[0][0].replace("+", "").strip()
+    cc_old, cc_start, cc_end = tokens[1]
+    cc_new = CC_MAP.get(cc_old, cc_old)
+
+    if cc_new == cc_old:
+        return tail, val, cc_old
+
+    # Substituição conservadora do token do CC
+    new_tail = tail[:cc_start] + cc_new + tail[cc_end:]
+    return new_tail, val, cc_new
+
+def extract_val_and_cc_from_tail(tail: str):
+    tokens = split_tail_tokens_with_positions(tail.replace("+", " "))
+    val = tokens[0][0].strip() if len(tokens) > 0 else ""
+    cc_old = tokens[1][0].strip() if len(tokens) > 1 else ""
+    cc_new = CC_MAP.get(cc_old, cc_old)
+    return val, cc_new
+
+# =========================
+# PROCESSAMENTO TXT
+# Só ajusta posições e converte CC
+# =========================
+def process_line(line: str):
+    shifted = shift_for_date(line)
+
+    has_nl = shifted.endswith("\n")
+    core = shifted[:-1] if has_nl else shifted
+
+    if len(core) <= RAW_TAIL_START:
+        return shifted
+
+    prefix = core[:RAW_TAIL_START]
+    tail = core[RAW_TAIL_START:]
+
+    new_tail, _, _ = replace_cc_in_tail_preserving_layout(tail)
+    out = prefix + new_tail
+
+    return out + ("\n" if has_nl else "")
+
+def process_text(text: str):
+    return "".join(process_line(l) for l in text.splitlines(keepends=True))
+
+# =========================
+# CSV
+# Lê sem trocar contas
+# =========================
 def line_to_csv_row(line: str):
     entidade = line[11:19].strip() if len(line) >= 19 else ""
     num_cc = line[27:39].strip() if len(line) >= 39 else ""
 
-    raw = line[120:].replace("+", " ").strip()
-    parts = raw.split()
-    val_raw = parts[0] if len(parts) > 0 else ""
-    cc_old = parts[1] if len(parts) > 1 else ""
-    cc = CC_MAP.get(cc_old, cc_old)
-
-    cc = "".join(ch for ch in cc if ch.isdigit()).zfill(10)[-10:]
-
     shifted = shift_for_date(line)
+    core = shifted.rstrip("\n")
+
+    # Data documento
     data_ddmmaaaa = shifted[54:62].strip() if len(shifted) >= 62 else ""
     data_doc = ddmmaaaa_to_aaaammdd(data_ddmmaaaa)
 
+    # Data contabilística = hoje
     data_contab = datetime.now().strftime("%Y%m%d")
 
-    core = shifted.rstrip("\n")
+    # Valor e CC
+    tail = core[RAW_TAIL_START:] if len(core) > RAW_TAIL_START else ""
+    val_raw, cc = extract_val_and_cc_from_tail(tail)
+    cc = "".join(ch for ch in cc if ch.isdigit()).zfill(10)[-10:] if cc else ""
+
+    # Contas sem troca
     a_pos, a_digits, _ = find_account_pos(core, A_EXPECT_1B, A_PREFIX, min_start_1b=63)
     b_pos, b_digits, _ = find_account_pos(core, B_EXPECT_1B, B_PREFIX)
 
@@ -190,7 +210,6 @@ def line_to_csv_row(line: str):
     row["Departamento/Atividade"] = CONST_DEP_ATIV
     row["Classificação Orgânica"] = CONST_CLASS_ORG
 
-    # SEM TROCA
     row["Conta Debito"] = a_digits
     row["Conta a Credito"] = b_digits
     row["Valor Lançamento"] = valor_pt(val_raw)
