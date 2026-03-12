@@ -1,5 +1,5 @@
 ghostscript
 python3-tk
 libgl1
-libglib2.0-0
+libglib2-dev
 poppler-utils
