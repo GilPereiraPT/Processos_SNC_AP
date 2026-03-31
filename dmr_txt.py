@@ -10,10 +10,6 @@ import pandas as pd
 CENTS = Decimal("0.01")
 
 
-# =========================================================
-# UTILITÁRIOS
-# =========================================================
-
 def decimal_2(v: Any) -> Decimal:
     if isinstance(v, Decimal):
         return v.quantize(CENTS, rounding=ROUND_HALF_UP)
@@ -27,7 +23,6 @@ def decimal_2(v: Any) -> Decimal:
 
     s = s.replace("€", "").replace("\xa0", "").replace(" ", "")
 
-    # formato PT: 1.234,56
     if "," in s:
         s = s.replace(".", "").replace(",", ".")
 
@@ -78,10 +73,6 @@ def detectar_coluna(df: pd.DataFrame, nomes_possiveis: list[str]) -> Optional[st
     return None
 
 
-# =========================================================
-# EXCEL PENDENTES
-# =========================================================
-
 def ler_pendentes_excel(excel_file, sheet_name=None) -> pd.DataFrame:
     xls = pd.ExcelFile(excel_file)
     folhas = xls.sheet_names
@@ -129,24 +120,7 @@ def ler_pendentes_excel(excel_file, sheet_name=None) -> pd.DataFrame:
     return out
 
 
-# =========================================================
-# PARSER DMR TXT - LINHAS 006
-# =========================================================
-
 def parse_linha_006(linha: str) -> Optional[dict]:
-    """
-    Exemplo:
-    00600012122255521520+000000000000000000+00000000130072A  C +0000000008500+00000000182665...
-
-    Interpretação:
-    - prefixo: 0060001212
-    - nif: 255521520
-    - rendimento: +00000000130072  -> 1300,72
-    - tipo: A / A21 / A22
-    - natureza: C
-    - 1.º monetário seguinte: IRS
-    - 2.º monetário seguinte: Segurança Social
-    """
     if not linha.startswith("006"):
         return None
 
@@ -232,20 +206,7 @@ def reconstruir_linha_006(parsed: dict, novo_rendimento_cents: int, novo_irs_cen
     return linha
 
 
-# =========================================================
-# PROCESSAMENTO
-# =========================================================
-
 def processar_dmr_txt(dmr_text: str, pendentes_df: pd.DataFrame):
-    """
-    Regras:
-    - procura linha 006 com o NIF do Excel
-    - aceita apenas tipo de rendimento A
-    - exclui A21 e A22
-    - Valor e IRS do Excel já vêm negativos
-    - o novo valor é DMR + Excel
-    - nunca pode ficar negativo
-    """
     linhas = dmr_text.splitlines()
     linhas_out = list(linhas)
 
@@ -360,10 +321,6 @@ def processar_dmr_txt(dmr_text: str, pendentes_df: pd.DataFrame):
 
     return dmr_corrigida, resumo_df
 
-
-# =========================================================
-# EXCEL DE SAÍDA
-# =========================================================
 
 def criar_excel_resumo(resumo_df: pd.DataFrame) -> bytes:
     output = io.BytesIO()
