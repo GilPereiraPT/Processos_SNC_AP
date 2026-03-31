@@ -13,6 +13,8 @@ import pandas as pd
 # Rendimento: começa no sinal da coluna 38 e termina antes da coluna 53
 # IRS: começa no sinal da coluna 58 e termina antes do sinal da coluna 73
 
+from decimal import Decimal, InvalidOperation
+
 DMR_NIF_START = 10
 DMR_NIF_END = 19
 
@@ -24,6 +26,39 @@ DMR_REND_END = 53
 
 DMR_IRS_START = 58
 DMR_IRS_END = 73
+
+
+def parse_valor_cents(campo: str) -> Decimal:
+    """
+    Converte um campo DMR do tipo +00000000064387 para Decimal('643.87').
+    """
+    bruto = (campo or "").strip()
+
+    if not bruto:
+        return Decimal("0.00")
+
+    sinal = 1
+    if bruto[0] == "-":
+        sinal = -1
+        bruto = bruto[1:]
+    elif bruto[0] == "+":
+        bruto = bruto[1:]
+
+    bruto = bruto.strip()
+
+    if not bruto:
+        return Decimal("0.00")
+
+    if not bruto.isdigit():
+        raise ValueError(f"Campo numérico inválido na DMR: [{campo}]")
+
+    inteiro = int(bruto)
+    valor = Decimal(inteiro) / Decimal("100")
+
+    if sinal < 0:
+        valor = -valor
+
+    return valor
 
 
 # =========================================================
