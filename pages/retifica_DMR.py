@@ -668,7 +668,7 @@ def main():
             with c3:
                 st.metric("Não encontrados", int((pendentes_out["Estado"] == "Não encontrado").sum()))
             with c4:
-                st.metric("Com erro / validação", int((~pendentes_out["Estado"].isin(["Alterado", "Não encontrado", "Ignorado", ""])) .sum())))
+                st.metric("Com erro / validação", int((~pendentes_out["Estado"].isin(["Alterado", "Não encontrado", "Ignorado", ""])).sum())))
 
             st.subheader("Resumo das alterações")
             st.dataframe(resumo_df, use_container_width=True)
