@@ -13,11 +13,11 @@ import pandas as pd
 # Rendimento: começa no sinal da coluna 38 e termina antes da coluna 53
 # IRS: começa no sinal da coluna 58 e termina antes do sinal da coluna 73
 
-DMR_NIF_START = 9       # 0-based inclusive
-DMR_NIF_END = 18        # 0-based exclusive
+DMR_NIF_START = 10       # 0-based inclusive
+DMR_NIF_END = 1        # 0-based exclusive
 
-DMR_CAT_START = 52      # 0-based inclusive
-DMR_CAT_END = 54        # 0-based exclusive
+DMR_CAT_START = 53      # 0-based inclusive
+DMR_CAT_END = 55       # 0-based exclusive
 
 DMR_REND_START = 37     # 0-based inclusive
 DMR_REND_END = 52       # 0-based exclusive
