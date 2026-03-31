@@ -44,6 +44,8 @@ EXCEL_COL_NIF = "NIF"
 EXCEL_COL_REND = "Rendimento"
 EXCEL_COL_VALOR = "Valor"
 EXCEL_COL_IRS = "IRS"
+EXCEL_COL_VALOR_DEC = "Valor_DEC"
+EXCEL_COL_IRS_DEC = "IRS_DEC"
 
 NEGATIVE_ZERO = Decimal("0.00")
 TWOPLACES = Decimal("0.01")
@@ -666,7 +668,7 @@ def main():
             with c3:
                 st.metric("Não encontrados", int((pendentes_out["Estado"] == "Não encontrado").sum()))
             with c4:
-                st.metric("Com erro / validação", int((~pendentes_out["Estado"].isin(["Alterado", "Não encontrado", "Ignorado", ""])) .sum()))
+                st.metric("Com erro / validação", int((~pendentes_out["Estado"].isin(["Alterado", "Não encontrado", "Ignorado", ""])) .sum())))
 
             st.subheader("Resumo das alterações")
             st.dataframe(resumo_df, use_container_width=True)
