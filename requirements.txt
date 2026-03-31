@@ -11,3 +11,4 @@ pymupdf
 opencv-python-headless
 Pillow
 numpy
+xlrd
