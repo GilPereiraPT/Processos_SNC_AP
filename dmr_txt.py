@@ -26,14 +26,14 @@ LINHA_006_PREFIX = "006"
 POS_NIF_INI = 9      # coluna 10
 POS_NIF_FIM = 18     # coluna 18 inclusive -> slice [9:18]
 
-POS_REND_INI = 37    # coluna 38
+POS_REND_INI = 38    # coluna 38
 POS_REND_FIM = 52    # coluna 52 inclusive -> slice [37:52]
 
-POS_CAT_INI = 52     # coluna 53
-POS_CAT_FIM = 54     # colunas 53-54 -> slice [52:54]
+POS_CAT_INI = 53     # coluna 53
+POS_CAT_FIM = 55     # colunas 53-54 -> slice [52:54]
 
-POS_IRS_INI = 57     # coluna 58
-POS_IRS_FIM = 72     # coluna 72 inclusive -> slice [57:72]
+POS_IRS_INI = 58     # coluna 58
+POS_IRS_FIM = 71     # coluna 72 inclusive -> slice [57:72]
 
 # Campo seguinte ao IRS normalmente começa no sinal seguinte.
 # Mantemos uma referência útil para reconstrução/validação visual.
