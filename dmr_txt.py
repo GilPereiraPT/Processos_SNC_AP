@@ -1,553 +1,376 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from io import BytesIO
-from typing import Any
+import io
 import re
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import pandas as pd
 
 
 # =========================================================
-# CONFIGURAÇÃO DMR TXT - POSIÇÕES FIXAS
+# POSIÇÕES FIXAS DA DMR TXT (1-based, conforme indicado)
 # =========================================================
-#
-# Baseado nas posições indicadas por ti:
-#
-# Linha 006:
-# - NIF: colunas 10 a 18
-# - Categoria rendimento: colunas 53 a 54
-# - Rendimento: começa no sinal da coluna 38 e vai até à coluna 52
-# - IRS: começa no sinal da coluna 58 e termina antes do sinal seguinte,
-#        usando 58 a 71
-#
-# Em Python:
-# - coluna 1 => índice 0
-# - fim exclusivo
-#
-# Logo:
-# - NIF        10-18 => [9:18]
-# - CATEGORIA  53-54 => [52:54]
-# - RENDIMENTO 38-52 => [37:52]
-# - IRS        58-71 => [57:71]
-# =========================================================
+# NIF: colunas 10-18
+# Categoria rendimento: colunas 53-54  -> tem de ser "A "
+# Rendimento: começa no sinal da coluna 38 e termina antes da coluna 53
+# IRS: começa no sinal da coluna 58 e termina antes do sinal da coluna 73
 
-DMR_TIPO_REGISTO = slice(0, 3)
-DMR_NIF = slice(9, 18)
-DMR_REND = slice(37, 52)
-DMR_CAT = slice(52, 54)
-DMR_IRS = slice(57, 71)
+DMR_NIF_START = 9       # 0-based inclusive
+DMR_NIF_END = 18        # 0-based exclusive
 
-REGISTO_DETALHE = "006"
-CATEGORIA_ACEITE = "A "   # A + espaço
-CATEGORIA_EXCLUIDA_PREFIX = "A2"  # A21, A22, etc. ficam excluídas por não serem "A "
+DMR_CAT_START = 52      # 0-based inclusive
+DMR_CAT_END = 54        # 0-based exclusive
 
-ZERO = Decimal("0.00")
-CENT = Decimal("0.01")
+DMR_REND_START = 37     # 0-based inclusive
+DMR_REND_END = 52       # 0-based exclusive
+
+DMR_IRS_START = 57      # 0-based inclusive
+DMR_IRS_END = 72        # 0-based exclusive
 
 
 # =========================================================
-# MODELOS
+# UTILITÁRIOS NUMÉRICOS
 # =========================================================
-
-@dataclass
-class DMRRecord:
-    line_index: int
-    original_line: str
-    nif: str
-    categoria: str
-    rendimento: Decimal
-    irs: Decimal
-
-    def is_categoria_a_valida(self) -> bool:
-        return self.categoria == CATEGORIA_ACEITE
+def decimal_2(v):
+    return Decimal(v).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-# =========================================================
-# UTILITÁRIOS DECIMAL / TEXTO
-# =========================================================
+def parse_decimal_pt(value):
+    if value is None:
+        return Decimal("0.00")
 
-def q2(v: Decimal) -> Decimal:
-    return v.quantize(CENT, rounding=ROUND_HALF_UP)
+    if isinstance(value, Decimal):
+        return decimal_2(value)
 
+    if isinstance(value, (int, float)):
+        return decimal_2(str(value))
 
-def normalizar_nif(valor: Any) -> str:
-    s = "" if valor is None else str(valor)
-    s = re.sub(r"\D", "", s)
-    if not s:
-        return ""
-    return s.zfill(9)[-9:]
-
-
-def parse_decimal_pt(valor: Any) -> Decimal:
-    """
-    Converte valores vindos do Excel/PT:
-    - 100,05
-    - -100,05
-    - 100.05
-    - 1.234,56
-    - vazio => 0
-    """
-    if valor is None:
-        return ZERO
-
-    if isinstance(valor, Decimal):
-        return q2(valor)
-
-    if isinstance(valor, (int, float)):
-        return q2(Decimal(str(valor)))
-
-    s = str(valor).strip()
+    s = str(value).strip()
     if s == "":
-        return ZERO
+        return Decimal("0.00")
 
+    # remove espaços
     s = s.replace(" ", "")
 
-    # formato PT tipo 1.234,56
-    if "," in s and "." in s:
-        s = s.replace(".", "").replace(",", ".")
-    elif "," in s:
+    # formato PT: 1.234,56
+    if "," in s:
+        s = s.replace(".", "")
         s = s.replace(",", ".")
+    else:
+        # se vier "1234.56", mantém
+        pass
 
     try:
-        return q2(Decimal(s))
+        return decimal_2(Decimal(s))
     except (InvalidOperation, ValueError):
-        return ZERO
+        raise ValueError(f"Valor numérico inválido: {value}")
 
 
-def decimal_to_pt_str(v: Decimal) -> str:
-    v = q2(v)
-    s = f"{v:.2f}"
-    return s.replace(".", ",")
-
-
-def campo_txt_para_decimal(txt: str) -> Decimal:
+def decimal_to_field(value: Decimal, width: int) -> str:
     """
-    Campo com sinal e 2 casas decimais implícitas.
-    Exemplos:
-    +00000000064387 -> 643.87
-    -00000000010005 -> -100.05
-    +00000000000000 -> 0.00
+    Converte Decimal para formato DMR com sinal e 2 casas implícitas.
+    Ex.: 643.87 -> +00000000064387  (width=15)
     """
-    s = (txt or "").rstrip("\r\n")
-    s = s.strip()
+    value = decimal_2(value)
+    sign = "+" if value >= 0 else "-"
+    cents = int((abs(value) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    digits_width = width - 1
+    return f"{sign}{cents:0{digits_width}d}"
 
+
+def field_to_decimal(field: str) -> Decimal:
+    """
+    Converte campo DMR com sinal e 2 casas implícitas.
+    Ex.: +00000000064387 -> 643.87
+    """
+    s = (field or "").strip()
     if not s:
-        return ZERO
+        return Decimal("0.00")
 
-    sinal = 1
+    sign = 1
     if s[0] == "-":
-        sinal = -1
-        s_num = s[1:]
+        sign = -1
+        s = s[1:]
     elif s[0] == "+":
-        s_num = s[1:]
-    else:
-        s_num = s
+        s = s[1:]
 
-    s_num = s_num.strip()
-    s_num = s_num.lstrip("0")
+    s = s.strip()
+    s = s.lstrip("0")
 
-    if s_num == "":
-        return ZERO
+    if s == "":
+        return Decimal("0.00")
 
-    if len(s_num) == 1:
-        s_num = "0" + s_num
-
-    euros = s_num[:-2] or "0"
-    cents = s_num[-2:]
-
-    valor = Decimal(f"{int(euros)}.{cents}")
-    if sinal < 0:
-        valor = -valor
-
-    return q2(valor)
-
-
-def decimal_para_campo_txt(valor: Decimal, largura_total: int) -> str:
-    """
-    Converte Decimal para campo DMR com sinal e casas implícitas.
-    largura_total inclui o sinal.
-    Exemplo largura_total=15 => +00000000064387
-    """
-    valor = q2(valor)
-    sinal = "+" if valor >= 0 else "-"
-    absoluto = abs(valor)
-
-    centimos = int((absoluto * 100).to_integral_value(rounding=ROUND_HALF_UP))
-    digits_len = largura_total - 1
-    return f"{sinal}{centimos:0{digits_len}d}"
+    cents = Decimal(s) / Decimal("100")
+    return decimal_2(cents * sign)
 
 
 # =========================================================
-# LEITURA DMR TXT
+# LEITURA / NORMALIZAÇÃO EXCEL
 # =========================================================
-
-def split_lines_preserve(text: str) -> list[str]:
-    """
-    Divide preservando o terminador de linha quando existir.
-    """
-    if not text:
-        return []
-    return text.splitlines(True)
+def normalizar_nif(valor):
+    s = str(valor).strip()
+    s = re.sub(r"\D", "", s)
+    return s
 
 
-def read_text_file_any_encoding(uploaded_file: Any) -> str:
-    """
-    Lê TXT/bytes tentando decodificações comuns.
-    """
-    raw = uploaded_file.read()
-    if isinstance(raw, str):
-        return raw
-
-    encodings = ["utf-8", "cp1252", "latin-1", "iso-8859-1"]
-    for enc in encodings:
-        try:
-            return raw.decode(enc)
-        except Exception:
-            pass
-
-    return raw.decode("latin-1", errors="replace")
+def encontrar_coluna(cols, candidatos):
+    normalizadas = {str(c).strip().lower(): c for c in cols}
+    for cand in candidatos:
+        c = normalizadas.get(cand.strip().lower())
+        if c is not None:
+            return c
+    return None
 
 
-def parse_dmr_line_006(line: str, line_index: int) -> DMRRecord | None:
-    """
-    Lê uma linha 006 usando posições fixas.
-    """
-    base = line.rstrip("\r\n")
-
-    if len(base) < 71:
-        return None
-
-    if base[DMR_TIPO_REGISTO] != REGISTO_DETALHE:
-        return None
-
-    nif = base[DMR_NIF].strip()
-    categoria = base[DMR_CAT]
-    rendimento = campo_txt_para_decimal(base[DMR_REND])
-    irs = campo_txt_para_decimal(base[DMR_IRS])
-
-    return DMRRecord(
-        line_index=line_index,
-        original_line=line,
-        nif=nif,
-        categoria=categoria,
-        rendimento=rendimento,
-        irs=irs,
-    )
-
-
-def parse_dmr_records(dmr_text: str) -> tuple[list[str], list[DMRRecord]]:
-    """
-    Devolve:
-    - lista de linhas originais
-    - lista de registos 006 interpretados
-    """
-    lines = split_lines_preserve(dmr_text)
-    records: list[DMRRecord] = []
-
-    for idx, line in enumerate(lines):
-        rec = parse_dmr_line_006(line, idx)
-        if rec is not None:
-            records.append(rec)
-
-    return lines, records
-
-
-# =========================================================
-# LEITURA EXCEL PENDENTES
-# =========================================================
-
-def escolher_folha_excel(excel_file: Any, sheet_name: str | None = None) -> str:
-    """
-    Escolhe a folha a ler.
-    """
-    excel_file.seek(0)
+def ler_pendentes_excel(excel_file, sheet_name=None):
     xls = pd.ExcelFile(excel_file)
+    folha = sheet_name if sheet_name in xls.sheet_names else xls.sheet_names[0]
+    df = pd.read_excel(xls, sheet_name=folha)
 
-    if sheet_name and sheet_name in xls.sheet_names:
-        return sheet_name
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError("Não foi possível ler a folha do Excel como tabela.")
 
-    if xls.sheet_names:
-        return xls.sheet_names[0]
+    if df.empty:
+        raise ValueError("A folha Excel está vazia.")
 
-    raise ValueError("O ficheiro Excel não contém folhas.")
+    cols = list(df.columns)
 
+    # Procura flexível, mas se não encontrar usa as posições A/C/D
+    col_nif = encontrar_coluna(cols, ["NIF", "Nif", "nif", "Contribuinte"])
+    col_valor = encontrar_coluna(cols, ["Valor", "VALOR", "valor"])
+    col_irs = encontrar_coluna(cols, ["IRS", "irs", "Retenção", "Retencao"])
 
-def ler_pendentes_excel(excel_file: Any, sheet_name: str | None = None) -> pd.DataFrame:
-    """
-    Lê o Excel de pendentes e normaliza as colunas esperadas:
+    if col_nif is None and len(cols) >= 1:
+        col_nif = cols[0]
+    if col_valor is None and len(cols) >= 3:
+        col_valor = cols[2]
+    if col_irs is None and len(cols) >= 4:
+        col_irs = cols[3]
 
-    Esperado:
-    - Coluna A: NIF
-    - Coluna C: Valor
-    - Coluna D: IRS
-
-    Pode haver cabeçalhos variados; a leitura é feita por posição.
-    """
-    excel_file.seek(0)
-    folha = escolher_folha_excel(excel_file, sheet_name)
-
-    excel_file.seek(0)
-    df = pd.read_excel(excel_file, sheet_name=folha, header=0)
-
-    # Se vier como dict por algum motivo
-    if isinstance(df, dict):
-        if folha in df:
-            df = df[folha]
-        else:
-            df = next(iter(df.values()))
-
-    if not hasattr(df, "columns"):
-        raise ValueError("Não foi possível ler a folha Excel corretamente.")
-
-    if df.shape[1] < 4:
+    if col_nif is None or col_valor is None or col_irs is None:
         raise ValueError(
-            "O Excel tem menos de 4 colunas. É necessário pelo menos: A=NIF, C=Valor, D=IRS."
+            "Não foi possível identificar as colunas necessárias no Excel. "
+            "É esperado: coluna A=NIF, coluna C=Valor, coluna D=IRS."
         )
 
-    # Trabalhar por posição:
-    # A -> índice 0
-    # C -> índice 2
-    # D -> índice 3
-    out = pd.DataFrame()
-    out["NIF"] = df.iloc[:, 0].apply(normalizar_nif)
-    out["Valor"] = df.iloc[:, 2].apply(parse_decimal_pt)
-    out["IRS"] = df.iloc[:, 3].apply(parse_decimal_pt)
+    out = df.copy()
 
-    # Guardar nº da linha original do Excel (2 = primeira linha após cabeçalho)
-    out["LinhaExcel"] = range(2, len(out) + 2)
+    out["NIF"] = out[col_nif].apply(normalizar_nif)
+    out["Valor"] = out[col_valor].apply(parse_decimal_pt)
+    out["IRS"] = out[col_irs].apply(parse_decimal_pt)
 
-    # Remover linhas vazias
-    out = out[(out["NIF"] != "")].copy()
-
-    # Só interessam linhas com alteração real
-    out = out[
-        (out["Valor"].apply(lambda x: x != ZERO)) |
-        (out["IRS"].apply(lambda x: x != ZERO))
-    ].copy()
-
-    out.reset_index(drop=True, inplace=True)
-
-    # Colunas auxiliares para resultado
     out["Estado"] = ""
     out["Mensagem"] = ""
-    out["LinhaDMR"] = ""
-    out["CategoriaDMR"] = ""
-    out["RendimentoDMR_Original"] = ""
-    out["IRSDMR_Original"] = ""
-    out["RendimentoDMR_Novo"] = ""
-    out["IRSDMR_Novo"] = ""
+    out["Linha_DMR"] = ""
+    out["Categoria_DMR"] = ""
+    out["Rendimento_Original_DMR"] = ""
+    out["IRS_Original_DMR"] = ""
+    out["Rendimento_Novo_DMR"] = ""
+    out["IRS_Novo_DMR"] = ""
 
     return out
 
 
 # =========================================================
-# ESCRITA EM LINHA DMR
+# DMR TXT
 # =========================================================
+def ler_dmr_txt(file_obj):
+    raw = file_obj.read()
+    if isinstance(raw, bytes):
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1")
+    else:
+        text = str(raw)
 
-def replace_slice(text: str, sl: slice, new_value: str) -> str:
-    base = text.rstrip("\r\n")
-    ending = text[len(base):]
-
-    start = sl.start or 0
-    stop = sl.stop if sl.stop is not None else len(base)
-
-    if len(new_value) != (stop - start):
-        raise ValueError("O novo valor não tem o comprimento esperado para a fatia.")
-
-    novo = base[:start] + new_value + base[stop:]
-    return novo + ending
-
-
-def atualizar_linha_dmr(original_line: str, novo_rendimento: Decimal, novo_irs: Decimal) -> str:
-    """
-    Atualiza apenas os campos de rendimento e IRS,
-    mantendo todo o restante conteúdo da linha.
-    """
-    base = original_line.rstrip("\r\n")
-
-    rendimento_txt = decimal_para_campo_txt(novo_rendimento, DMR_REND.stop - DMR_REND.start)
-    irs_txt = decimal_para_campo_txt(novo_irs, DMR_IRS.stop - DMR_IRS.start)
-
-    line = original_line
-    line = replace_slice(line, DMR_REND, rendimento_txt)
-    line = replace_slice(line, DMR_IRS, irs_txt)
-    return line
+    # preserva linhas
+    linhas = text.splitlines()
+    return linhas
 
 
-# =========================================================
-# PROCESSAMENTO PRINCIPAL
-# =========================================================
+def extrair_nif_linha_006(linha):
+    return linha[DMR_NIF_START:DMR_NIF_END].strip()
 
-def aplicar_pendentes_na_dmr(dmr_text: str, pendentes_df: pd.DataFrame) -> tuple[str, pd.DataFrame, pd.DataFrame]:
-    """
-    Regras:
-    - procurar por NIF na DMR
-    - considerar apenas linhas 006 com categoria exatamente "A "
-    - o Excel já traz os valores a negativo
-    - o novo valor DMR = valor_original + valor_excel
-      (ex.: 300 + (-100) = 200)
-    - nunca pode ficar negativo
-    - idem para IRS
-    """
-    lines, records = parse_dmr_records(dmr_text)
 
-    # Índice por NIF, só categoria A válida
-    por_nif: dict[str, list[DMRRecord]] = {}
-    for rec in records:
-        if rec.is_categoria_a_valida():
-            por_nif.setdefault(rec.nif, []).append(rec)
+def extrair_categoria_linha_006(linha):
+    return linha[DMR_CAT_START:DMR_CAT_END]
 
-    pendentes_out = pendentes_df.copy()
 
-    resumo_rows: list[dict[str, Any]] = []
-    linhas_alteradas = 0
+def extrair_rendimento_linha_006(linha):
+    return field_to_decimal(linha[DMR_REND_START:DMR_REND_END])
 
-    for idx, row in pendentes_out.iterrows():
-        nif = normalizar_nif(row.get("NIF"))
-        valor_excel = parse_decimal_pt(row.get("Valor"))
-        irs_excel = parse_decimal_pt(row.get("IRS"))
 
-        candidatos = por_nif.get(nif, [])
+def extrair_irs_linha_006(linha):
+    return field_to_decimal(linha[DMR_IRS_START:DMR_IRS_END])
 
-        if not candidatos:
-            pendentes_out.at[idx, "Estado"] = "Sem correspondência"
-            pendentes_out.at[idx, "Mensagem"] = "Não foi encontrada linha 006 com categoria 'A ' para este NIF."
-            continue
 
-        # Regra prática:
-        # aplicar à primeira linha A encontrada para o NIF.
-        rec = candidatos[0]
-
-        rendimento_original = rec.rendimento
-        irs_original = rec.irs
-
-        rendimento_novo = q2(rendimento_original + valor_excel)
-        irs_novo = q2(irs_original + irs_excel)
-
-        erros: list[str] = []
-
-        if rendimento_novo < ZERO:
-            erros.append(
-                f"Rendimento insuficiente na DMR ({decimal_to_pt_str(rendimento_original)}) "
-                f"para absorver {decimal_to_pt_str(valor_excel)}."
-            )
-
-        if irs_novo < ZERO:
-            erros.append(
-                f"IRS insuficiente na DMR ({decimal_to_pt_str(irs_original)}) "
-                f"para absorver {decimal_to_pt_str(irs_excel)}."
-            )
-
-        if erros:
-            pendentes_out.at[idx, "Estado"] = "Erro"
-            pendentes_out.at[idx, "Mensagem"] = " ".join(erros)
-            pendentes_out.at[idx, "LinhaDMR"] = rec.line_index + 1
-            pendentes_out.at[idx, "CategoriaDMR"] = rec.categoria
-            pendentes_out.at[idx, "RendimentoDMR_Original"] = decimal_to_pt_str(rendimento_original)
-            pendentes_out.at[idx, "IRSDMR_Original"] = decimal_to_pt_str(irs_original)
-            pendentes_out.at[idx, "RendimentoDMR_Novo"] = decimal_to_pt_str(rendimento_novo)
-            pendentes_out.at[idx, "IRSDMR_Novo"] = decimal_to_pt_str(irs_novo)
-            continue
-
-        # Atualizar linha DMR
-        nova_linha = atualizar_linha_dmr(lines[rec.line_index], rendimento_novo, irs_novo)
-        lines[rec.line_index] = nova_linha
-        linhas_alteradas += 1
-
-        # Atualizar também o registo em memória para permitir operações seguintes no mesmo NIF
-        rec.rendimento = rendimento_novo
-        rec.irs = irs_novo
-        rec.original_line = nova_linha
-
-        pendentes_out.at[idx, "Estado"] = "Atualizado"
-        pendentes_out.at[idx, "Mensagem"] = "Linha DMR atualizada com sucesso."
-        pendentes_out.at[idx, "LinhaDMR"] = rec.line_index + 1
-        pendentes_out.at[idx, "CategoriaDMR"] = rec.categoria
-        pendentes_out.at[idx, "RendimentoDMR_Original"] = decimal_to_pt_str(rendimento_original)
-        pendentes_out.at[idx, "IRSDMR_Original"] = decimal_to_pt_str(irs_original)
-        pendentes_out.at[idx, "RendimentoDMR_Novo"] = decimal_to_pt_str(rendimento_novo)
-        pendentes_out.at[idx, "IRSDMR_Novo"] = decimal_to_pt_str(irs_novo)
-
-        resumo_rows.append(
-            {
-                "LinhaExcel": row.get("LinhaExcel", ""),
-                "NIF": nif,
-                "LinhaDMR": rec.line_index + 1,
-                "Categoria": rec.categoria,
-                "ValorExcel": decimal_to_pt_str(valor_excel),
-                "IRSExcel": decimal_to_pt_str(irs_excel),
-                "RendimentoOriginal": decimal_to_pt_str(rendimento_original),
-                "IRSOriginal": decimal_to_pt_str(irs_original),
-                "RendimentoNovo": decimal_to_pt_str(rendimento_novo),
-                "IRSNovo": decimal_to_pt_str(irs_novo),
-            }
+def atualizar_campo_fixo(linha, start, end, novo_valor_decimal):
+    width = end - start
+    novo_campo = decimal_to_field(novo_valor_decimal, width)
+    if len(novo_campo) != width:
+        raise ValueError(
+            f"Campo reconstruído com tamanho inválido: esperado {width}, obtido {len(novo_campo)}."
         )
+    return linha[:start] + novo_campo + linha[end:]
 
-    dmr_corrigida = "".join(lines)
 
-    resumo_df = pd.DataFrame(resumo_rows)
+def atualizar_linha_006(linha, novo_rendimento, novo_irs):
+    linha2 = atualizar_campo_fixo(linha, DMR_REND_START, DMR_REND_END, novo_rendimento)
+    linha2 = atualizar_campo_fixo(linha2, DMR_IRS_START, DMR_IRS_END, novo_irs)
+    return linha2
+
+
+def indexar_linhas_006(linhas):
+    """
+    Indexa linhas 006 elegíveis:
+    - registo começa por 006
+    - categoria exatamente "A "
+    """
+    idx = {}
+    for i, linha in enumerate(linhas):
+        if not linha.startswith("006"):
+            continue
+
+        if len(linha) < max(DMR_IRS_END, DMR_CAT_END):
+            continue
+
+        nif = extrair_nif_linha_006(linha)
+        categoria = extrair_categoria_linha_006(linha)
+
+        if categoria != "A ":
+            continue
+
+        idx.setdefault(nif, []).append(i)
+
+    return idx
+
+
+# =========================================================
+# PROCESSAMENTO
+# =========================================================
+def processar_dmr_e_excel(dmr_file, excel_file, sheet_name=None):
+    linhas = ler_dmr_txt(dmr_file)
+    pendentes = ler_pendentes_excel(excel_file, sheet_name=sheet_name)
+    idx_por_nif = indexar_linhas_006(linhas)
+
+    resumo = []
+
+    for r in pendentes.index:
+        nif = pendentes.at[r, "NIF"]
+        valor_excel = pendentes.at[r, "Valor"]
+        irs_excel = pendentes.at[r, "IRS"]
+
+        # Os valores no Excel já vêm negativos.
+        # Ex.: -100 -> somar à DMR (diminuindo 100)
+        if not nif:
+            pendentes.at[r, "Estado"] = "Erro"
+            pendentes.at[r, "Mensagem"] = "NIF vazio."
+            continue
+
+        if nif not in idx_por_nif:
+            pendentes.at[r, "Estado"] = "Não encontrado"
+            pendentes.at[r, "Mensagem"] = "NIF sem linha 006 com categoria 'A '."
+            continue
+
+        candidatos = idx_por_nif[nif]
+        aplicado = False
+        ultima_msg = ""
+
+        for linha_idx in candidatos:
+            linha = linhas[linha_idx]
+
+            rendimento_atual = extrair_rendimento_linha_006(linha)
+            irs_atual = extrair_irs_linha_006(linha)
+
+            novo_rendimento = decimal_2(rendimento_atual + valor_excel)
+            novo_irs = decimal_2(irs_atual + irs_excel)
+
+            # Não pode ficar negativo
+            if novo_rendimento < 0:
+                ultima_msg = (
+                    f"Rendimento insuficiente na linha {linha_idx + 1}: "
+                    f"{rendimento_atual} + ({valor_excel}) < 0."
+                )
+                continue
+
+            if novo_irs < 0:
+                ultima_msg = (
+                    f"IRS insuficiente na linha {linha_idx + 1}: "
+                    f"{irs_atual} + ({irs_excel}) < 0."
+                )
+                continue
+
+            nova_linha = atualizar_linha_006(linha, novo_rendimento, novo_irs)
+            linhas[linha_idx] = nova_linha
+
+            pendentes.at[r, "Estado"] = "Atualizado"
+            pendentes.at[r, "Mensagem"] = "Linha DMR atualizada com sucesso."
+            pendentes.at[r, "Linha_DMR"] = linha_idx + 1
+            pendentes.at[r, "Categoria_DMR"] = extrair_categoria_linha_006(linha)
+            pendentes.at[r, "Rendimento_Original_DMR"] = float(rendimento_atual)
+            pendentes.at[r, "IRS_Original_DMR"] = float(irs_atual)
+            pendentes.at[r, "Rendimento_Novo_DMR"] = float(novo_rendimento)
+            pendentes.at[r, "IRS_Novo_DMR"] = float(novo_irs)
+
+            resumo.append(
+                {
+                    "Linha_DMR": linha_idx + 1,
+                    "NIF": nif,
+                    "Categoria": "A ",
+                    "Rendimento_Original": float(rendimento_atual),
+                    "Valor_Excel": float(valor_excel),
+                    "Rendimento_Novo": float(novo_rendimento),
+                    "IRS_Original": float(irs_atual),
+                    "IRS_Excel": float(irs_excel),
+                    "IRS_Novo": float(novo_irs),
+                }
+            )
+
+            aplicado = True
+            break
+
+        if not aplicado:
+            pendentes.at[r, "Estado"] = "Erro"
+            pendentes.at[r, "Mensagem"] = ultima_msg or "Nenhuma linha elegível conseguiu absorver a redução."
+
+    dmr_corrigida = "\n".join(linhas)
+    resumo_df = pd.DataFrame(resumo)
+
     if resumo_df.empty:
         resumo_df = pd.DataFrame(
             columns=[
-                "LinhaExcel", "NIF", "LinhaDMR", "Categoria", "ValorExcel", "IRSExcel",
-                "RendimentoOriginal", "IRSOriginal", "RendimentoNovo", "IRSNovo"
+                "Linha_DMR",
+                "NIF",
+                "Categoria",
+                "Rendimento_Original",
+                "Valor_Excel",
+                "Rendimento_Novo",
+                "IRS_Original",
+                "IRS_Excel",
+                "IRS_Novo",
             ]
         )
 
-    return dmr_corrigida, pendentes_out, resumo_df
+    return dmr_corrigida, pendentes, resumo_df
 
 
 # =========================================================
 # EXPORTAÇÕES
 # =========================================================
-
-def pendentes_to_excel_bytes(df: pd.DataFrame) -> bytes:
-    bio = BytesIO()
+def pendentes_to_excel_bytes(df):
+    bio = io.BytesIO()
     with pd.ExcelWriter(bio, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Pendentes Atualizados")
+        df.to_excel(writer, index=False, sheet_name="Pendentes")
     bio.seek(0)
-    return bio.read()
+    return bio.getvalue()
 
 
-def resumo_to_excel_bytes(df: pd.DataFrame) -> bytes:
-    bio = BytesIO()
+def resumo_to_excel_bytes(df):
+    bio = io.BytesIO()
     with pd.ExcelWriter(bio, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Resumo")
     bio.seek(0)
-    return bio.read()
+    return bio.getvalue()
 
 
-def texto_para_bytes_utf8(texto: str) -> bytes:
+def texto_para_bytes_utf8(texto):
     return texto.encode("utf-8")
-
-
-# =========================================================
-# FUNÇÃO DE CONVENIÊNCIA PARA A PÁGINA
-# =========================================================
-
-def processar_dmr_e_excel(
-    dmr_file: Any,
-    excel_file: Any,
-    sheet_name: str | None = None,
-) -> tuple[str, pd.DataFrame, pd.DataFrame]:
-    """
-    Lê:
-    - DMR em TXT
-    - Excel de pendentes
-
-    Devolve:
-    - texto DMR corrigido
-    - dataframe pendentes atualizado
-    - dataframe resumo
-    """
-    dmr_file.seek(0)
-    dmr_text = read_text_file_any_encoding(dmr_file)
-
-    excel_file.seek(0)
-    pendentes_df = ler_pendentes_excel(excel_file, sheet_name=sheet_name)
-
-    dmr_corrigida, pendentes_out, resumo_df = aplicar_pendentes_na_dmr(dmr_text, pendentes_df)
-
-    return dmr_corrigida, pendentes_out, resumo_df
