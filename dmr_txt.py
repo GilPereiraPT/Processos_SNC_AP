@@ -27,7 +27,7 @@ POS_NIF_INI = 9      # coluna 10
 POS_NIF_FIM = 18     # coluna 18 inclusive -> slice [9:18]
 
 POS_REND_INI = 38    # coluna 38
-POS_REND_FIM = 52    # coluna 52 inclusive -> slice [37:52]
+POS_REND_FIM = 52    # coluna 51 inclusive -> slice [37:52]
 
 POS_CAT_INI = 53     # coluna 53
 POS_CAT_FIM = 55     # colunas 53-54 -> slice [52:54]
