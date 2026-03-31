@@ -26,7 +26,7 @@ LINHA_006_PREFIX = "006"
 POS_NIF_INI = 9      # coluna 10
 POS_NIF_FIM = 18     # coluna 18 inclusive -> slice [9:18]
 
-POS_REND_INI = 39    # coluna 38
+POS_REND_INI = 38    # coluna 38
 POS_REND_FIM = 52    # coluna 52 inclusive -> slice [37:52]
 
 POS_CAT_INI = 53     # coluna 53
