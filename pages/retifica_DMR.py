@@ -1,97 +1,90 @@
-from __future__ import annotations
-
-import sys
-from pathlib import Path
-
 import streamlit as st
-import pandas as pd
-
-ROOT_DIR = Path(__file__).resolve().parent.parent
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
 
 from dmr_txt import (
+    processar_dmr_e_excel,
+    pendentes_to_excel_bytes,
+    resumo_to_excel_bytes,
+    texto_para_bytes_utf8,
     ler_pendentes_excel,
-    processar_dmr_txt,
-    criar_excel_resumo,
 )
 
 st.set_page_config(page_title="Retificar DMR", layout="wide")
-st.title("Retificar DMR (TXT) com base em Excel de pendentes")
 
+st.title("Retificação de DMR TXT")
 st.write(
-    """
-Carregue:
-- o ficheiro **DMR em TXT**
-- o ficheiro **Excel com pendentes**
-
-O Excel deve ter colunas equivalentes a:
-- **NIF**
-- **Rendimento**
-- **Valor**
-- **IRS**
-
-Só serão tratadas linhas com:
-- rendimento **A**
-- excluem-se **A21** e **A22**
-"""
+    "Carrega o ficheiro DMR em TXT e o Excel com situações pendentes. "
+    "A aplicação procura linhas 006 com categoria 'A ' e atualiza rendimento e IRS."
 )
 
-col1, col2 = st.columns(2)
+with st.expander("Posições usadas nesta versão", expanded=False):
+    st.markdown(
+        """
+- **NIF**: colunas **10 a 18**
+- **Categoria de rendimento**: colunas **53 a 54**
+- **Categoria válida**: exatamente **`A `**
+- **Rendimento**: da coluna **38** até antes da **53**
+- **IRS**: da coluna **58** até antes da **73**
+        """
+    )
 
-with col1:
-    dmr_file = st.file_uploader("Ficheiro DMR (TXT)", type=["txt"])
+dmr_file = st.file_uploader("Ficheiro DMR (TXT)", type=["txt"])
+excel_file = st.file_uploader("Ficheiro Excel de pendentes", type=["xlsx", "xls"])
+sheet_name = st.text_input("Nome da folha do Excel (opcional)")
 
-with col2:
-    excel_file = st.file_uploader("Ficheiro Excel pendentes", type=["xlsx", "xls"])
-
-sheet_name = st.text_input("Nome da folha do Excel (opcional)", value="")
-
-if dmr_file and excel_file:
+if excel_file is not None:
     try:
-        pendentes_df = ler_pendentes_excel(excel_file, sheet_name=sheet_name or None)
+        preview_df = ler_pendentes_excel(excel_file, sheet_name=sheet_name or None)
+        st.subheader("Pré-visualização do Excel")
+        st.dataframe(preview_df, use_container_width=True)
+        excel_file.seek(0)
+    except Exception as e:
+        st.error(f"Erro ao ler Excel: {e}")
 
-        dmr_bytes = dmr_file.read()
-        dmr_text = dmr_bytes.decode("latin-1", errors="replace")
+if dmr_file is not None and excel_file is not None:
+    if st.button("Processar"):
+        try:
+            dmr_file.seek(0)
+            excel_file.seek(0)
 
-        dmr_corrigida, resumo_df = processar_dmr_txt(dmr_text, pendentes_df)
-
-        st.success("Processamento concluído.")
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("Pendentes Excel", int(len(pendentes_df)))
-        with c2:
-            st.metric("Corrigidos", int((resumo_df["Estado"] == "Corrigido").sum()))
-        with c3:
-            st.metric(
-                "Com erro / validação",
-                int((resumo_df["Estado"] != "Corrigido").sum())
+            dmr_corrigida, pendentes_out, resumo_df = processar_dmr_e_excel(
+                dmr_file=dmr_file,
+                excel_file=excel_file,
+                sheet_name=sheet_name or None,
             )
 
-        st.subheader("Resumo")
-        st.dataframe(resumo_df, use_container_width=True)
+            st.success("Processamento concluído.")
 
-        excel_bytes = criar_excel_resumo(resumo_df)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Linhas Excel", len(pendentes_out))
+            c2.metric("Atualizadas", int((pendentes_out["Estado"] == "Atualizado").sum()))
+            c3.metric("Com erro / não encontradas", int((pendentes_out["Estado"] != "Atualizado").sum()))
 
-        st.download_button(
-            "Descarregar DMR corrigida (TXT)",
-            data=dmr_corrigida.encode("latin-1", errors="replace"),
-            file_name="DMR_corrigida.txt",
-            mime="text/plain",
-        )
+            st.subheader("Resumo das alterações")
+            st.dataframe(resumo_df, use_container_width=True)
 
-        st.download_button(
-            "Descarregar resumo (Excel)",
-            data=excel_bytes,
-            file_name="Resumo_retificacao_DMR.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+            st.subheader("Excel atualizado")
+            st.dataframe(pendentes_out, use_container_width=True)
 
-        with st.expander("Pré-visualização da DMR corrigida"):
-            st.text(dmr_corrigida[:15000])
+            st.download_button(
+                "Descarregar DMR corrigida",
+                data=texto_para_bytes_utf8(dmr_corrigida),
+                file_name="DMR_corrigida.txt",
+                mime="text/plain",
+            )
 
-    except Exception as e:
-        st.error(f"Erro ao processar ficheiros: {e}")
-else:
-    st.info("Carregue os dois ficheiros para continuar.")
+            st.download_button(
+                "Descarregar Excel atualizado",
+                data=pendentes_to_excel_bytes(pendentes_out),
+                file_name="pendentes_atualizado.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+            st.download_button(
+                "Descarregar resumo",
+                data=resumo_to_excel_bytes(resumo_df),
+                file_name="resumo_alteracoes.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+        except Exception as e:
+            st.error(f"Erro ao processar ficheiros: {e}")
