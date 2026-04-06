@@ -177,10 +177,22 @@ def main():
         )
 
     col1, col2 = st.columns(2)
-    with col1:
-        ba_file = st.file_uploader('XML BA (referência)', type=['xml'], key='ba')
-    with col2:
-        dtas_file = st.file_uploader('XML DTAS (a retificar)', type=['xml'], key='dtas')
+
+with col1:
+    ba_file = st.file_uploader(
+        "XML BA (referência)",
+        type=["xml"],
+        key="ba_xml",
+        help="Carregue o ficheiro BA em XML"
+    )
+
+with col2:
+    dtas_file = st.file_uploader(
+        "XML DTAS (a retificar)",
+        type=["xml"],
+        key="dtas_xml",
+        help="Carregue o ficheiro DTAS em XML"
+    )
 
     if ba_file and dtas_file:
         if st.button('Processar ficheiros', type='primary'):
