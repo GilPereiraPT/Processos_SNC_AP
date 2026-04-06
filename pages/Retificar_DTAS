@@ -1,0 +1,174 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from io import BytesIO
+from typing import Dict, List, Tuple
+import xml.etree.ElementTree as ET
+
+TWOPLACES = Decimal("0.01")
+
+
+class XMLProcessingError(Exception):
+    pass
+
+
+@dataclass
+class CalculationResult:
+    saldo_0271_credor: Decimal
+    saldo_0272_devedor: Decimal
+    valor_correto: Decimal
+    total_divida_curto_prazo_atual: Decimal
+    ajuste: Decimal
+    novos_valores: Dict[str, Decimal]
+
+
+FIELD_LABELS = {
+    "I2": "DTAS1 > TotalDividaVincendaCurtoPrazo",
+    "Q2": "DTAS1 > TotalDividaPorNaturezaDespesaCurtoPrazo",
+    "S2": "DTAS1 > TotalGeralDividaPorNaturezaDespesa",
+    "W8": "DTAS15 > TotalDividaVincendaCurtoPrazo",
+    "AE8": "DTAS15 > TotalDividaPorNaturezaDespesaCurtoPrazo",
+    "AG8": "DTAS15 > TotalGeralDividaPorNaturezaDespesa",
+    "AL26": "DTAS151 > DividaVincendaCurtoPrazo",
+    "AT26": "DTAS151 > TotalDividaPorNaturezaDespesaCurtoPrazo",
+    "AV26": "DTAS151 > TotalDividaPorNaturezaDespesa",
+}
+
+UPDATE_MAP = {
+    "I2": ("ResumoMacroRubrica", "MacroRubrica", "DTAS1", "TotalDividaVincendaCurtoPrazo"),
+    "Q2": ("ResumoMacroRubrica", "MacroRubrica", "DTAS1", "TotalDividaPorNaturezaDespesaCurtoPrazo"),
+    "S2": ("ResumoMacroRubrica", "MacroRubrica", "DTAS1", "TotalGeralDividaPorNaturezaDespesa"),
+    "W8": ("ResumoRubricaAgregadora", "RubricaAgregadora", "DTAS15", "TotalDividaVincendaCurtoPrazo"),
+    "AE8": ("ResumoRubricaAgregadora", "RubricaAgregadora", "DTAS15", "TotalDividaPorNaturezaDespesaCurtoPrazo"),
+    "AG8": ("ResumoRubricaAgregadora", "RubricaAgregadora", "DTAS15", "TotalGeralDividaPorNaturezaDespesa"),
+    "AL26": ("Registo", "Rubrica", "DTAS151", "DividaVincendaCurtoPrazo"),
+    "AT26": ("Registo", "Rubrica", "DTAS151", "TotalDividaPorNaturezaDespesaCurtoPrazo"),
+    "AV26": ("Registo", "Rubrica", "DTAS151", "TotalDividaPorNaturezaDespesa"),
+}
+
+
+def q(value: Decimal) -> Decimal:
+    return value.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+
+
+def parse_decimal(text: str | None) -> Decimal:
+    if text is None:
+        raise XMLProcessingError("Foi encontrado um valor numérico em falta no XML.")
+    try:
+        return q(Decimal(text.strip()))
+    except (InvalidOperation, AttributeError) as exc:
+        raise XMLProcessingError(f"Valor numérico inválido no XML: {text!r}") from exc
+
+
+def format_decimal(value: Decimal) -> str:
+    return f"{q(value):.2f}"
+
+
+def get_child_text(parent: ET.Element, tag: str) -> str:
+    child = parent.find(tag)
+    if child is None or child.text is None:
+        raise XMLProcessingError(f"Tag obrigatória não encontrada: {tag}")
+    return child.text.strip()
+
+
+def load_xml_from_bytes(data: bytes) -> Tuple[ET.ElementTree, ET.Element]:
+    try:
+        tree = ET.ElementTree(ET.fromstring(data))
+        return tree, tree.getroot()
+    except ET.ParseError as exc:
+        raise XMLProcessingError(f"XML inválido: {exc}") from exc
+
+
+def sum_ba04_account(root: ET.Element, conta_local: str, side: str) -> Decimal:
+    total = Decimal("0.00")
+    found_registo = False
+
+    for registo in root.findall("./Registos/Registo"):
+        conta = registo.findtext("ContaLocal", default="").strip()
+        if conta != conta_local:
+            continue
+        found_registo = True
+        for detalhe in registo.findall("DetalheResumo"):
+            saldo_mov = detalhe.findtext("SaldosEMovimentos", default="").strip()
+            if saldo_mov != "BA04":
+                continue
+            amount_tag = "Credito" if side == "credito" else "Debito"
+            total += parse_decimal(detalhe.findtext(amount_tag, default="0.00"))
+
+    if not found_registo:
+        raise XMLProcessingError(f"Não foi encontrada a conta {conta_local} no XML de referência.")
+    return q(total)
+
+
+def find_unique_by_code(root: ET.Element, block_tag: str, code_tag: str, code_value: str) -> ET.Element:
+    matches = [
+        elem for elem in root.iter(block_tag)
+        if elem.findtext(code_tag, default="").strip() == code_value
+    ]
+    if not matches:
+        raise XMLProcessingError(f"Não foi encontrado {block_tag} com {code_tag}={code_value}.")
+    if len(matches) > 1:
+        raise XMLProcessingError(f"Foram encontrados vários blocos {block_tag} com {code_tag}={code_value}.")
+    return matches[0]
+
+
+def get_dtas_q2_q3_total(root: ET.Element) -> Decimal:
+    dtas1 = find_unique_by_code(root, "ResumoMacroRubrica", "MacroRubrica", "DTAS1")
+    dtas2 = find_unique_by_code(root, "ResumoMacroRubrica", "MacroRubrica", "DTAS2")
+    q2 = parse_decimal(get_child_text(dtas1, "TotalDividaPorNaturezaDespesaCurtoPrazo"))
+    q3 = parse_decimal(get_child_text(dtas2, "TotalDividaPorNaturezaDespesaCurtoPrazo"))
+    return q(q2 + q3)
+
+
+def compute_adjustment(ba_root: ET.Element, dtas_root: ET.Element) -> CalculationResult:
+    saldo_0271_credor = sum_ba04_account(ba_root, "02.7.1", "credito")
+    saldo_0272_devedor = sum_ba04_account(ba_root, "02.7.2", "debito")
+    valor_correto = q(saldo_0271_credor - saldo_0272_devedor)
+    total_divida_curto_prazo_atual = get_dtas_q2_q3_total(dtas_root)
+    ajuste = q(valor_correto - total_divida_curto_prazo_atual)
+
+    novos_valores: Dict[str, Decimal] = {}
+    for cell, (block_tag, code_tag, code_value, field_tag) in UPDATE_MAP.items():
+        block = find_unique_by_code(dtas_root, block_tag, code_tag, code_value)
+        current_value = parse_decimal(get_child_text(block, field_tag))
+        novos_valores[cell] = q(current_value + ajuste)
+
+    return CalculationResult(
+        saldo_0271_credor=saldo_0271_credor,
+        saldo_0272_devedor=saldo_0272_devedor,
+        valor_correto=valor_correto,
+        total_divida_curto_prazo_atual=total_divida_curto_prazo_atual,
+        ajuste=ajuste,
+        novos_valores=novos_valores,
+    )
+
+
+def apply_updates(dtas_tree: ET.ElementTree, dtas_root: ET.Element, result: CalculationResult) -> bytes:
+    for cell, new_value in result.novos_valores.items():
+        block_tag, code_tag, code_value, field_tag = UPDATE_MAP[cell]
+        block = find_unique_by_code(dtas_root, block_tag, code_tag, code_value)
+        field = block.find(field_tag)
+        if field is None:
+            raise XMLProcessingError(
+                f"O campo {field_tag} não foi encontrado no bloco {block_tag} ({code_value})."
+            )
+        field.text = format_decimal(new_value)
+
+    ET.indent(dtas_tree, space="  ")
+    buffer = BytesIO()
+    dtas_tree.write(buffer, encoding="UTF-8", xml_declaration=True)
+    return buffer.getvalue()
+
+
+def suggest_output_name(uploaded_name: str) -> str:
+    if uploaded_name.lower().endswith(".xml"):
+        return uploaded_name[:-4] + "_retificado.xml"
+    return uploaded_name + "_retificado.xml"
+
+
+def build_summary_rows(result: CalculationResult) -> List[Dict[str, str]]:
+    return [
+        {"Célula": cell, "Campo XML": FIELD_LABELS[cell], "Novo valor": format_decimal(value)}
+        for cell, value in result.novos_valores.items()
+    ]
