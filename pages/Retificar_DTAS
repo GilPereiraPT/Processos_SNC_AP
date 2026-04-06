@@ -1,174 +1,222 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
-from io import BytesIO
-from typing import Dict, List, Tuple
+import io
+import copy
+from decimal import Decimal, ROUND_HALF_UP
 import xml.etree.ElementTree as ET
 
-TWOPLACES = Decimal("0.01")
+import streamlit as st
+
+TWOPLACES = Decimal('0.01')
 
 
-class XMLProcessingError(Exception):
-    pass
+def D(value) -> Decimal:
+    if value is None:
+        return Decimal('0.00')
+    return Decimal(str(value).strip())
 
 
-@dataclass
-class CalculationResult:
-    saldo_0271_credor: Decimal
-    saldo_0272_devedor: Decimal
-    valor_correto: Decimal
-    total_divida_curto_prazo_atual: Decimal
-    ajuste: Decimal
-    novos_valores: Dict[str, Decimal]
+def fmt_dec(value: Decimal) -> str:
+    return str(value.quantize(TWOPLACES, rounding=ROUND_HALF_UP))
 
 
-FIELD_LABELS = {
-    "I2": "DTAS1 > TotalDividaVincendaCurtoPrazo",
-    "Q2": "DTAS1 > TotalDividaPorNaturezaDespesaCurtoPrazo",
-    "S2": "DTAS1 > TotalGeralDividaPorNaturezaDespesa",
-    "W8": "DTAS15 > TotalDividaVincendaCurtoPrazo",
-    "AE8": "DTAS15 > TotalDividaPorNaturezaDespesaCurtoPrazo",
-    "AG8": "DTAS15 > TotalGeralDividaPorNaturezaDespesa",
-    "AL26": "DTAS151 > DividaVincendaCurtoPrazo",
-    "AT26": "DTAS151 > TotalDividaPorNaturezaDespesaCurtoPrazo",
-    "AV26": "DTAS151 > TotalDividaPorNaturezaDespesa",
-}
-
-UPDATE_MAP = {
-    "I2": ("ResumoMacroRubrica", "MacroRubrica", "DTAS1", "TotalDividaVincendaCurtoPrazo"),
-    "Q2": ("ResumoMacroRubrica", "MacroRubrica", "DTAS1", "TotalDividaPorNaturezaDespesaCurtoPrazo"),
-    "S2": ("ResumoMacroRubrica", "MacroRubrica", "DTAS1", "TotalGeralDividaPorNaturezaDespesa"),
-    "W8": ("ResumoRubricaAgregadora", "RubricaAgregadora", "DTAS15", "TotalDividaVincendaCurtoPrazo"),
-    "AE8": ("ResumoRubricaAgregadora", "RubricaAgregadora", "DTAS15", "TotalDividaPorNaturezaDespesaCurtoPrazo"),
-    "AG8": ("ResumoRubricaAgregadora", "RubricaAgregadora", "DTAS15", "TotalGeralDividaPorNaturezaDespesa"),
-    "AL26": ("Registo", "Rubrica", "DTAS151", "DividaVincendaCurtoPrazo"),
-    "AT26": ("Registo", "Rubrica", "DTAS151", "TotalDividaPorNaturezaDespesaCurtoPrazo"),
-    "AV26": ("Registo", "Rubrica", "DTAS151", "TotalDividaPorNaturezaDespesa"),
-}
-
-
-def q(value: Decimal) -> Decimal:
-    return value.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
-
-
-def parse_decimal(text: str | None) -> Decimal:
-    if text is None:
-        raise XMLProcessingError("Foi encontrado um valor numérico em falta no XML.")
-    try:
-        return q(Decimal(text.strip()))
-    except (InvalidOperation, AttributeError) as exc:
-        raise XMLProcessingError(f"Valor numérico inválido no XML: {text!r}") from exc
-
-
-def format_decimal(value: Decimal) -> str:
-    return f"{q(value):.2f}"
-
-
-def get_child_text(parent: ET.Element, tag: str) -> str:
+def get_child_text(parent, tag: str, required: bool = True):
     child = parent.find(tag)
-    if child is None or child.text is None:
-        raise XMLProcessingError(f"Tag obrigatória não encontrada: {tag}")
-    return child.text.strip()
+    if child is None:
+        if required:
+            raise ValueError(f"Tag em falta: {tag}")
+        return None
+    return child.text
 
 
-def load_xml_from_bytes(data: bytes) -> Tuple[ET.ElementTree, ET.Element]:
-    try:
-        tree = ET.ElementTree(ET.fromstring(data))
-        return tree, tree.getroot()
-    except ET.ParseError as exc:
-        raise XMLProcessingError(f"XML inválido: {exc}") from exc
+def set_child_decimal(parent, tag: str, value: Decimal):
+    child = parent.find(tag)
+    if child is None:
+        raise ValueError(f"Tag em falta para atualização: {tag}")
+    child.text = fmt_dec(value)
 
 
-def sum_ba04_account(root: ET.Element, conta_local: str, side: str) -> Decimal:
-    total = Decimal("0.00")
-    found_registo = False
+def sum_ba04_for_account(root: ET.Element, conta_local: str, side: str) -> Decimal:
+    total = Decimal('0.00')
+    found_any = False
 
-    for registo in root.findall("./Registos/Registo"):
-        conta = registo.findtext("ContaLocal", default="").strip()
+    for registo in root.findall('./Registos/Registo'):
+        conta = get_child_text(registo, 'ContaLocal', required=False)
         if conta != conta_local:
             continue
-        found_registo = True
-        for detalhe in registo.findall("DetalheResumo"):
-            saldo_mov = detalhe.findtext("SaldosEMovimentos", default="").strip()
-            if saldo_mov != "BA04":
+
+        for detalhe in registo.findall('./DetalheResumo'):
+            saldos = get_child_text(detalhe, 'SaldosEMovimentos', required=False)
+            if saldos != 'BA04':
                 continue
-            amount_tag = "Credito" if side == "credito" else "Debito"
-            total += parse_decimal(detalhe.findtext(amount_tag, default="0.00"))
 
-    if not found_registo:
-        raise XMLProcessingError(f"Não foi encontrada a conta {conta_local} no XML de referência.")
-    return q(total)
+            found_any = True
+            valor_txt = get_child_text(detalhe, 'Credito' if side == 'credito' else 'Debito')
+            total += D(valor_txt)
 
+    if not found_any:
+        raise ValueError(f"Não foram encontrados registos BA04 para a conta {conta_local} ({side}).")
 
-def find_unique_by_code(root: ET.Element, block_tag: str, code_tag: str, code_value: str) -> ET.Element:
-    matches = [
-        elem for elem in root.iter(block_tag)
-        if elem.findtext(code_tag, default="").strip() == code_value
-    ]
-    if not matches:
-        raise XMLProcessingError(f"Não foi encontrado {block_tag} com {code_tag}={code_value}.")
-    if len(matches) > 1:
-        raise XMLProcessingError(f"Foram encontrados vários blocos {block_tag} com {code_tag}={code_value}.")
-    return matches[0]
+    return total.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
 
-def get_dtas_q2_q3_total(root: ET.Element) -> Decimal:
-    dtas1 = find_unique_by_code(root, "ResumoMacroRubrica", "MacroRubrica", "DTAS1")
-    dtas2 = find_unique_by_code(root, "ResumoMacroRubrica", "MacroRubrica", "DTAS2")
-    q2 = parse_decimal(get_child_text(dtas1, "TotalDividaPorNaturezaDespesaCurtoPrazo"))
-    q3 = parse_decimal(get_child_text(dtas2, "TotalDividaPorNaturezaDespesaCurtoPrazo"))
-    return q(q2 + q3)
+def find_resumo_macro(root: ET.Element, macro_rubrica: str):
+    for node in root.findall('./Resumo/ResumoMacroRubrica'):
+        if get_child_text(node, 'MacroRubrica', required=False) == macro_rubrica:
+            return node
+    raise ValueError(f"ResumoMacroRubrica não encontrado: {macro_rubrica}")
 
 
-def compute_adjustment(ba_root: ET.Element, dtas_root: ET.Element) -> CalculationResult:
-    saldo_0271_credor = sum_ba04_account(ba_root, "02.7.1", "credito")
-    saldo_0272_devedor = sum_ba04_account(ba_root, "02.7.2", "debito")
-    valor_correto = q(saldo_0271_credor - saldo_0272_devedor)
-    total_divida_curto_prazo_atual = get_dtas_q2_q3_total(dtas_root)
-    ajuste = q(valor_correto - total_divida_curto_prazo_atual)
-
-    novos_valores: Dict[str, Decimal] = {}
-    for cell, (block_tag, code_tag, code_value, field_tag) in UPDATE_MAP.items():
-        block = find_unique_by_code(dtas_root, block_tag, code_tag, code_value)
-        current_value = parse_decimal(get_child_text(block, field_tag))
-        novos_valores[cell] = q(current_value + ajuste)
-
-    return CalculationResult(
-        saldo_0271_credor=saldo_0271_credor,
-        saldo_0272_devedor=saldo_0272_devedor,
-        valor_correto=valor_correto,
-        total_divida_curto_prazo_atual=total_divida_curto_prazo_atual,
-        ajuste=ajuste,
-        novos_valores=novos_valores,
-    )
+def find_resumo_rubrica_agregadora(root: ET.Element, rubrica_agregadora: str):
+    for node in root.findall('./Resumo/ResumoRubricaAgregadora'):
+        if get_child_text(node, 'RubricaAgregadora', required=False) == rubrica_agregadora:
+            return node
+    raise ValueError(f"ResumoRubricaAgregadora não encontrada: {rubrica_agregadora}")
 
 
-def apply_updates(dtas_tree: ET.ElementTree, dtas_root: ET.Element, result: CalculationResult) -> bytes:
-    for cell, new_value in result.novos_valores.items():
-        block_tag, code_tag, code_value, field_tag = UPDATE_MAP[cell]
-        block = find_unique_by_code(dtas_root, block_tag, code_tag, code_value)
-        field = block.find(field_tag)
-        if field is None:
-            raise XMLProcessingError(
-                f"O campo {field_tag} não foi encontrado no bloco {block_tag} ({code_value})."
-            )
-        field.text = format_decimal(new_value)
-
-    ET.indent(dtas_tree, space="  ")
-    buffer = BytesIO()
-    dtas_tree.write(buffer, encoding="UTF-8", xml_declaration=True)
-    return buffer.getvalue()
+def find_registo_by_rubrica(root: ET.Element, rubrica: str):
+    for node in root.findall('./Registos/Registo'):
+        if get_child_text(node, 'Rubrica', required=False) == rubrica:
+            return node
+    raise ValueError(f"Registo não encontrado para a rubrica: {rubrica}")
 
 
-def suggest_output_name(uploaded_name: str) -> str:
-    if uploaded_name.lower().endswith(".xml"):
-        return uploaded_name[:-4] + "_retificado.xml"
-    return uploaded_name + "_retificado.xml"
+def read_current_total_curto_prazo(root: ET.Element):
+    dtas1 = find_resumo_macro(root, 'DTAS1')
+    dtas2 = find_resumo_macro(root, 'DTAS2')
+    q2 = D(get_child_text(dtas1, 'TotalDividaPorNaturezaDespesaCurtoPrazo'))
+    q3 = D(get_child_text(dtas2, 'TotalDividaPorNaturezaDespesaCurtoPrazo'))
+    return (q2 + q3).quantize(TWOPLACES, rounding=ROUND_HALF_UP), q2, q3
 
 
-def build_summary_rows(result: CalculationResult) -> List[Dict[str, str]]:
-    return [
-        {"Célula": cell, "Campo XML": FIELD_LABELS[cell], "Novo valor": format_decimal(value)}
-        for cell, value in result.novos_valores.items()
-    ]
+def apply_adjustment(dtas_root: ET.Element, adjustment: Decimal):
+    output_root = copy.deepcopy(dtas_root)
+
+    dtas1 = find_resumo_macro(output_root, 'DTAS1')
+    dtas15 = find_resumo_rubrica_agregadora(output_root, 'DTAS15')
+    dtas151 = find_registo_by_rubrica(output_root, 'DTAS151')
+
+    # I2
+    current = D(get_child_text(dtas1, 'TotalDividaVincendaCurtoPrazo'))
+    set_child_decimal(dtas1, 'TotalDividaVincendaCurtoPrazo', current + adjustment)
+
+    # Q2 / S2
+    current = D(get_child_text(dtas1, 'TotalDividaPorNaturezaDespesaCurtoPrazo'))
+    new_total_dtas1 = current + adjustment
+    set_child_decimal(dtas1, 'TotalDividaPorNaturezaDespesaCurtoPrazo', new_total_dtas1)
+    set_child_decimal(dtas1, 'TotalGeralDividaPorNaturezaDespesa', new_total_dtas1)
+
+    # W8 / AE8 / AG8
+    current = D(get_child_text(dtas15, 'TotalDividaVincendaCurtoPrazo'))
+    set_child_decimal(dtas15, 'TotalDividaVincendaCurtoPrazo', current + adjustment)
+
+    current = D(get_child_text(dtas15, 'TotalDividaPorNaturezaDespesaCurtoPrazo'))
+    new_total_dtas15 = current + adjustment
+    set_child_decimal(dtas15, 'TotalDividaPorNaturezaDespesaCurtoPrazo', new_total_dtas15)
+    set_child_decimal(dtas15, 'TotalGeralDividaPorNaturezaDespesa', new_total_dtas15)
+
+    # AL26 / AT26 / AV26
+    current = D(get_child_text(dtas151, 'DividaVincendaCurtoPrazo'))
+    set_child_decimal(dtas151, 'DividaVincendaCurtoPrazo', current + adjustment)
+
+    current = D(get_child_text(dtas151, 'TotalDividaPorNaturezaDespesaCurtoPrazo'))
+    new_total_dtas151 = current + adjustment
+    set_child_decimal(dtas151, 'TotalDividaPorNaturezaDespesaCurtoPrazo', new_total_dtas151)
+    set_child_decimal(dtas151, 'TotalDividaPorNaturezaDespesa', new_total_dtas151)
+
+    return output_root
+
+
+def process_xmls(ba_bytes: bytes, dtas_bytes: bytes):
+    ba_tree = ET.ElementTree(ET.fromstring(ba_bytes))
+    dtas_tree = ET.ElementTree(ET.fromstring(dtas_bytes))
+
+    ba_root = ba_tree.getroot()
+    dtas_root = dtas_tree.getroot()
+
+    saldo_0271_credor = sum_ba04_for_account(ba_root, '02.7.1', 'credito')
+    saldo_0272_devedor = sum_ba04_for_account(ba_root, '02.7.2', 'debito')
+    valor_correto = (saldo_0271_credor - saldo_0272_devedor).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+
+    total_curto_prazo, q2, q3 = read_current_total_curto_prazo(dtas_root)
+    ajuste = (valor_correto - total_curto_prazo).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+
+    updated_root = apply_adjustment(dtas_root, ajuste)
+
+    xml_bytes = ET.tostring(updated_root, encoding='utf-8', xml_declaration=True)
+
+    details = {
+        'saldo_0271_credor': saldo_0271_credor,
+        'saldo_0272_devedor': saldo_0272_devedor,
+        'valor_correto': valor_correto,
+        'q2': q2,
+        'q3': q3,
+        'total_curto_prazo_atual': total_curto_prazo,
+        'ajuste': ajuste,
+    }
+    return xml_bytes, details
+
+
+def main():
+    st.set_page_config(page_title='Retificação XML BA/DTAS', layout='wide')
+    st.title('Retificação XML BA / DTAS')
+    st.caption('Carrega o XML BA (referência) e o XML DTAS (a corrigir). A app aplica automaticamente as mesmas regras de cálculo e atualização.')
+
+    with st.expander('Regras aplicadas', expanded=False):
+        st.markdown(
+            '''
+- Usa apenas os valores `BA04` do ficheiro BA.
+- Calcula o valor correto como: **crédito da conta 02.7.1 - débito da conta 02.7.2**.
+- No ficheiro DTAS, lê o total atual da dívida a curto prazo como **Q2 + Q3**:
+  - `DTAS1 > TotalDividaPorNaturezaDespesaCurtoPrazo`
+  - `DTAS2 > TotalDividaPorNaturezaDespesaCurtoPrazo`
+- O ajuste é a diferença entre o valor correto e esse total atual.
+- O ajuste é aplicado apenas nestes campos:
+  - `DTAS1`: `TotalDividaVincendaCurtoPrazo`, `TotalDividaPorNaturezaDespesaCurtoPrazo`, `TotalGeralDividaPorNaturezaDespesa`
+  - `DTAS15`: `TotalDividaVincendaCurtoPrazo`, `TotalDividaPorNaturezaDespesaCurtoPrazo`, `TotalGeralDividaPorNaturezaDespesa`
+  - `DTAS151`: `DividaVincendaCurtoPrazo`, `TotalDividaPorNaturezaDespesaCurtoPrazo`, `TotalDividaPorNaturezaDespesa`
+            '''
+        )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        ba_file = st.file_uploader('XML BA (referência)', type=['xml'], key='ba')
+    with col2:
+        dtas_file = st.file_uploader('XML DTAS (a retificar)', type=['xml'], key='dtas')
+
+    if ba_file and dtas_file:
+        if st.button('Processar ficheiros', type='primary'):
+            try:
+                output_xml, details = process_xmls(ba_file.getvalue(), dtas_file.getvalue())
+
+                st.success('Ficheiro retificado com sucesso.')
+
+                c1, c2, c3 = st.columns(3)
+                c1.metric('0271 credor (BA04)', fmt_dec(details['saldo_0271_credor']))
+                c2.metric('0272 devedor (BA04)', fmt_dec(details['saldo_0272_devedor']))
+                c3.metric('Valor correto', fmt_dec(details['valor_correto']))
+
+                c4, c5, c6 = st.columns(3)
+                c4.metric('Q2', fmt_dec(details['q2']))
+                c5.metric('Q3', fmt_dec(details['q3']))
+                c6.metric('Q2 + Q3', fmt_dec(details['total_curto_prazo_atual']))
+
+                st.metric('Ajuste aplicado', fmt_dec(details['ajuste']))
+
+                original_name = dtas_file.name.rsplit('.', 1)[0]
+                download_name = f'{original_name}_retificado.xml'
+
+                st.download_button(
+                    label='Descarregar XML retificado',
+                    data=output_xml,
+                    file_name=download_name,
+                    mime='application/xml',
+                )
+
+                with st.expander('Pré-visualização do XML retificado'):
+                    st.code(output_xml.decode('utf-8'), language='xml')
+
+            except Exception as e:
+                st.error(f'Erro ao processar os ficheiros: {e}')
+
+
+if __name__ == '__main__':
+    main()
