@@ -6,58 +6,72 @@ import pandas as pd
 import streamlit as st
 
 # =========================================================
+# ⚙️ Estado global
+# =========================================================
+if "mapping_dict" not in st.session_state:
+    st.session_state.mapping_dict = {}
+
+if "missing_codes" not in st.session_state:
+    st.session_state.missing_codes = set()
+
+# =========================================================
 # ⚙️ Funções de Mapeamento
 # =========================================================
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
-    """Lê o ficheiro de mapeamentos (detecta separador automaticamente)."""
     try:
         df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
         mapping = {}
         c_col, e_col = df.columns[0], df.columns[1]
+
         for _, row in df.iterrows():
             c = re.sub(r"\D", "", str(row[c_col])).zfill(6)
             e = str(row[e_col]).strip().replace(".0", "").replace(" ", "")
+
             if c and e and e.lower() != "nan":
                 mapping[c] = e
+
         return mapping, df
+
     except Exception as e:
         st.error(f"❌ Erro ao carregar mapeamento: {e}")
         return {}, None
 
 
 # =========================================================
-# 🧩 Lógica de Transformação Rígida
+# 🧩 Transformação + deteção de erros
 # =========================================================
-def transform_line(line: str, mapping: Dict[str, str], expected_len: int = None) -> str:
-    """Transforma uma linha mantendo colunas fixas e apenas 1 espaço antes da entidade."""
+def transform_line(line: str, mapping: Dict[str, str], expected_len: int = None):
     original_len = len(line)
     if expected_len is None:
         expected_len = original_len
 
-    # 1️⃣ Corrigir Coluna 12 (Posição 11)
+    missing_found = set()
+
+    # 1️⃣ Corrigir Coluna 12
     if len(line) >= 12 and line[11] == "0":
         line = line[:11] + " " + line[12:]
 
-    # 2️⃣ Corrigir CC "+93  " -> "+9197"
+    # 2️⃣ Corrigir CC
     line = re.sub(r"\+93\s\s", "+9197", line)
 
-    # 3️⃣ Substituir Convenção → Entidade (mantendo alinhamento)
-    m = re.search(r"^(\S+)(\s+)(\S+)", line)
-    if m:
-        token2 = m.group(3)
-        start_pos, end_pos = m.start(3), m.end(3)
+    # 3️⃣ Processar tokens
+    parts = line.split(maxsplit=2)
+
+    if len(parts) >= 2:
+        token2 = parts[1]
 
         matched_conv = next(
             (c for c in sorted(mapping.keys(), key=len, reverse=True) if c in token2),
             None
         )
+
         if matched_conv:
             ent_code = mapping[matched_conv]
+
             try:
                 ent7 = f"{int(ent_code):07d}"
 
-                # tenta substituir "0"+convenção primeiro, senão substitui a convenção
                 pattern7 = "0" + matched_conv
                 if pattern7 in token2:
                     new_token2 = token2.replace(pattern7, ent7, 1)
@@ -65,49 +79,46 @@ def transform_line(line: str, mapping: Dict[str, str], expected_len: int = None)
                     idx = token2.find(matched_conv)
                     new_token2 = token2[:idx] + ent7 + token2[idx + len(matched_conv):]
 
-                # ✅ Correção específica: linhas 903/904/906 — retirar apenas o '0' inicial do token2
-                if line.startswith(("903", "904", "906")) and new_token2.startswith("0"):
+                if line.lstrip().startswith(("903", "904", "906")) and new_token2.startswith("0"):
                     new_token2 = new_token2[1:]
 
-                # manter largura original do token2 (rigidez)
                 new_token2 = new_token2.ljust(len(token2))
 
-                # Garante apenas 1 espaço antes da entidade
-                pre_space = line[:start_pos].rstrip() + " "
-                post_content = line[end_pos:]
+                # reconstrução segura
+                prefix = line[:line.find(token2)]
+                suffix = line[line.find(token2) + len(token2):]
 
-                new_line = pre_space + new_token2 + post_content
+                line = prefix.rstrip() + " " + new_token2 + suffix
 
-                # Ajuste de comprimento total
-                if len(new_line) > expected_len:
-                    new_line = new_line[:expected_len]
-                elif len(new_line) < expected_len:
-                    new_line = new_line.ljust(expected_len)
-
-                line = new_line
-
-            except ValueError:
+            except:
                 pass
 
-    # 4️⃣ Remover NIF no fim (9 dígitos) mantendo espaço único
-    line = re.sub(r"\s\d{9}$", " ", line)
+        else:
+            # 🔍 detetar possíveis códigos não mapeados
+            possible_codes = re.findall(r"\d{6}", token2)
+            for code in possible_codes:
+                if code not in mapping:
+                    missing_found.add(code)
 
-    # 5️⃣ Garantir comprimento fixo final
+    # 4️⃣ Remover NIF
+    line = re.sub(r"\s\d{9}\s*$", " ", line)
+
+    # 5️⃣ Ajuste comprimento
     if len(line) > expected_len:
         line = line[:expected_len]
     elif len(line) < expected_len:
         line = line.ljust(expected_len)
 
-    return line
+    return line, missing_found
 
 
+# =========================================================
+# 📄 Utilitários
+# =========================================================
 def split_keep_eol(text: str):
-    """
-    Divide em linhas preservando EOL (\n / \r\n).
-    Devolve lista de tuplos: (linha_sem_eol, eol_original)
-    """
     parts = text.splitlines(keepends=True)
     out = []
+
     for p in parts:
         if p.endswith("\r\n"):
             out.append((p[:-2], "\r\n"))
@@ -116,12 +127,12 @@ def split_keep_eol(text: str):
         elif p.endswith("\r"):
             out.append((p[:-1], "\r"))
         else:
-            out.append((p, ""))  # última linha pode não ter EOL
+            out.append((p, ""))
+
     return out
 
 
 def guess_default_eol(text: str) -> str:
-    """Escolhe EOL mais provável para o ficheiro."""
     if "\r\n" in text:
         return "\r\n"
     if "\n" in text:
@@ -132,77 +143,127 @@ def guess_default_eol(text: str) -> str:
 
 
 # =========================================================
-# 🎨 Interface Streamlit
+# 🎨 Interface
 # =========================================================
-st.set_page_config(page_title="Conversor MCDT/Termas (Formato Rígido)", layout="wide")
-st.title("🏥 Conversor de ficheiros MCDT / Termas — Formato Rígido v2026")
-st.caption("Mantém colunas fixas, garante 1 espaço antes da entidade e preserva EOL para o ERP.")
+st.set_page_config(page_title="Conversor MCDT", layout="wide")
+st.title("🏥 Conversor MCDT / Termas — com Auto-Aprendizagem")
 
-mapping_dict, _ = load_default_mapping("mapeamentos.csv")
+# carregar mapping inicial
+if not st.session_state.mapping_dict:
+    mapping_dict, _ = load_default_mapping("mapeamentos.csv")
+    st.session_state.mapping_dict = mapping_dict
 
-if not mapping_dict:
-    st.error("⚠️ Ficheiro 'mapeamentos.csv' não encontrado ou inválido.")
-else:
-    st.success(f"✅ Mapeamento carregado com {len(mapping_dict)} códigos válidos.")
+mapping_dict = st.session_state.mapping_dict
 
-    uploaded_files = st.file_uploader("📂 Submeta ficheiros para conversão individual", accept_multiple_files=True)
+st.success(f"✅ Mapeamentos ativos: {len(mapping_dict)}")
 
-    if uploaded_files:
-        for f in uploaded_files:
-            content = f.read()
+# botão refresh
+if st.button("🔄 Recarregar mapeamento original"):
+    st.cache_data.clear()
+    st.session_state.mapping_dict = load_default_mapping("mapeamentos.csv")[0]
+    st.rerun()
+
+# upload ficheiros
+uploaded_files = st.file_uploader("📂 Submeter ficheiros", accept_multiple_files=True)
+
+# =========================================================
+# 🚀 PROCESSAMENTO
+# =========================================================
+if uploaded_files:
+    for f in uploaded_files:
+        content = f.read()
+
+        try:
+            text = content.decode("utf-8-sig")
+        except:
             try:
-                text = content.decode("utf-8-sig")
-            except UnicodeDecodeError:
-                try:
-                    text = content.decode("utf-8")
-                except UnicodeDecodeError:
-                    text = content.decode("latin-1")
+                text = content.decode("utf-8")
+            except:
+                text = content.decode("latin-1")
 
-            default_eol = guess_default_eol(text)
-            lines_with_eol = split_keep_eol(text)
-            total = len(lines_with_eol)
+        default_eol = guess_default_eol(text)
+        lines = split_keep_eol(text)
 
-            st.info(f"📄 Ficheiro **{f.name}** contém {total:,} linhas. A processar...")
+        total = len(lines)
+        progress = st.progress(0)
 
-            progress = st.progress(0, text="A converter...")
-            processed_parts = []
-            len_diff = 0
+        processed = []
+        missing_all = set()
 
-            for i, (line_body, eol) in enumerate(lines_with_eol):
-                if not line_body.strip():
-                    processed_parts.append(line_body + eol)
-                    continue
+        for i, (line_body, eol) in enumerate(lines):
 
-                expected_len = len(line_body)
-                new_body = transform_line(line_body, mapping_dict, expected_len)
+            if not line_body.strip():
+                processed.append(line_body + eol)
+                continue
 
-                if len(new_body) != expected_len:
-                    len_diff += 1
+            new_line, missing = transform_line(line_body, mapping_dict)
 
-                # 🔒 Preservar exactamente o EOL original
-                processed_parts.append(new_body + eol)
+            missing_all.update(missing)
+            processed.append(new_line + eol)
 
-                if i % 50 == 0 or i == total - 1:
-                    progress.progress(i / total)
+            if i % 500 == 0 or i == total - 1:
+                progress.progress(i / total)
 
-            progress.progress(1.0, text="Conversão concluída ✅")
+        progress.progress(1.0)
 
-            # ✅ Garantir que o ficheiro termina com newline (muitos ERPs exigem)
-            output = "".join(processed_parts)
-            if not output.endswith(("\r\n", "\n", "\r")):
-                output += default_eol
+        # guardar missing
+        st.session_state.missing_codes.update(missing_all)
 
-            st.success(f"✅ Conversão terminada para {f.name}")
-            st.write(f"📏 Linhas processadas: {total:,}")
-            st.write(f"⚠️ Linhas ajustadas em comprimento: {len_diff:,}")
-            st.write(f"↩️ EOL detetado/forçado no fim: `{default_eol.encode('unicode_escape').decode()}`")
+        output = "".join(processed)
 
-            output_bytes = output.encode("utf-8")
+        if not output.endswith(("\n", "\r\n", "\r")):
+            output += default_eol
 
-            st.download_button(
-                label=f"📥 Guardar ficheiro corrigido — {f.name}",
-                data=output_bytes,
-                file_name=f"CORRIGIDO_{f.name}",
-                mime="text/plain",
-                key=f"download_{f.name}"
-            )
+        st.success(f"✅ {f.name} convertido")
+
+        st.download_button(
+            f"📥 Download {f.name}",
+            output.encode("utf-8"),
+            f"CORRIGIDO_{f.name}",
+            "text/plain"
+        )
+
+# =========================================================
+# 🧠 UI de aprendizagem
+# =========================================================
+if st.session_state.missing_codes:
+
+    st.warning("⚠️ Existem códigos sem mapeamento")
+
+    new_entries = {}
+
+    for code in sorted(st.session_state.missing_codes):
+        col1, col2 = st.columns([1, 2])
+
+        with col1:
+            st.write(f"Conv: {code}")
+
+        with col2:
+            val = st.text_input(f"Entidade", key=f"input_{code}")
+            if val:
+                new_entries[code] = val
+
+    if st.button("💾 Guardar novos mapeamentos"):
+        for k, v in new_entries.items():
+            st.session_state.mapping_dict[k] = v
+
+        st.session_state.missing_codes.clear()
+
+        st.success("✅ Mapeamentos atualizados!")
+        st.rerun()
+
+    # export CSV atualizado
+    if st.button("📤 Exportar CSV atualizado"):
+        df = pd.DataFrame(
+            list(st.session_state.mapping_dict.items()),
+            columns=["Convencao", "Entidade"]
+        )
+
+        csv = df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            "📥 Download CSV",
+            csv,
+            "mapeamentos_atualizado.csv",
+            "text/csv"
+        )
