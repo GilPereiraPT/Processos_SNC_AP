@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Página: Conversor de Centros de Custo 2024 ➔ 2025 (v2027.9 - comprimento fixo garantido)"""
+"""Página: Conversor de Centros de Custo 2024 ➔ 2025 (v2027.10 - fallback 9197)"""
 
 import streamlit as st
 import zipfile
@@ -240,8 +240,12 @@ def _find_last_sign_pos(body: bytes) -> int:
 def corrigir_linha_bytes(line_b: bytes):
     """
     Encontra o CC após o último +/− e substitui por mapeamento.
-    Se o novo CC tiver mais dígitos, consome espaços imediatamente a seguir ao CC.
-    Mantém o comprimento final igual ao original.
+
+    Regras:
+    - Se existir mapeamento, usa o CC convertido.
+    - Se o CC não existir no dicionário de mapeamento, usa por defeito 9197.
+    - Se o novo CC tiver mais dígitos, consome espaços imediatamente a seguir ao CC.
+    - Mantém o comprimento final exatamente igual ao original.
     """
     body, eol = _split_eol(line_b)
     orig_len = len(body)
@@ -261,10 +265,13 @@ def corrigir_linha_bytes(line_b: bytes):
         return line_b, None, None, "CC_INVALIDO"
 
     cc_old = cc_old_b.decode("ascii")
-    cc_new = MAPEAMENTO_CC.get(cc_old, "919909")
+
+    # ✅ Novo comportamento:
+    # Se o CC não existir no mapeamento, assume 9197 por defeito.
+    cc_new = MAPEAMENTO_CC.get(cc_old, "9197")
     cc_new_b = cc_new.encode("ascii")
 
-    field_len = end - start  # comprimento original do CC (ex.: 7)
+    field_len = end - start  # comprimento original do CC
 
     # ✅ Se o CC novo for maior, tenta expandir para a direita consumindo espaços
     if len(cc_new_b) > field_len:
@@ -273,10 +280,10 @@ def corrigir_linha_bytes(line_b: bytes):
             end += extra
             field_len += extra
         else:
-            # se não houver espaços, truncar para manter comprimento
+            # Se não houver espaços suficientes, trunca para manter comprimento fixo
             cc_new_b = cc_new_b[:field_len]
 
-    # ajustar CC ao tamanho do campo (agora pode ser maior do que o original)
+    # Ajustar CC ao tamanho do campo
     if len(cc_new_b) < field_len:
         cc_new_b = cc_new_b.ljust(field_len, b" ")
     elif len(cc_new_b) > field_len:
@@ -284,14 +291,18 @@ def corrigir_linha_bytes(line_b: bytes):
 
     new_body = body[:start] + cc_new_b + body[end:]
 
-    # 🔒 Garantir comprimento EXACTO do body
+    # 🔒 Garantir comprimento EXATO do body
     if len(new_body) != orig_len:
         if len(new_body) < orig_len:
             new_body = new_body.ljust(orig_len, b" ")
         else:
             new_body = new_body[:orig_len]
 
-    status = "OK" if cc_new != "919909" else "FALLBACK"
+    # ✅ Estado correto:
+    # OK = o CC original existia no mapeamento
+    # FALLBACK = o CC original não existia e foi convertido por defeito para 9197
+    status = "OK" if cc_old in MAPEAMENTO_CC else "FALLBACK"
+
     return new_body + eol, cc_old, cc_new, status
 
 
@@ -306,7 +317,7 @@ def processar_ficheiro(uploaded_file):
     sem_sinal = 0
     cc_invalido = 0
 
-    # amostras para debug
+    # Amostras para debug
     samples = []
 
     for line_b in linhas:
@@ -337,12 +348,22 @@ def processar_ficheiro(uploaded_file):
 # =========================================================
 # 🖥️ Interface Streamlit
 # =========================================================
-st.set_page_config(page_title="Conversor de Centros de Custo 2024 ➔ 2025", layout="wide")
-st.title("🛠️ Conversor de Centros de Custo 2024 ➔ 2025 — v2027.9")
-st.caption("Mantém comprimento fixo. Substitui CC após o último +/−. Se o novo CC for maior, consome espaços a seguir. Fallback: '919909'.")
+st.set_page_config(
+    page_title="Conversor de Centros de Custo 2024 ➔ 2025",
+    layout="wide"
+)
+
+st.title("🛠️ Conversor de Centros de Custo 2024 ➔ 2025 — v2027.10")
+st.caption(
+    "Mantém comprimento fixo. Substitui CC após o último +/−. "
+    "Se o novo CC for maior, consome espaços a seguir. "
+    "Fallback: '9197'."
+)
 
 uploaded_files = st.sidebar.file_uploader(
-    "📂 Selecionar ficheiros TXT", type=["txt"], accept_multiple_files=True
+    "📂 Selecionar ficheiros TXT",
+    type=["txt"],
+    accept_multiple_files=True
 )
 
 if uploaded_files:
@@ -357,22 +378,24 @@ if uploaded_files:
             out_b, total, ok, fallback, sem_sinal, cc_invalido, samples = processar_ficheiro(uf)
 
             novo_nome = uf.name.replace(".txt", "_CORRIGIDO.txt")
+
             st.sidebar.download_button(
                 "📥 Descarregar TXT Corrigido",
                 data=io.BytesIO(out_b),
                 file_name=novo_nome,
                 mime="text/plain",
             )
+
             progress_bar.progress(1.0)
 
             st.info(f"📊 Total de linhas: {total:,}")
             st.success(f"✅ Linhas com mapeamento: {ok:,}")
-            st.warning(f"⚠️ Fallback '919909': {fallback:,}")
+            st.warning(f"⚠️ Fallback '9197': {fallback:,}")
             st.error(f"❌ Sem sinal +/− encontrado: {sem_sinal:,}")
             st.error(f"❌ CC inválido após sinal: {cc_invalido:,}")
 
             if samples:
-                with st.expander("🔎 Amostras de linhas problemáticas (primeiros 180 bytes)"):
+                with st.expander("🔎 Amostras de linhas problemáticas — primeiros 180 bytes"):
                     for status, chunk in samples:
                         st.write(status, chunk)
 
@@ -393,8 +416,13 @@ if uploaded_files:
                     cc_inv_all += cc_invalido
 
                     progress_bar.progress((idx + 1) / len(uploaded_files))
+
                     log.append(
-                        f"✅ {uf.name} — ok:{ok} fallback:{fallback} sem_sinal:{sem_sinal} cc_invalido:{cc_invalido}"
+                        f"✅ {uf.name} — "
+                        f"mapeadas:{ok} | "
+                        f"fallback 9197:{fallback} | "
+                        f"sem_sinal:{sem_sinal} | "
+                        f"cc_invalido:{cc_invalido}"
                     )
 
             buffer_zip.seek(0)
@@ -410,7 +438,7 @@ if uploaded_files:
 
             st.info(f"📊 Total de linhas: {total_all:,}")
             st.success(f"✅ Linhas com mapeamento: {ok_all:,}")
-            st.warning(f"⚠️ Fallback '919909': {fallback_all:,}")
+            st.warning(f"⚠️ Fallback '9197': {fallback_all:,}")
             st.error(f"❌ Sem sinal +/−: {sem_sinal_all:,}")
             st.error(f"❌ CC inválido: {cc_inv_all:,}")
 
