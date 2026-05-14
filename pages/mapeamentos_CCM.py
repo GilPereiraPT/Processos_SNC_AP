@@ -6,10 +6,21 @@ import pandas as pd
 import streamlit as st
 
 # =========================================================
+# ⚙️ Configuração
+# =========================================================
+MAPPING_PATH = "mapeamentos.csv"
+MAPPING_SEPARATOR = ";"
+MAPPING_HEADER_CONV = "Cod. Convencao"
+MAPPING_HEADER_ENTITY = "Cod. Entidade"
+
+# =========================================================
 # ⚙️ Estado global
 # =========================================================
 if "mapping_dict" not in st.session_state:
     st.session_state.mapping_dict = {}
+
+if "mapping_df" not in st.session_state:
+    st.session_state.mapping_df = None
 
 # Estrutura:
 # {
@@ -27,24 +38,91 @@ if "missing_codes" not in st.session_state or not isinstance(st.session_state.mi
 
 
 # =========================================================
-# ⚙️ Funções de Mapeamento
+# ⚙️ Funções auxiliares de normalização
+# =========================================================
+def normalize_mapping_key(value: str) -> str:
+    """
+    Normaliza a convenção apenas para uso interno na app.
+    Mantém o princípio que já existia:
+    - remove tudo o que não é dígito
+    - completa à esquerda até 6 dígitos
+
+    Importante:
+    Isto NÃO altera o valor guardado no CSV exportado.
+    """
+    digits = re.sub(r"\D", "", str(value))
+    return digits.zfill(6) if digits else ""
+
+
+def normalize_entity_value(value: str) -> str:
+    """
+    Limpa o código de entidade introduzido pelo utilizador,
+    mantendo apenas dígitos.
+    """
+    return re.sub(r"\D", "", str(value))
+
+
+def convention_for_csv(value: str) -> str:
+    """
+    Valor a guardar no CSV.
+
+    Mantém o código de convenção sem zeros artificiais à esquerda,
+    tal como no ficheiro original funcional:
+        202448;9803476
+
+    Se internamente existir '000401', exporta '401'.
+    """
+    digits = re.sub(r"\D", "", str(value))
+
+    if not digits:
+        return ""
+
+    # Remove zeros à esquerda, mas preserva "0" se fosse o único valor
+    return str(int(digits))
+
+
+# =========================================================
+# ⚙️ Carregar mapeamentos
 # =========================================================
 @st.cache_data(ttl=3600)
 def load_default_mapping(
-    path: str = "mapeamentos.csv"
+    path: str = MAPPING_PATH
 ) -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
     try:
-        df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
+        df = pd.read_csv(
+            path,
+            sep=MAPPING_SEPARATOR,
+            encoding="utf-8-sig",
+            dtype=str,
+            keep_default_na=False
+        )
+
+        # Garantir que o ficheiro tem as colunas esperadas
+        required_columns = [MAPPING_HEADER_CONV, MAPPING_HEADER_ENTITY]
+
+        if list(df.columns[:2]) != required_columns:
+            raise ValueError(
+                "O CSV de mapeamentos não tem o formato esperado. "
+                f"Esperado: {MAPPING_HEADER_CONV};{MAPPING_HEADER_ENTITY}"
+            )
+
+        # Ficar apenas com as duas colunas necessárias
+        df = df[[MAPPING_HEADER_CONV, MAPPING_HEADER_ENTITY]].copy()
+
+        # Limpeza mínima, sem alterar a estrutura do CSV
+        df[MAPPING_HEADER_CONV] = df[MAPPING_HEADER_CONV].astype(str).str.strip()
+        df[MAPPING_HEADER_ENTITY] = df[MAPPING_HEADER_ENTITY].astype(str).str.strip()
+
         mapping = {}
 
-        c_col, e_col = df.columns[0], df.columns[1]
-
         for _, row in df.iterrows():
-            c = re.sub(r"\D", "", str(row[c_col])).zfill(6)
-            e = str(row[e_col]).strip().replace(".0", "").replace(" ", "")
+            conv_csv = str(row[MAPPING_HEADER_CONV]).strip()
+            entity = normalize_entity_value(row[MAPPING_HEADER_ENTITY])
 
-            if c and e and e.lower() != "nan":
-                mapping[c] = e
+            conv_internal = normalize_mapping_key(conv_csv)
+
+            if conv_internal and entity:
+                mapping[conv_internal] = entity
 
         return mapping, df
 
@@ -63,7 +141,7 @@ def extract_missing_convention_from_token2(token2: str) -> Optional[str]:
         0 + 6 algarismos
 
     Exemplo:
-        0123456ABC...  -> devolve 123456
+        0202448ABC...  -> devolve 202448
 
     Não procura algarismos noutras partes do token.
     Não inventa candidatos.
@@ -159,8 +237,11 @@ def transform_line(
             # -------------------------------------------------
             candidate = extract_missing_convention_from_token2(token2)
 
-            if candidate and candidate not in mapping:
-                missing_code = candidate
+            if candidate:
+                candidate_internal = normalize_mapping_key(candidate)
+
+                if candidate_internal not in mapping:
+                    missing_code = candidate_internal
 
     # -----------------------------------------------------
     # 4️⃣ Remover NIF final
@@ -179,7 +260,7 @@ def transform_line(
 
 
 # =========================================================
-# 📄 Utilitários
+# 📄 Utilitários de texto
 # =========================================================
 def split_keep_eol(text: str):
     parts = text.splitlines(keepends=True)
@@ -223,11 +304,75 @@ def register_missing_code(
     occurrence_key = f"{filename}|{line_number}|{original_line}"
 
     st.session_state.missing_codes[code][occurrence_key] = {
-        "Convencao": code,
+        "Convencao": convention_for_csv(code),
         "Ficheiro": filename,
         "Linha": line_number,
         "Conteudo da linha": original_line
     }
+
+
+# =========================================================
+# 📤 Construir CSV atualizado de forma segura
+# =========================================================
+def build_updated_mapping_dataframe() -> pd.DataFrame:
+    """
+    Parte SEMPRE do DataFrame original carregado do CSV
+    e acrescenta apenas os mapeamentos novos existentes na sessão.
+
+    Não reconstrói o histórico inteiro a partir do dicionário.
+    Isto evita perdas de dados e preserva o formato base do CSV.
+    """
+    if st.session_state.mapping_df is None:
+        return pd.DataFrame(
+            columns=[MAPPING_HEADER_CONV, MAPPING_HEADER_ENTITY]
+        )
+
+    df = st.session_state.mapping_df.copy()
+
+    # Mapeamentos já presentes no CSV, normalizados internamente
+    existing_internal_codes = set(
+        df[MAPPING_HEADER_CONV]
+        .astype(str)
+        .apply(normalize_mapping_key)
+        .tolist()
+    )
+
+    rows_to_add = []
+
+    for conv_internal, entity_code in st.session_state.mapping_dict.items():
+        if conv_internal not in existing_internal_codes:
+            rows_to_add.append({
+                MAPPING_HEADER_CONV: convention_for_csv(conv_internal),
+                MAPPING_HEADER_ENTITY: normalize_entity_value(entity_code)
+            })
+
+    if rows_to_add:
+        df_new = pd.DataFrame(rows_to_add)
+        df = pd.concat([df, df_new], ignore_index=True)
+
+    return df
+
+
+def build_mapping_csv_bytes() -> bytes:
+    """
+    Gera CSV exatamente com:
+        Cod. Convencao;Cod. Entidade
+        202448;9803476
+
+    - separador ;
+    - UTF-8 com BOM
+    - sem índice
+    """
+    df = build_updated_mapping_dataframe()
+
+    csv_text = df.to_csv(
+        index=False,
+        sep=MAPPING_SEPARATOR,
+        encoding="utf-8-sig",
+        lineterminator="\n"
+    )
+
+    return csv_text.encode("utf-8-sig")
 
 
 # =========================================================
@@ -240,23 +385,29 @@ st.title("🏥 Conversor MCDT / Termas — com deteção de convenções em falt
 # Carregar mapping inicial
 # ---------------------------------------------------------
 if not st.session_state.mapping_dict:
-    mapping_dict, _ = load_default_mapping("mapeamentos.csv")
+    mapping_dict, mapping_df = load_default_mapping(MAPPING_PATH)
     st.session_state.mapping_dict = mapping_dict
+    st.session_state.mapping_df = mapping_df
 
 mapping_dict = st.session_state.mapping_dict
 
 st.success(f"✅ Mapeamentos ativos: {len(mapping_dict)}")
 
 # ---------------------------------------------------------
-# Botão refresh
+# Botões de controlo
 # ---------------------------------------------------------
 col_a, col_b = st.columns([1, 2])
 
 with col_a:
     if st.button("🔄 Recarregar mapeamento original"):
         st.cache_data.clear()
-        st.session_state.mapping_dict = load_default_mapping("mapeamentos.csv")[0]
+
+        mapping_dict, mapping_df = load_default_mapping(MAPPING_PATH)
+
+        st.session_state.mapping_dict = mapping_dict
+        st.session_state.mapping_df = mapping_df
         st.session_state.missing_codes = {}
+
         st.rerun()
 
 with col_b:
@@ -392,66 +543,67 @@ if st.session_state.missing_codes:
 
     new_entries = {}
 
-    for code in sorted(st.session_state.missing_codes.keys()):
-        occurrences_count = len(st.session_state.missing_codes[code])
+    for code_internal in sorted(st.session_state.missing_codes.keys()):
+        occurrences_count = len(st.session_state.missing_codes[code_internal])
+        code_display = convention_for_csv(code_internal)
 
         col1, col2, col3 = st.columns([1.2, 2, 1.2])
 
         with col1:
-            st.markdown(f"**Convenção:** `{code}`")
+            st.markdown(f"**Convenção:** `{code_display}`")
 
         with col2:
             val = st.text_input(
-                f"Entidade para {code}",
-                key=f"input_entity_{code}",
+                f"Entidade para {code_display}",
+                key=f"input_entity_{code_internal}",
                 placeholder="Introduzir código da entidade",
                 label_visibility="collapsed"
             )
 
             if val:
-                val_clean = re.sub(r"\D", "", val)
+                val_clean = normalize_entity_value(val)
 
                 if val_clean:
-                    new_entries[code] = val_clean
+                    new_entries[code_internal] = val_clean
 
         with col3:
             st.caption(f"{occurrences_count} ocorrência(s)")
 
     # -----------------------------------------------------
-    # 💾 Guardar novos mapeamentos
+    # 💾 Guardar novos mapeamentos na sessão
     # -----------------------------------------------------
-    if st.button("💾 Guardar novos mapeamentos"):
+    if st.button("💾 Guardar novos mapeamentos na sessão"):
         if not new_entries:
             st.warning("⚠️ Não foi preenchido qualquer código de entidade.")
         else:
-            for conv_code, entity_code in new_entries.items():
-                st.session_state.mapping_dict[conv_code] = entity_code
+            for conv_code_internal, entity_code in new_entries.items():
+                st.session_state.mapping_dict[conv_code_internal] = entity_code
 
-                # Remove da lista de faltas apenas os que ficaram mapeados
-                if conv_code in st.session_state.missing_codes:
-                    del st.session_state.missing_codes[conv_code]
+                if conv_code_internal in st.session_state.missing_codes:
+                    del st.session_state.missing_codes[conv_code_internal]
 
             st.success(
-                f"✅ Foram atualizados {len(new_entries)} mapeamentos. "
-                f"Volte a processar ou descarregue o CSV atualizado."
+                f"✅ Foram adicionados {len(new_entries)} mapeamentos à sessão. "
+                f"Já podem ser usados ao voltar a processar os ficheiros."
             )
             st.rerun()
 
 # =========================================================
-# 📤 Exportação do CSV atualizado
+# 📤 Exportação SEGURA do CSV atualizado
 # =========================================================
 st.divider()
-st.subheader("📤 Exportar mapeamentos")
+st.subheader("📤 Exportar mapeamentos atualizados")
 
-df_export = pd.DataFrame(
-    sorted(st.session_state.mapping_dict.items()),
-    columns=["Convencao", "Entidade"]
+st.info(
+    "O ficheiro exportado mantém o formato correto: "
+    "`Cod. Convencao;Cod. Entidade`. "
+    "É construído a partir do CSV original e apenas acrescenta os novos mapeamentos introduzidos nesta sessão."
 )
 
-csv_export = df_export.to_csv(index=False).encode("utf-8-sig")
+csv_export = build_mapping_csv_bytes()
 
 st.download_button(
-    "📥 Download CSV de mapeamentos atualizado",
+    "📥 Download mapeamentos_atualizado.csv",
     csv_export,
     "mapeamentos_atualizado.csv",
     "text/csv"
