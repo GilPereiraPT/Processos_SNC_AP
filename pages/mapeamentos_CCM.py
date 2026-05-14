@@ -11,17 +11,32 @@ import streamlit as st
 if "mapping_dict" not in st.session_state:
     st.session_state.mapping_dict = {}
 
-if "missing_codes" not in st.session_state:
-    st.session_state.missing_codes = set()
+# Estrutura:
+# {
+#   "123456": {
+#       "ficheiro|linha|texto": {
+#           "Convencao": "123456",
+#           "Ficheiro": "ficheiro.txt",
+#           "Linha": 15,
+#           "Conteudo da linha": "..."
+#       }
+#   }
+# }
+if "missing_codes" not in st.session_state or not isinstance(st.session_state.missing_codes, dict):
+    st.session_state.missing_codes = {}
+
 
 # =========================================================
 # ⚙️ Funções de Mapeamento
 # =========================================================
 @st.cache_data(ttl=3600)
-def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
+def load_default_mapping(
+    path: str = "mapeamentos.csv"
+) -> Tuple[Dict[str, str], Optional[pd.DataFrame]]:
     try:
         df = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
         mapping = {}
+
         c_col, e_col = df.columns[0], df.columns[1]
 
         for _, row in df.iterrows():
@@ -39,30 +54,67 @@ def load_default_mapping(path: str = "mapeamentos.csv") -> Tuple[Dict[str, str],
 
 
 # =========================================================
-# 🧩 Transformação + deteção de erros
+# 🔍 Detetar convenção em falta
 # =========================================================
-def transform_line(line: str, mapping: Dict[str, str], expected_len: int = None):
+def extract_missing_convention_from_token2(token2: str) -> Optional[str]:
+    """
+    Só considera convenção em falta quando o segundo token começa
+    exatamente pelo padrão que o ficheiro usa:
+        0 + 6 algarismos
+
+    Exemplo:
+        0123456ABC...  -> devolve 123456
+
+    Não procura algarismos noutras partes do token.
+    Não inventa candidatos.
+    """
+    match = re.match(r"^0(\d{6})", token2)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+# =========================================================
+# 🧩 Transformação + deteção de convenções em falta
+# =========================================================
+def transform_line(
+    line: str,
+    mapping: Dict[str, str],
+    expected_len: int = None
+):
     original_len = len(line)
+
     if expected_len is None:
         expected_len = original_len
 
-    missing_found = set()
+    missing_code = None
 
+    # -----------------------------------------------------
     # 1️⃣ Corrigir Coluna 12
+    # -----------------------------------------------------
     if len(line) >= 12 and line[11] == "0":
         line = line[:11] + " " + line[12:]
 
+    # -----------------------------------------------------
     # 2️⃣ Corrigir CC
+    # -----------------------------------------------------
     line = re.sub(r"\+93\s\s", "+9197", line)
 
+    # -----------------------------------------------------
     # 3️⃣ Processar tokens
+    # -----------------------------------------------------
     parts = line.split(maxsplit=2)
 
     if len(parts) >= 2:
         token2 = parts[1]
 
+        # Procura uma convenção já existente nos mapeamentos
         matched_conv = next(
-            (c for c in sorted(mapping.keys(), key=len, reverse=True) if c in token2),
+            (
+                c for c in sorted(mapping.keys(), key=len, reverse=True)
+                if c in token2
+            ),
             None
         )
 
@@ -73,43 +125,57 @@ def transform_line(line: str, mapping: Dict[str, str], expected_len: int = None)
                 ent7 = f"{int(ent_code):07d}"
 
                 pattern7 = "0" + matched_conv
+
                 if pattern7 in token2:
                     new_token2 = token2.replace(pattern7, ent7, 1)
                 else:
                     idx = token2.find(matched_conv)
-                    new_token2 = token2[:idx] + ent7 + token2[idx + len(matched_conv):]
+                    new_token2 = (
+                        token2[:idx]
+                        + ent7
+                        + token2[idx + len(matched_conv):]
+                    )
 
+                # Linhas especiais 903 / 904 / 906
                 if line.lstrip().startswith(("903", "904", "906")) and new_token2.startswith("0"):
                     new_token2 = new_token2[1:]
 
+                # Manter o comprimento original do token
                 new_token2 = new_token2.ljust(len(token2))
 
-                # reconstrução segura
+                # Reconstrução segura da linha
                 prefix = line[:line.find(token2)]
                 suffix = line[line.find(token2) + len(token2):]
 
                 line = prefix.rstrip() + " " + new_token2 + suffix
 
-            except:
+            except Exception:
                 pass
 
         else:
-            # 🔍 detetar possíveis códigos não mapeados
-            possible_codes = re.findall(r"\d{6}", token2)
-            for code in possible_codes:
-                if code not in mapping:
-                    missing_found.add(code)
+            # -------------------------------------------------
+            # 🔍 Só regista como falta a convenção real
+            # existente no início do token2
+            # -------------------------------------------------
+            candidate = extract_missing_convention_from_token2(token2)
 
-    # 4️⃣ Remover NIF
+            if candidate and candidate not in mapping:
+                missing_code = candidate
+
+    # -----------------------------------------------------
+    # 4️⃣ Remover NIF final
+    # -----------------------------------------------------
     line = re.sub(r"\s\d{9}\s*$", " ", line)
 
-    # 5️⃣ Ajuste comprimento
+    # -----------------------------------------------------
+    # 5️⃣ Ajuste do comprimento final
+    # -----------------------------------------------------
     if len(line) > expected_len:
         line = line[:expected_len]
     elif len(line) < expected_len:
         line = line.ljust(expected_len)
 
-    return line, missing_found
+    return line, missing_code
 
 
 # =========================================================
@@ -142,13 +208,37 @@ def guess_default_eol(text: str) -> str:
     return "\n"
 
 
+def register_missing_code(
+    code: str,
+    filename: str,
+    line_number: int,
+    original_line: str
+):
+    """
+    Guarda a ocorrência sem duplicar em reruns do Streamlit.
+    """
+    if code not in st.session_state.missing_codes:
+        st.session_state.missing_codes[code] = {}
+
+    occurrence_key = f"{filename}|{line_number}|{original_line}"
+
+    st.session_state.missing_codes[code][occurrence_key] = {
+        "Convencao": code,
+        "Ficheiro": filename,
+        "Linha": line_number,
+        "Conteudo da linha": original_line
+    }
+
+
 # =========================================================
 # 🎨 Interface
 # =========================================================
 st.set_page_config(page_title="Conversor MCDT", layout="wide")
-st.title("🏥 Conversor MCDT / Termas — com Auto-Aprendizagem")
+st.title("🏥 Conversor MCDT / Termas — com deteção de convenções em falta")
 
-# carregar mapping inicial
+# ---------------------------------------------------------
+# Carregar mapping inicial
+# ---------------------------------------------------------
 if not st.session_state.mapping_dict:
     mapping_dict, _ = load_default_mapping("mapeamentos.csv")
     st.session_state.mapping_dict = mapping_dict
@@ -157,14 +247,30 @@ mapping_dict = st.session_state.mapping_dict
 
 st.success(f"✅ Mapeamentos ativos: {len(mapping_dict)}")
 
-# botão refresh
-if st.button("🔄 Recarregar mapeamento original"):
-    st.cache_data.clear()
-    st.session_state.mapping_dict = load_default_mapping("mapeamentos.csv")[0]
-    st.rerun()
+# ---------------------------------------------------------
+# Botão refresh
+# ---------------------------------------------------------
+col_a, col_b = st.columns([1, 2])
 
-# upload ficheiros
-uploaded_files = st.file_uploader("📂 Submeter ficheiros", accept_multiple_files=True)
+with col_a:
+    if st.button("🔄 Recarregar mapeamento original"):
+        st.cache_data.clear()
+        st.session_state.mapping_dict = load_default_mapping("mapeamentos.csv")[0]
+        st.session_state.missing_codes = {}
+        st.rerun()
+
+with col_b:
+    if st.button("🧹 Limpar lista de convenções em falta"):
+        st.session_state.missing_codes = {}
+        st.rerun()
+
+# ---------------------------------------------------------
+# Upload ficheiros
+# ---------------------------------------------------------
+uploaded_files = st.file_uploader(
+    "📂 Submeter ficheiros",
+    accept_multiple_files=True
+)
 
 # =========================================================
 # 🚀 PROCESSAMENTO
@@ -175,10 +281,10 @@ if uploaded_files:
 
         try:
             text = content.decode("utf-8-sig")
-        except:
+        except UnicodeDecodeError:
             try:
                 text = content.decode("utf-8")
-            except:
+            except UnicodeDecodeError:
                 text = content.decode("latin-1")
 
         default_eol = guess_default_eol(text)
@@ -188,7 +294,7 @@ if uploaded_files:
         progress = st.progress(0)
 
         processed = []
-        missing_all = set()
+        missing_found_in_file = set()
 
         for i, (line_body, eol) in enumerate(lines):
 
@@ -196,18 +302,24 @@ if uploaded_files:
                 processed.append(line_body + eol)
                 continue
 
-            new_line, missing = transform_line(line_body, mapping_dict)
+            new_line, missing_code = transform_line(line_body, mapping_dict)
 
-            missing_all.update(missing)
+            if missing_code:
+                missing_found_in_file.add(missing_code)
+
+                register_missing_code(
+                    code=missing_code,
+                    filename=f.name,
+                    line_number=i + 1,
+                    original_line=line_body
+                )
+
             processed.append(new_line + eol)
 
             if i % 500 == 0 or i == total - 1:
-                progress.progress(i / total)
+                progress.progress((i + 1) / total)
 
         progress.progress(1.0)
-
-        # guardar missing
-        st.session_state.missing_codes.update(missing_all)
 
         output = "".join(processed)
 
@@ -216,54 +328,131 @@ if uploaded_files:
 
         st.success(f"✅ {f.name} convertido")
 
+        if missing_found_in_file:
+            st.warning(
+                f"⚠️ Neste ficheiro foram encontradas "
+                f"{len(missing_found_in_file)} convenções sem mapeamento."
+            )
+
         st.download_button(
             f"📥 Download {f.name}",
             output.encode("utf-8"),
             f"CORRIGIDO_{f.name}",
-            "text/plain"
+            "text/plain",
+            key=f"download_{f.name}"
         )
 
 # =========================================================
-# 🧠 UI de aprendizagem
+# 🧠 UI de atualização dos mapeamentos
 # =========================================================
 if st.session_state.missing_codes:
 
-    st.warning("⚠️ Existem códigos sem mapeamento")
+    st.divider()
+    st.warning("⚠️ Convenções detetadas sem mapeamento")
+
+    total_missing_codes = len(st.session_state.missing_codes)
+    total_occurrences = sum(
+        len(occurrences)
+        for occurrences in st.session_state.missing_codes.values()
+    )
+
+    st.write(
+        f"Foram identificadas **{total_missing_codes} convenções distintas** "
+        f"sem mapeamento, em **{total_occurrences} ocorrências**."
+    )
+
+    # -----------------------------------------------------
+    # 📋 Tabela com linhas completas onde ocorreu o erro
+    # -----------------------------------------------------
+    all_missing_rows = []
+
+    for code, occurrences in st.session_state.missing_codes.items():
+        for record in occurrences.values():
+            all_missing_rows.append(record)
+
+    if all_missing_rows:
+        df_missing = pd.DataFrame(all_missing_rows)
+        df_missing = df_missing.sort_values(
+            by=["Convencao", "Ficheiro", "Linha"],
+            ascending=[True, True, True]
+        )
+
+        st.subheader("📋 Linhas onde foram encontradas convenções sem mapeamento")
+
+        st.dataframe(
+            df_missing,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    # -----------------------------------------------------
+    # ✍️ Introdução dos novos códigos de entidade
+    # -----------------------------------------------------
+    st.subheader("✍️ Atualizar mapeamentos em falta")
 
     new_entries = {}
 
-    for code in sorted(st.session_state.missing_codes):
-        col1, col2 = st.columns([1, 2])
+    for code in sorted(st.session_state.missing_codes.keys()):
+        occurrences_count = len(st.session_state.missing_codes[code])
+
+        col1, col2, col3 = st.columns([1.2, 2, 1.2])
 
         with col1:
-            st.write(f"Conv: {code}")
+            st.markdown(f"**Convenção:** `{code}`")
 
         with col2:
-            val = st.text_input(f"Entidade", key=f"input_{code}")
+            val = st.text_input(
+                f"Entidade para {code}",
+                key=f"input_entity_{code}",
+                placeholder="Introduzir código da entidade",
+                label_visibility="collapsed"
+            )
+
             if val:
-                new_entries[code] = val
+                val_clean = re.sub(r"\D", "", val)
 
+                if val_clean:
+                    new_entries[code] = val_clean
+
+        with col3:
+            st.caption(f"{occurrences_count} ocorrência(s)")
+
+    # -----------------------------------------------------
+    # 💾 Guardar novos mapeamentos
+    # -----------------------------------------------------
     if st.button("💾 Guardar novos mapeamentos"):
-        for k, v in new_entries.items():
-            st.session_state.mapping_dict[k] = v
+        if not new_entries:
+            st.warning("⚠️ Não foi preenchido qualquer código de entidade.")
+        else:
+            for conv_code, entity_code in new_entries.items():
+                st.session_state.mapping_dict[conv_code] = entity_code
 
-        st.session_state.missing_codes.clear()
+                # Remove da lista de faltas apenas os que ficaram mapeados
+                if conv_code in st.session_state.missing_codes:
+                    del st.session_state.missing_codes[conv_code]
 
-        st.success("✅ Mapeamentos atualizados!")
-        st.rerun()
+            st.success(
+                f"✅ Foram atualizados {len(new_entries)} mapeamentos. "
+                f"Volte a processar ou descarregue o CSV atualizado."
+            )
+            st.rerun()
 
-    # export CSV atualizado
-    if st.button("📤 Exportar CSV atualizado"):
-        df = pd.DataFrame(
-            list(st.session_state.mapping_dict.items()),
-            columns=["Convencao", "Entidade"]
-        )
+# =========================================================
+# 📤 Exportação do CSV atualizado
+# =========================================================
+st.divider()
+st.subheader("📤 Exportar mapeamentos")
 
-        csv = df.to_csv(index=False).encode("utf-8")
+df_export = pd.DataFrame(
+    sorted(st.session_state.mapping_dict.items()),
+    columns=["Convencao", "Entidade"]
+)
 
-        st.download_button(
-            "📥 Download CSV",
-            csv,
-            "mapeamentos_atualizado.csv",
-            "text/csv"
-        )
+csv_export = df_export.to_csv(index=False).encode("utf-8-sig")
+
+st.download_button(
+    "📥 Download CSV de mapeamentos atualizado",
+    csv_export,
+    "mapeamentos_atualizado.csv",
+    "text/csv"
+)
