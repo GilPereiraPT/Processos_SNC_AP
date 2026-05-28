@@ -46,34 +46,52 @@ def hash_ficheiro(path: Path) -> str:
     return h.hexdigest()
 
 
+def eh_pdf(ficheiro: Path) -> bool:
+    try:
+        if ficheiro.suffix.lower() == ".pdf":
+            return True
+
+        with open(ficheiro, "rb") as f:
+            assinatura = f.read(5)
+
+        return assinatura == b"%PDF-"
+
+    except Exception:
+        return False
+
+
 def listar_pdfs(pasta: str) -> list[Path]:
     caminho = Path(pasta)
 
     if not caminho.exists():
         return []
 
-    pdfs = []
+    ficheiros_pdf = []
 
     try:
         for ficheiro in caminho.rglob("*"):
             try:
-                if ficheiro.is_file() and ficheiro.suffix.lower() == ".pdf":
-                    pdfs.append(ficheiro)
+                if ficheiro.is_file() and eh_pdf(ficheiro):
+                    ficheiros_pdf.append(ficheiro)
             except Exception:
                 pass
+
     except Exception:
         pass
 
-    return sorted(pdfs)
+    return sorted(ficheiros_pdf)
 
 
 def ler_texto_pdf(path: Path) -> str:
     try:
         reader = PdfReader(str(path))
         texto = []
+
         for page in reader.pages:
             texto.append(page.extract_text() or "")
+
         return "\n".join(texto)
+
     except Exception:
         return ""
 
@@ -140,6 +158,31 @@ def extrair_numero_nc(texto: str) -> str:
 
 def extrair_fornecedor(texto: str, tipo: str) -> str:
     if tipo == "Apifarma":
+        texto_norm = normalizar_texto(texto or "")
+
+        fornecedores = [
+            "Lilly Portugal",
+            "ASTRAZENECA",
+            "Glaxosmith",
+            "GlaxoSmithKline",
+            "SERVIER",
+            "BAYER",
+            "NOVARTIS",
+            "PFIZER",
+            "SANOFI",
+            "JANSSEN",
+            "MSD",
+            "ROCHE",
+            "BOEHRINGER",
+            "TEVA",
+            "MERCK",
+            "BIAL",
+        ]
+
+        for fornecedor in fornecedores:
+            if fornecedor.lower() in texto_norm.lower():
+                return fornecedor.upper()
+
         return "APIFARMA"
 
     if tipo == "Payback":
@@ -159,7 +202,12 @@ def sincronizar_pdfs(rede: str, local: str) -> tuple[int, int, list[str]]:
     erros = []
 
     for pdf_origem in pdfs:
-        pdf_destino = destino / pdf_origem.name
+        nome_destino = pdf_origem.name
+
+        if not Path(nome_destino).suffix:
+            nome_destino = nome_destino + ".pdf"
+
+        pdf_destino = destino / nome_destino
 
         try:
             if not pdf_destino.exists():
@@ -310,10 +358,29 @@ with col3:
 
 
 if testar_local:
-    pdfs_local = listar_pdfs(pasta_local)
+    pasta = Path(pasta_local)
 
     st.write("Pasta local:")
     st.code(pasta_local)
+
+    st.write("A pasta existe?")
+    st.write(pasta.exists())
+
+    try:
+        todos = list(pasta.iterdir())
+        st.write(f"Total de elementos encontrados: {len(todos)}")
+
+        if todos:
+            st.write("Primeiros elementos encontrados:")
+            for item in todos[:20]:
+                st.write(
+                    f"{item.name} | suffix: `{item.suffix}` | ficheiro: {item.is_file()}"
+                )
+
+    except Exception as e:
+        st.error(f"Erro ao listar pasta: {e}")
+
+    pdfs_local = listar_pdfs(pasta_local)
 
     st.success(f"PDFs encontrados localmente: {len(pdfs_local)}")
 
