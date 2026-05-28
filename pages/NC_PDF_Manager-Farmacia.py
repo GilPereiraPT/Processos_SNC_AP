@@ -13,12 +13,12 @@ from pypdf import PdfReader
 
 PASTAS_NC = {
     "Apifarma": {
-        "pasta": r"G:\Comum\Notas de Crédito\Apifarma",
-        "excel": r"G:\Comum\Notas de Crédito\Apifarma\Mapa_Notas_Credito_Apifarma.xlsx",
+        "pasta": r"C:\Temp\Notas de Crédito\Apifarma",
+        "excel": r"C:\Temp\Notas de Crédito\Apifarma\Mapa_Notas_Credito_Apifarma.xlsx",
     },
     "Payback": {
-        "pasta": r"G:\Comum\Notas de Crédito\Payback",
-        "excel": r"G:\Comum\Notas de Crédito\Payback\Mapa_Notas_Credito_Payback.xlsx",
+        "pasta": r"C:\Temp\Notas de Crédito\Payback",
+        "excel": r"C:\Temp\Notas de Crédito\Payback\Mapa_Notas_Credito_Payback.xlsx",
     },
 }
 
