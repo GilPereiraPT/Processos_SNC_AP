@@ -46,6 +46,27 @@ def hash_ficheiro(path: Path) -> str:
     return h.hexdigest()
 
 
+def listar_pdfs(pasta: str) -> list[Path]:
+    caminho = Path(pasta)
+
+    if not caminho.exists():
+        return []
+
+    pdfs = []
+
+    try:
+        for ficheiro in caminho.rglob("*"):
+            try:
+                if ficheiro.is_file() and ficheiro.suffix.lower() == ".pdf":
+                    pdfs.append(ficheiro)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return sorted(pdfs)
+
+
 def ler_texto_pdf(path: Path) -> str:
     try:
         reader = PdfReader(str(path))
@@ -62,21 +83,20 @@ def normalizar_texto(texto: str) -> str:
 
 
 def extrair_data_nc(texto: str) -> str:
-    texto = normalizar_texto(texto)
+    texto_norm = normalizar_texto(texto or "")
 
-    padroes = [
-        r"\b(\d{2}[/-]\d{2}[/-]\d{4})\b",
-        r"\b(\d{4}[/-]\d{2}[/-]\d{2})\b",
-    ]
+    m = re.search(
+        r"Data\s+do\s+documento\s+(\d{2}[/-]\d{2}[/-]\d{4})",
+        texto_norm,
+        flags=re.IGNORECASE,
+    )
 
-    for padrao in padroes:
-        m = re.search(padrao, texto)
-        if not m:
-            continue
+    if not m:
+        m = re.search(r"\b(\d{2}[/-]\d{2}[/-]\d{4})\b", texto_norm)
 
+    if m:
         valor = m.group(1)
-
-        for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%Y/%m/%d"):
+        for fmt in ("%d-%m-%Y", "%d/%m/%Y"):
             try:
                 return datetime.strptime(valor, fmt).strftime("%Y-%m-%d")
             except ValueError:
@@ -86,7 +106,23 @@ def extrair_data_nc(texto: str) -> str:
 
 
 def extrair_numero_nc(texto: str) -> str:
-    texto = normalizar_texto(texto)
+    texto_norm = normalizar_texto(texto or "")
+
+    m = re.search(
+        r"Documento\s*n[.ºo]*\s*[:\-]?\s*([A-Z]{1,5}\s+[A-Z0-9]+\/[0-9]+)",
+        texto_norm,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip()
+
+    m = re.search(
+        r"\b(RE\s+[A-Z0-9]+\/[0-9]+)\b",
+        texto_norm,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).strip()
 
     padroes = [
         r"(?:Nota\s+de\s+Cr[eé]dito|Nota\s+Cr[eé]dito|NC|N\.?\s*C\.?)\s*(?:n[.ºo]*|n[uú]mero)?\s*[:\-]?\s*([A-Z0-9\/\-_\.]+)",
@@ -95,7 +131,7 @@ def extrair_numero_nc(texto: str) -> str:
     ]
 
     for padrao in padroes:
-        m = re.search(padrao, texto, flags=re.IGNORECASE)
+        m = re.search(padrao, texto_norm, flags=re.IGNORECASE)
         if m:
             return m.group(1).strip(" .;:")
 
@@ -113,15 +149,10 @@ def extrair_fornecedor(texto: str, tipo: str) -> str:
 
 
 def sincronizar_pdfs(rede: str, local: str) -> tuple[int, int, list[str]]:
-    origem = Path(rede)
     destino = Path(local)
-
     destino.mkdir(parents=True, exist_ok=True)
 
-    try:
-        pdfs = list(origem.glob("*.pdf"))
-    except Exception as e:
-        raise Exception(f"Erro ao aceder à pasta de rede: {e}")
+    pdfs = listar_pdfs(rede)
 
     copiados = 0
     ignorados = 0
@@ -168,15 +199,13 @@ def processar_pdf(path: Path, tipo: str) -> dict:
 
 
 def processar_pasta(pasta: str, tipo: str) -> pd.DataFrame:
-    caminho = Path(pasta)
-
-    if not caminho.exists():
-        return pd.DataFrame(columns=COLUNAS)
-
     registos = []
 
-    for pdf in sorted(caminho.glob("*.pdf")):
-        registos.append(processar_pdf(pdf, tipo))
+    for pdf in listar_pdfs(pasta):
+        try:
+            registos.append(processar_pdf(pdf, tipo))
+        except Exception as e:
+            print(f"Erro a processar {pdf.name}: {e}")
 
     return pd.DataFrame(registos, columns=COLUNAS)
 
@@ -271,7 +300,7 @@ st.info(f"**Excel de destino:** `{ficheiro_excel}`")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    verificar_rede = st.button("Testar leitura da pasta")
+    testar_local = st.button("Testar pasta local")
 
 with col2:
     sincronizar = st.button(f"Sincronizar PDFs - {tipo}", type="primary")
@@ -280,18 +309,18 @@ with col3:
     atualizar = st.button(f"Atualizar Excel - {tipo}")
 
 
-if verificar_rede:
-    try:
-        pdfs = list(Path(pasta_rede).glob("*.pdf"))
-        st.success(f"Leitura efetuada. PDFs encontrados: {len(pdfs)}.")
+if testar_local:
+    pdfs_local = listar_pdfs(pasta_local)
 
-        if pdfs:
-            st.write("Primeiros ficheiros encontrados:")
-            for pdf in pdfs[:10]:
-                st.write(pdf.name)
+    st.write("Pasta local:")
+    st.code(pasta_local)
 
-    except Exception as e:
-        st.error(f"Erro ao ler a pasta: {e}")
+    st.success(f"PDFs encontrados localmente: {len(pdfs_local)}")
+
+    if pdfs_local:
+        st.write("Primeiros PDFs encontrados:")
+        for pdf in pdfs_local[:20]:
+            st.write(pdf.name)
 
 
 if sincronizar:
@@ -301,6 +330,9 @@ if sincronizar:
         st.success("Sincronização concluída.")
         st.write(f"**PDFs copiados/atualizados:** {copiados}")
         st.write(f"**PDFs ignorados porque já existiam:** {ignorados}")
+
+        pdfs_local = listar_pdfs(pasta_local)
+        st.write(f"**PDFs existentes agora na pasta local:** {len(pdfs_local)}")
 
         if erros:
             st.warning(f"Ocorreram erros em {len(erros)} ficheiros.")
@@ -343,12 +375,17 @@ st.subheader("Como usar")
 
 st.markdown(
     """
-1. Escolher **Apifarma** ou **Payback**.
-2. Clicar em **Testar leitura da pasta**.
-3. Clicar em **Sincronizar PDFs**.
+1. Copiar ou sincronizar os PDFs para a pasta local.
+2. Clicar em **Testar pasta local**.
+3. Confirmar que os PDFs são encontrados.
 4. Clicar em **Atualizar Excel**.
 
-O Excel fica guardado localmente em:
+Pastas locais usadas:
+
+- `C:\\Temp\\Notas de Crédito\\Apifarma`
+- `C:\\Temp\\Notas de Crédito\\Payback`
+
+Excels gerados:
 
 - `C:\\Temp\\Notas de Crédito\\Apifarma\\Mapa_Notas_Credito_Apifarma.xlsx`
 - `C:\\Temp\\Notas de Crédito\\Payback\\Mapa_Notas_Credito_Payback.xlsx`
