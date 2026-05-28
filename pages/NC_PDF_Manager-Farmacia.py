@@ -12,12 +12,12 @@ from pypdf import PdfReader
 
 PASTAS_NC = {
     "Apifarma": {
-        "rede": r"\\HLA-KELLY-01\Comum\Notas de Crédito\Apifarma",
+        "rede": r"G:\Comum\Notas de Crédito\Apifarma",
         "local": r"C:\Temp\Notas de Crédito\Apifarma",
         "excel": r"C:\Temp\Notas de Crédito\Apifarma\Mapa_Notas_Credito_Apifarma.xlsx",
     },
     "Payback": {
-        "rede": r"\\HLA-KELLY-01\Comum\Notas de Crédito\Payback",
+        "rede": r"G:\Comum\Notas de Crédito\Payback",
         "local": r"C:\Temp\Notas de Crédito\Payback",
         "excel": r"C:\Temp\Notas de Crédito\Payback\Mapa_Notas_Credito_Payback.xlsx",
     },
@@ -40,11 +40,9 @@ COLUNAS = [
 
 def hash_ficheiro(path: Path) -> str:
     h = hashlib.sha256()
-
     with open(path, "rb") as f:
         for bloco in iter(lambda: f.read(1024 * 1024), b""):
             h.update(bloco)
-
     return h.hexdigest()
 
 
@@ -52,12 +50,9 @@ def ler_texto_pdf(path: Path) -> str:
     try:
         reader = PdfReader(str(path))
         texto = []
-
         for page in reader.pages:
             texto.append(page.extract_text() or "")
-
         return "\n".join(texto)
-
     except Exception:
         return ""
 
@@ -114,63 +109,45 @@ def extrair_fornecedor(texto: str, tipo: str) -> str:
     if tipo == "Payback":
         return "PAYBACK"
 
-    linhas = [l.strip() for l in (texto or "").splitlines() if l.strip()]
-
-    rejeitar = [
-        "nota de crédito",
-        "nota credito",
-        "nif",
-        "contribuinte",
-        "data",
-        "documento",
-        "cliente",
-        "total",
-        "iva",
-    ]
-
-    for linha in linhas[:15]:
-        linha_limpa = normalizar_texto(linha)
-
-        if len(linha_limpa) < 4:
-            continue
-
-        if any(x in linha_limpa.lower() for x in rejeitar):
-            continue
-
-        if re.search(r"\d{4,}", linha_limpa):
-            continue
-
-        return linha_limpa[:120]
-
     return ""
 
 
-def sincronizar_pdfs(rede: str, local: str) -> tuple[int, int]:
+def sincronizar_pdfs(rede: str, local: str) -> tuple[int, int, list[str]]:
     origem = Path(rede)
     destino = Path(local)
 
-    if not origem.exists():
-        raise FileNotFoundError(f"Pasta de rede não encontrada: {rede}")
-
     destino.mkdir(parents=True, exist_ok=True)
+
+    try:
+        pdfs = list(origem.glob("*.pdf"))
+    except Exception as e:
+        raise Exception(f"Erro ao aceder à pasta de rede: {e}")
 
     copiados = 0
     ignorados = 0
+    erros = []
 
-    for pdf_origem in origem.glob("*.pdf"):
+    for pdf_origem in pdfs:
         pdf_destino = destino / pdf_origem.name
 
-        if not pdf_destino.exists():
-            shutil.copy2(pdf_origem, pdf_destino)
-            copiados += 1
-        else:
-            if pdf_origem.stat().st_mtime > pdf_destino.stat().st_mtime:
+        try:
+            if not pdf_destino.exists():
                 shutil.copy2(pdf_origem, pdf_destino)
                 copiados += 1
             else:
-                ignorados += 1
+                try:
+                    if pdf_origem.stat().st_mtime > pdf_destino.stat().st_mtime:
+                        shutil.copy2(pdf_origem, pdf_destino)
+                        copiados += 1
+                    else:
+                        ignorados += 1
+                except Exception:
+                    ignorados += 1
 
-    return copiados, ignorados
+        except Exception as e:
+            erros.append(f"{pdf_origem.name}: {e}")
+
+    return copiados, ignorados, erros
 
 
 def processar_pdf(path: Path, tipo: str) -> dict:
@@ -294,7 +271,7 @@ st.info(f"**Excel de destino:** `{ficheiro_excel}`")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    verificar_rede = st.button("Verificar pasta de rede")
+    verificar_rede = st.button("Testar leitura da pasta")
 
 with col2:
     sincronizar = st.button(f"Sincronizar PDFs - {tipo}", type="primary")
@@ -302,26 +279,41 @@ with col2:
 with col3:
     atualizar = st.button(f"Atualizar Excel - {tipo}")
 
+
 if verificar_rede:
-    if Path(pasta_rede).exists():
-        qtd_pdfs = len(list(Path(pasta_rede).glob("*.pdf")))
-        st.success(f"Pasta de rede encontrada. PDFs encontrados: {qtd_pdfs}.")
-    else:
-        st.error("A pasta de rede não foi encontrada ou não tens permissões de acesso.")
+    try:
+        pdfs = list(Path(pasta_rede).glob("*.pdf"))
+        st.success(f"Leitura efetuada. PDFs encontrados: {len(pdfs)}.")
+
+        if pdfs:
+            st.write("Primeiros ficheiros encontrados:")
+            for pdf in pdfs[:10]:
+                st.write(pdf.name)
+
+    except Exception as e:
+        st.error(f"Erro ao ler a pasta: {e}")
+
 
 if sincronizar:
     try:
-        copiados, ignorados = sincronizar_pdfs(pasta_rede, pasta_local)
+        copiados, ignorados, erros = sincronizar_pdfs(pasta_rede, pasta_local)
+
         st.success("Sincronização concluída.")
         st.write(f"**PDFs copiados/atualizados:** {copiados}")
         st.write(f"**PDFs ignorados porque já existiam:** {ignorados}")
+
+        if erros:
+            st.warning(f"Ocorreram erros em {len(erros)} ficheiros.")
+            with st.expander("Ver erros"):
+                for erro in erros:
+                    st.write(erro)
+
     except Exception as e:
         st.error(f"Erro na sincronização: {e}")
 
+
 if atualizar:
-    if not Path(pasta_local).exists():
-        st.error("A pasta local ainda não existe. Primeiro faz a sincronização dos PDFs.")
-        st.stop()
+    Path(pasta_local).mkdir(parents=True, exist_ok=True)
 
     with st.spinner("A ler PDFs locais e a atualizar o Excel..."):
         df_existente = carregar_excel(ficheiro_excel)
@@ -344,6 +336,7 @@ if atualizar:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
+
 st.divider()
 
 st.subheader("Como usar")
@@ -351,11 +344,11 @@ st.subheader("Como usar")
 st.markdown(
     """
 1. Escolher **Apifarma** ou **Payback**.
-2. Clicar em **Verificar pasta de rede**.
+2. Clicar em **Testar leitura da pasta**.
 3. Clicar em **Sincronizar PDFs**.
 4. Clicar em **Atualizar Excel**.
 
-O Excel fica guardado em:
+O Excel fica guardado localmente em:
 
 - `C:\\Temp\\Notas de Crédito\\Apifarma\\Mapa_Notas_Credito_Apifarma.xlsx`
 - `C:\\Temp\\Notas de Crédito\\Payback\\Mapa_Notas_Credito_Payback.xlsx`
