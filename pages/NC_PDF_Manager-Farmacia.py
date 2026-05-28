@@ -1,23 +1,24 @@
 import hashlib
-import io
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
 from pypdf import PdfReader
 
 
 PASTAS_NC = {
     "Apifarma": {
-        "pasta": r"C:\Temp\Notas de Crédito\Apifarma",
+        "rede": r"\\HLA-KELLY-01\Comum\Notas de Crédito\Apifarma",
+        "local": r"C:\Temp\Notas de Crédito\Apifarma",
         "excel": r"C:\Temp\Notas de Crédito\Apifarma\Mapa_Notas_Credito_Apifarma.xlsx",
     },
     "Payback": {
-        "pasta": r"C:\Temp\Notas de Crédito\Payback",
+        "rede": r"\\HLA-KELLY-01\Comum\Notas de Crédito\Payback",
+        "local": r"C:\Temp\Notas de Crédito\Payback",
         "excel": r"C:\Temp\Notas de Crédito\Payback\Mapa_Notas_Credito_Payback.xlsx",
     },
 }
@@ -39,9 +40,11 @@ COLUNAS = [
 
 def hash_ficheiro(path: Path) -> str:
     h = hashlib.sha256()
+
     with open(path, "rb") as f:
         for bloco in iter(lambda: f.read(1024 * 1024), b""):
             h.update(bloco)
+
     return h.hexdigest()
 
 
@@ -49,9 +52,12 @@ def ler_texto_pdf(path: Path) -> str:
     try:
         reader = PdfReader(str(path))
         texto = []
+
         for page in reader.pages:
             texto.append(page.extract_text() or "")
+
         return "\n".join(texto)
+
     except Exception:
         return ""
 
@@ -137,6 +143,34 @@ def extrair_fornecedor(texto: str, tipo: str) -> str:
         return linha_limpa[:120]
 
     return ""
+
+
+def sincronizar_pdfs(rede: str, local: str) -> tuple[int, int]:
+    origem = Path(rede)
+    destino = Path(local)
+
+    if not origem.exists():
+        raise FileNotFoundError(f"Pasta de rede não encontrada: {rede}")
+
+    destino.mkdir(parents=True, exist_ok=True)
+
+    copiados = 0
+    ignorados = 0
+
+    for pdf_origem in origem.glob("*.pdf"):
+        pdf_destino = destino / pdf_origem.name
+
+        if not pdf_destino.exists():
+            shutil.copy2(pdf_origem, pdf_destino)
+            copiados += 1
+        else:
+            if pdf_origem.stat().st_mtime > pdf_destino.stat().st_mtime:
+                shutil.copy2(pdf_origem, pdf_destino)
+                copiados += 1
+            else:
+                ignorados += 1
+
+    return copiados, ignorados
 
 
 def processar_pdf(path: Path, tipo: str) -> dict:
@@ -242,48 +276,62 @@ st.set_page_config(
 )
 
 st.title("📄 Notas de Crédito PDF")
-st.caption("Atualização automática dos mapas Excel da Apifarma e Payback.")
+st.caption("Sincroniza PDFs da rede para o PC e atualiza os mapas Excel da Apifarma e Payback.")
 
 tipo = st.selectbox(
-    "Escolha o diretório a atualizar",
+    "Escolha o diretório a tratar",
     list(PASTAS_NC.keys()),
 )
 
-pasta_pdf = PASTAS_NC[tipo]["pasta"]
+pasta_rede = PASTAS_NC[tipo]["rede"]
+pasta_local = PASTAS_NC[tipo]["local"]
 ficheiro_excel = PASTAS_NC[tipo]["excel"]
 
-st.info(f"**Pasta dos PDFs:** `{pasta_pdf}`")
+st.info(f"**Pasta de rede:** `{pasta_rede}`")
+st.info(f"**Pasta local:** `{pasta_local}`")
 st.info(f"**Excel de destino:** `{ficheiro_excel}`")
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    atualizar = st.button(f"Atualizar Excel - {tipo}", type="primary")
+    verificar_rede = st.button("Verificar pasta de rede")
 
 with col2:
-    abrir_pasta = st.button("Verificar existência da pasta")
+    sincronizar = st.button(f"Sincronizar PDFs - {tipo}", type="primary")
 
-if abrir_pasta:
-    if Path(pasta_pdf).exists():
-        qtd_pdfs = len(list(Path(pasta_pdf).glob("*.pdf")))
-        st.success(f"Pasta encontrada. Foram encontrados {qtd_pdfs} PDFs.")
+with col3:
+    atualizar = st.button(f"Atualizar Excel - {tipo}")
+
+if verificar_rede:
+    if Path(pasta_rede).exists():
+        qtd_pdfs = len(list(Path(pasta_rede).glob("*.pdf")))
+        st.success(f"Pasta de rede encontrada. PDFs encontrados: {qtd_pdfs}.")
     else:
-        st.error("A pasta não foi encontrada. Confirma se a unidade G: está acessível.")
+        st.error("A pasta de rede não foi encontrada ou não tens permissões de acesso.")
+
+if sincronizar:
+    try:
+        copiados, ignorados = sincronizar_pdfs(pasta_rede, pasta_local)
+        st.success("Sincronização concluída.")
+        st.write(f"**PDFs copiados/atualizados:** {copiados}")
+        st.write(f"**PDFs ignorados porque já existiam:** {ignorados}")
+    except Exception as e:
+        st.error(f"Erro na sincronização: {e}")
 
 if atualizar:
-    if not Path(pasta_pdf).exists():
-        st.error("A pasta não foi encontrada. Confirma se a unidade G: está acessível.")
+    if not Path(pasta_local).exists():
+        st.error("A pasta local ainda não existe. Primeiro faz a sincronização dos PDFs.")
         st.stop()
 
-    with st.spinner("A ler PDFs e a atualizar o Excel..."):
+    with st.spinner("A ler PDFs locais e a atualizar o Excel..."):
         df_existente = carregar_excel(ficheiro_excel)
-        df_lidos = processar_pasta(pasta_pdf, tipo)
+        df_lidos = processar_pasta(pasta_local, tipo)
         df_final, novos = atualizar_mapa(df_existente, df_lidos)
         gravar_excel(df_final, ficheiro_excel)
 
     st.success("Excel atualizado com sucesso.")
-    st.write(f"**PDFs lidos na pasta:** {len(df_lidos)}")
-    st.write(f"**Novos PDFs adicionados:** {novos}")
+    st.write(f"**PDFs lidos na pasta local:** {len(df_lidos)}")
+    st.write(f"**Novos PDFs adicionados ao Excel:** {novos}")
     st.write(f"**Total de linhas no Excel:** {len(df_final)}")
 
     st.dataframe(df_final, use_container_width=True, hide_index=True)
@@ -298,23 +346,20 @@ if atualizar:
 
 st.divider()
 
-st.subheader("Campos do Excel")
+st.subheader("Como usar")
 
 st.markdown(
     """
-O ficheiro Excel fica com estas colunas:
+1. Escolher **Apifarma** ou **Payback**.
+2. Clicar em **Verificar pasta de rede**.
+3. Clicar em **Sincronizar PDFs**.
+4. Clicar em **Atualizar Excel**.
 
-- **Fornecedor**
-- **Nº NC**
-- **Data NC**
-- **Data de registo** — preenchimento manual por outro serviço
-- **Valor de registo** — preenchimento manual por outro serviço
-- **Nome ficheiro**
-- **Caminho ficheiro**
-- **Hash ficheiro**
-- **Data leitura**
-- **Observações**
+O Excel fica guardado em:
 
-O campo **Hash ficheiro** impede que o mesmo PDF seja acrescentado duas vezes.
+- `C:\\Temp\\Notas de Crédito\\Apifarma\\Mapa_Notas_Credito_Apifarma.xlsx`
+- `C:\\Temp\\Notas de Crédito\\Payback\\Mapa_Notas_Credito_Payback.xlsx`
+
+Os campos **Data de registo**, **Valor de registo** e **Observações** são preservados quando o Excel já existe.
 """
 )
