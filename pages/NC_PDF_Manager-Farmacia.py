@@ -13,6 +13,7 @@ COLUNAS = [
     "Fornecedor",
     "Nº NC",
     "Data NC",
+    "Valor NC",
     "Data de registo",
     "Valor de registo",
     "Nome ficheiro",
@@ -38,37 +39,44 @@ def normalizar_texto(texto: str) -> str:
     return re.sub(r"\s+", " ", texto or "").strip()
 
 
-def extrair_data_nc(texto: str) -> str:
-    texto_norm = normalizar_texto(texto)
+def normalizar_valor(valor: str) -> str:
+    valor = valor.strip()
+    valor = re.sub(r"\s+", "", valor)
+    return valor
 
-    m = re.search(
-        r"Data\s+do\s+documento\s+(\d{2}[/-]\d{2}[/-]\d{4})",
-        texto_norm,
-        flags=re.IGNORECASE,
-    )
 
-    if not m:
-        m = re.search(r"\b(\d{2}[/-]\d{2}[/-]\d{4})\b", texto_norm)
+def extrair_fornecedor(texto: str, tipo: str) -> str:
+    linhas = [l.strip() for l in (texto or "").splitlines() if l.strip()]
 
-    if m:
-        valor = m.group(1)
-        for fmt in ("%d-%m-%Y", "%d/%m/%Y"):
-            try:
-                return datetime.strptime(valor, fmt).strftime("%Y-%m-%d")
-            except ValueError:
-                pass
+    for i, linha in enumerate(linhas):
+        if "NOTA DE CRÉDITO" in linha.upper() or "NOTA DE CREDITO" in linha.upper():
+            for prox in linhas[i + 1 : i + 8]:
+                if len(prox) > 5 and not prox.lower().startswith("este documento"):
+                    return prox.strip()
 
-    return ""
+    if tipo == "Payback":
+        return "PAYBACK"
+
+    return "APIFARMA"
 
 
 def extrair_numero_nc(texto: str) -> str:
+    linhas = [l.strip() for l in (texto or "").splitlines() if l.strip()]
+
+    for i, linha in enumerate(linhas):
+        if re.search(r"documento\s*n[.ºo]*", linha, flags=re.IGNORECASE):
+            janela = " ".join(linhas[i : i + 5])
+            m = re.search(r"\b([A-Z]{1,5}\s+[A-Z0-9]+\/[0-9]+)\b", janela)
+            if m:
+                return m.group(1).strip()
+
     texto_norm = normalizar_texto(texto)
 
     padroes = [
-        r"Documento\s*n[.ºo]*\s*[:\-]?\s*([A-Z]{1,5}\s+[A-Z0-9]+\/[0-9]+)",
         r"\b(RE\s+[A-Z0-9]+\/[0-9]+)\b",
         r"\b(NC\s+[A-Z0-9\/\-_\.]+)\b",
-        r"(?:Nota\s+de\s+Cr[eé]dito|NC|N\.?\s*C\.?)\s*(?:n[.ºo]*|n[uú]mero)?\s*[:\-]?\s*([A-Z0-9\/\-_\.]+)",
+        r"(?:Documento|Doc\.?)\s*n[.ºo]*\s*[:\-]?\s*([A-Z0-9\/\-_\.]+)",
+        r"(?:Nota\s+de\s+Cr[eé]dito|NC|N\.?\s*C\.?)\s*n[.ºo]*\s*[:\-]?\s*([A-Z0-9\/\-_\.]+)",
     ]
 
     for padrao in padroes:
@@ -79,36 +87,52 @@ def extrair_numero_nc(texto: str) -> str:
     return ""
 
 
-def extrair_fornecedor(texto: str, tipo: str) -> str:
+def extrair_data_nc(texto: str) -> str:
+    linhas = [l.strip() for l in (texto or "").splitlines() if l.strip()]
+
+    for i, linha in enumerate(linhas):
+        if re.search(r"data\s+do\s+documento", linha, flags=re.IGNORECASE):
+            janela = " ".join(linhas[i : i + 6])
+            datas = re.findall(r"\b\d{2}[/-]\d{2}[/-]\d{4}\b", janela)
+
+            if datas:
+                return converter_data(datas[0])
+
+    texto_norm = normalizar_texto(texto)
+    datas = re.findall(r"\b\d{2}[/-]\d{2}[/-]\d{4}\b", texto_norm)
+
+    if datas:
+        return converter_data(datas[0])
+
+    return ""
+
+
+def converter_data(valor: str) -> str:
+    for fmt in ("%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(valor, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+
+    return valor
+
+
+def extrair_valor_nc(texto: str) -> str:
     texto_norm = normalizar_texto(texto)
 
-    if tipo == "Payback":
-        return "PAYBACK"
-
-    fornecedores = [
-        "Lilly Portugal",
-        "ASTRAZENECA",
-        "Glaxosmith",
-        "GlaxoSmithKline",
-        "SERVIER",
-        "BAYER",
-        "NOVARTIS",
-        "PFIZER",
-        "SANOFI",
-        "JANSSEN",
-        "MSD",
-        "ROCHE",
-        "BOEHRINGER",
-        "TEVA",
-        "MERCK",
-        "BIAL",
+    padroes = [
+        r"Total\s+a\s+pagar\s+EUR\s+([0-9\s.,]+)",
+        r"Total\s+a\s+pagar\s+([0-9\s.,]+)",
+        r"Total\s+L[ií]quido\s+([0-9\s.,]+)",
+        r"Total\s+IVA\s+EUR\s+[0-9\s.,]+\s+Total\s+L[ií]quido\s+([0-9\s.,]+)",
     ]
 
-    for fornecedor in fornecedores:
-        if fornecedor.lower() in texto_norm.lower():
-            return fornecedor.upper()
+    for padrao in padroes:
+        m = re.search(padrao, texto_norm, flags=re.IGNORECASE)
+        if m:
+            return normalizar_valor(m.group(1))
 
-    return "APIFARMA" if tipo == "Apifarma" else ""
+    return ""
 
 
 def processar_pdf(nome_ficheiro: str, data: bytes, tipo: str) -> dict:
@@ -118,6 +142,7 @@ def processar_pdf(nome_ficheiro: str, data: bytes, tipo: str) -> dict:
         "Fornecedor": extrair_fornecedor(texto, tipo),
         "Nº NC": extrair_numero_nc(texto),
         "Data NC": extrair_data_nc(texto),
+        "Valor NC": extrair_valor_nc(texto),
         "Data de registo": "",
         "Valor de registo": "",
         "Nome ficheiro": nome_ficheiro,
@@ -142,7 +167,6 @@ def carregar_excel(uploaded_excel) -> pd.DataFrame:
 
 def extrair_pdfs_de_zip(uploaded_zip) -> list[tuple[str, bytes]]:
     ficheiros = []
-
     data_zip = uploaded_zip.read()
 
     with zipfile.ZipFile(io.BytesIO(data_zip), "r") as z:
@@ -182,15 +206,16 @@ def excel_bytes(df: pd.DataFrame) -> bytes:
         ws.auto_filter.ref = ws.dimensions
 
         larguras = {
-            "A": 35,
-            "B": 24,
+            "A": 42,
+            "B": 26,
             "C": 14,
-            "D": 18,
+            "D": 16,
             "E": 18,
-            "F": 45,
-            "G": 70,
-            "H": 22,
-            "I": 45,
+            "F": 18,
+            "G": 48,
+            "H": 70,
+            "I": 22,
+            "J": 45,
         }
 
         for col, largura in larguras.items():
@@ -210,9 +235,9 @@ st.caption("Gera o Excel do zero ou atualiza um Excel existente.")
 
 tipo = st.selectbox("Tipo de documentos", ["Apifarma", "Payback"])
 
-st.subheader("1. Excel existente, se já houver")
+st.subheader("1. Excel existente")
 excel_existente = st.file_uploader(
-    "Opcional — carregar Excel existente para preservar Data de registo, Valor de registo e Observações",
+    "Opcional — só carregar se já existir um Excel anterior",
     type=["xlsx"],
 )
 
