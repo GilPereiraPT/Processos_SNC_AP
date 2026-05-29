@@ -5,6 +5,7 @@ from io import BytesIO
 
 import pandas as pd
 import streamlit as st
+from openpyxl.styles import numbers
 
 
 POS_NIF_INI = 10
@@ -43,6 +44,10 @@ def decimal_seguro(valor) -> Decimal:
         return Decimal(texto)
     except InvalidOperation:
         raise ValueError(f"Valor decimal inválido: {valor!r}")
+
+
+def decimal_para_numero(valor: Decimal) -> float:
+    return float(valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def ler_valor_txt(linha: str, ini: int, fim: int) -> Decimal:
@@ -184,6 +189,8 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
     pendentes_out["IRS DMR Antes"] = pd.Series(dtype="object")
     pendentes_out["IRS DMR Depois"] = pd.Series(dtype="object")
     pendentes_out["Categoria DMR"] = pd.Series(dtype="object")
+    pendentes_out["Valor aplicado"] = pd.Series(dtype="object")
+    pendentes_out["IRS aplicado"] = pd.Series(dtype="object")
 
     mapa_dmr = {}
     for item in linhas_006:
@@ -191,19 +198,22 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
 
     for i, row in pendentes_df.iterrows():
         nif = str(row["NIF"]).strip().zfill(9)
-        valor_excel = row["Valor_Decimal"]
-        irs_excel = row["IRS_Decimal"]
+        valor_pendente = row["Valor_Decimal"]
+        irs_pendente = row["IRS_Decimal"]
 
         if nif not in mapa_dmr:
             estado = "NIF não encontrado na DMR com categoria A válida"
+
             pendentes_out.at[i, "Estado"] = estado
+            pendentes_out.at[i, "Valor"] = decimal_para_numero(valor_pendente)
+            pendentes_out.at[i, "IRS"] = decimal_para_numero(irs_pendente)
 
             resultados.append(
                 {
                     "NIF": nif,
                     "Estado": estado,
-                    "Valor Excel": str(valor_excel),
-                    "IRS Excel": str(irs_excel),
+                    "Valor pendente": decimal_para_numero(valor_pendente),
+                    "IRS pendente": decimal_para_numero(irs_pendente),
                 }
             )
             continue
@@ -215,14 +225,17 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
         rendimento_antes = ler_valor_txt(linha, POS_REND_INI, POS_REND_FIM)
         irs_antes = ler_valor_txt(linha, POS_IRS_INI, POS_IRS_FIM)
 
-        rendimento_depois = rendimento_antes + valor_excel
-        irs_depois = irs_antes + irs_excel
+        desconto_valor_pedido = abs(valor_pendente) if valor_pendente < 0 else Decimal("0")
+        desconto_valor_aplicado = min(rendimento_antes, desconto_valor_pedido)
 
-        if rendimento_depois < 0:
-            rendimento_depois = Decimal("0")
+        rendimento_depois = rendimento_antes - desconto_valor_aplicado
+        valor_restante_excel = -(desconto_valor_pedido - desconto_valor_aplicado)
 
-        if irs_depois < 0:
-            irs_depois = Decimal("0")
+        desconto_irs_pedido = abs(irs_pendente) if irs_pendente < 0 else Decimal("0")
+        desconto_irs_aplicado = min(irs_antes, desconto_irs_pedido)
+
+        irs_depois = irs_antes - desconto_irs_aplicado
+        irs_restante_excel = -(desconto_irs_pedido - desconto_irs_aplicado)
 
         linha = substituir_intervalo(
             linha,
@@ -242,24 +255,32 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
 
         estado = "Corrigido"
 
+        pendentes_out.at[i, "Valor"] = decimal_para_numero(valor_restante_excel)
+        pendentes_out.at[i, "IRS"] = decimal_para_numero(irs_restante_excel)
         pendentes_out.at[i, "Estado"] = estado
-        pendentes_out.at[i, "Rendimento DMR Antes"] = str(rendimento_antes)
-        pendentes_out.at[i, "Rendimento DMR Depois"] = str(rendimento_depois)
-        pendentes_out.at[i, "IRS DMR Antes"] = str(irs_antes)
-        pendentes_out.at[i, "IRS DMR Depois"] = str(irs_depois)
+        pendentes_out.at[i, "Rendimento DMR Antes"] = decimal_para_numero(rendimento_antes)
+        pendentes_out.at[i, "Rendimento DMR Depois"] = decimal_para_numero(rendimento_depois)
+        pendentes_out.at[i, "IRS DMR Antes"] = decimal_para_numero(irs_antes)
+        pendentes_out.at[i, "IRS DMR Depois"] = decimal_para_numero(irs_depois)
         pendentes_out.at[i, "Categoria DMR"] = item["categoria"]
+        pendentes_out.at[i, "Valor aplicado"] = decimal_para_numero(-desconto_valor_aplicado)
+        pendentes_out.at[i, "IRS aplicado"] = decimal_para_numero(-desconto_irs_aplicado)
 
         resultados.append(
             {
                 "NIF": nif,
                 "Estado": estado,
                 "Categoria DMR": item["categoria"],
-                "Valor Excel": str(valor_excel),
-                "IRS Excel": str(irs_excel),
-                "Rendimento Antes": str(rendimento_antes),
-                "Rendimento Depois": str(rendimento_depois),
-                "IRS Antes": str(irs_antes),
-                "IRS Depois": str(irs_depois),
+                "Valor pendente inicial": decimal_para_numero(valor_pendente),
+                "Valor aplicado": decimal_para_numero(-desconto_valor_aplicado),
+                "Valor restante Excel": decimal_para_numero(valor_restante_excel),
+                "IRS pendente inicial": decimal_para_numero(irs_pendente),
+                "IRS aplicado": decimal_para_numero(-desconto_irs_aplicado),
+                "IRS restante Excel": decimal_para_numero(irs_restante_excel),
+                "Rendimento Antes": decimal_para_numero(rendimento_antes),
+                "Rendimento Depois": decimal_para_numero(rendimento_depois),
+                "IRS Antes": decimal_para_numero(irs_antes),
+                "IRS Depois": decimal_para_numero(irs_depois),
             }
         )
 
@@ -279,12 +300,37 @@ def dataframe_to_excel_bytes(df):
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Pendentes Atualizado")
+        ws = writer.sheets["Pendentes Atualizado"]
+
+        colunas_numericas = {
+            "Valor",
+            "IRS",
+            "Rendimento DMR Antes",
+            "Rendimento DMR Depois",
+            "IRS DMR Antes",
+            "IRS DMR Depois",
+            "Valor aplicado",
+            "IRS aplicado",
+        }
+
+        for col_idx, cell in enumerate(ws[1], start=1):
+            if cell.value in colunas_numericas:
+                for row in range(2, ws.max_row + 1):
+                    ws.cell(row=row, column=col_idx).number_format = "#,##0.00"
+
+        for column_cells in ws.columns:
+            max_length = 0
+            column_letter = column_cells[0].column_letter
+
+            for cell in column_cells:
+                if cell.value is not None:
+                    max_length = max(max_length, len(str(cell.value)))
+
+            ws.column_dimensions[column_letter].width = min(max_length + 2, 35)
 
     output.seek(0)
     return output.getvalue()
 
-
-# ===================== STREAMLIT =====================
 
 st.set_page_config(page_title="Retificar DMR TXT", layout="wide")
 
@@ -304,8 +350,9 @@ Regras:
 - Só são consideradas linhas começadas por `006`.
 - A categoria tem de começar por `A`.
 - A categoria `A21` é excluída.
-- Os valores do Excel já vêm negativos.
-- O novo rendimento e o novo IRS nunca ficam negativos.
+- Se a DMR tiver 1000 e o Excel tiver -800, a DMR fica com 200 e o Excel fica com 0.
+- Se a DMR tiver 1000 e o Excel tiver -1200, a DMR fica com 0 e o Excel fica com -200.
+- A mesma regra aplica-se ao rendimento e ao IRS.
 """
     )
 
@@ -349,8 +396,16 @@ if st.button("Processar ficheiros", type="primary"):
 
         st.success("Processamento concluído.")
 
-        total_corrigidos = int((resultados_df["Estado"] == "Corrigido").sum()) if not resultados_df.empty else 0
-        total_erro = int((resultados_df["Estado"] != "Corrigido").sum()) if not resultados_df.empty else 0
+        total_corrigidos = (
+            int((resultados_df["Estado"] == "Corrigido").sum())
+            if not resultados_df.empty
+            else 0
+        )
+        total_erro = (
+            int((resultados_df["Estado"] != "Corrigido").sum())
+            if not resultados_df.empty
+            else 0
+        )
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Linhas no Excel", len(pendentes_out))
