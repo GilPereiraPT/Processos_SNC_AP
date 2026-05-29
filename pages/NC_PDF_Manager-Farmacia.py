@@ -27,6 +27,17 @@ COLUNAS_EXCEL = [
 ]
 
 
+# Mapeamento opcional por NIF do emitente.
+# Podes acrescentar aqui fornecedores conforme forem aparecendo.
+EMPRESAS_POR_NIF = {
+    "500165595": "Lilly Portugal - Produtos Farmacêuticos, Lda.",
+    "500191360": "Merck, S.A.",
+    "502811194": "Octapharma Produtos Farmacêuticos, Lda.",
+    "503108710": "Vifor Pharma Portugal, S.A.",
+}
+
+
+
 # ============================================================
 # 1. Funções auxiliares
 # ============================================================
@@ -311,54 +322,99 @@ def parse_qr_at(data: str) -> dict:
     return res
 
 
-def extrair_empresa_texto(texto: str) -> str:
+def extrair_empresa_texto(texto: str, nif_emissor: str = "") -> str:
     """
     Extrai a empresa emitente do PDF.
-    Tenta primeiro padrões junto ao NIF; se não encontrar,
-    usa as primeiras linhas úteis do documento.
+
+    Estratégia:
+    1) se o NIF do emissor estiver no dicionário EMPRESAS_POR_NIF, usa esse valor;
+    2) procura linhas próximas do NIF do emissor;
+    3) ignora linhas técnicas do AT / software certificado;
+    4) usa primeiras linhas úteis como fallback.
     """
+    nif_emissor = re.sub(r"\D", "", str(nif_emissor or ""))
+
+    if nif_emissor in EMPRESAS_POR_NIF:
+        return EMPRESAS_POR_NIF[nif_emissor]
+
     if not texto:
         return ""
 
     linhas = [re.sub(r"\s+", " ", l).strip() for l in texto.splitlines() if l.strip()]
-    texto_flat = " ".join(linhas)
 
+    lixo_regex = re.compile(
+        r"(processado\s+por\s+programa|programa\s+certificado|certificado\s+n[.ºo]*|"
+        r"\bAT\b|autoridade\s+tribut[aá]ria|qr\s*code|c[oó]digo\s+qr|"
+        r"hash|software|saft|iva\s+inclu[ií]do|iva|contribuinte|nif|"
+        r"nota\s+de\s+cr[eé]dito|fatura|factura|original|duplicado|"
+        r"p[aá]gina|page|data|documento|total|subtotal|valor|"
+        r"exmo|cliente|morada|telefone|email|www\.|http|capital\s+social|"
+        r"conservat[oó]ria|matr[ií]cula|registad[ao])",
+        flags=re.IGNORECASE,
+    )
+
+    def linha_valida_empresa(linha: str) -> bool:
+        if not linha:
+            return False
+        if lixo_regex.search(linha):
+            return False
+        if len(linha) < 4:
+            return False
+        if not re.search(r"[A-Za-zÀ-ÿ]", linha):
+            return False
+        # evita moradas puras
+        if re.search(r"\b(rua|av\.|avenida|estrada|largo|praça|praceta|c[oó]digo postal|apartado)\b", linha, flags=re.IGNORECASE):
+            return False
+        # evita linhas quase só numéricas/símbolos
+        letras = len(re.findall(r"[A-Za-zÀ-ÿ]", linha))
+        if letras < 3:
+            return False
+        return True
+
+    # 1) Procurar perto do NIF do emissor.
+    if nif_emissor:
+        for idx, linha in enumerate(linhas):
+            linha_digits = re.sub(r"\D", "", linha)
+            if nif_emissor and nif_emissor in linha_digits:
+                candidatos = []
+
+                # linha anterior, duas anteriores, e parte antes do NIF na própria linha
+                if idx - 1 >= 0:
+                    candidatos.append(linhas[idx - 1])
+                if idx - 2 >= 0:
+                    candidatos.append(linhas[idx - 2])
+
+                antes_nif = re.split(nif_emissor, linha)[0].strip()
+                if antes_nif:
+                    candidatos.append(antes_nif)
+
+                for cand in candidatos:
+                    cand = limpar_empresa(cand)
+                    if linha_valida_empresa(cand):
+                        return cand
+
+    # 2) Padrões em texto corrido: empresa antes de NIF/contribuinte.
+    texto_flat = " ".join(linhas)
     padroes = [
-        r"([A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 .,ªº&'\-\/]{4,120})\s+NIF[:\s]*\d{9}",
-        r"([A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 .,ªº&'\-\/]{4,120})\s+Contribuinte[:\s]*\d{9}",
+        r"([A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 .,ªº&'\-\/]{4,120})\s+(?:NIF|Contribuinte)[:\s]*(?:PT)?\d{9}",
+        r"([A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 .,ªº&'\-\/]{4,120})\s+(?:N\.?I\.?F\.?)[:\s]*(?:PT)?\d{9}",
     ]
 
     for p in padroes:
         m = re.search(p, texto_flat, flags=re.IGNORECASE)
         if m:
             emp = limpar_empresa(m.group(1))
-            if emp and not re.search(r"nota de cr[eé]dito|fatura|factura|original", emp, flags=re.IGNORECASE):
+            # fica só com a última parte se vier texto lixo antes
+            partes = re.split(r"(?:original|duplicado|nota\s+de\s+cr[eé]dito|fatura|factura)", emp, flags=re.IGNORECASE)
+            emp = limpar_empresa(partes[-1])
+            if linha_valida_empresa(emp):
                 return emp
 
-    lixo = (
-        "nota de crédito",
-        "nota de credito",
-        "fatura",
-        "factura",
-        "original",
-        "duplicado",
-        "nif",
-        "contribuinte",
-        "data",
-        "documento",
-        "página",
-        "pagina",
-        "exmo",
-        "cliente",
-        "total",
-    )
-
-    for linha in linhas[:30]:
-        lnorm = linha.lower()
-        if any(x in lnorm for x in lixo):
-            continue
-        if re.search(r"[A-Za-zÀ-ÿ]", linha) and len(linha) >= 4:
-            return limpar_empresa(linha)
+    # 3) Fallback: primeiras linhas úteis, mas ignorando lixo técnico.
+    for linha in linhas[:40]:
+        cand = limpar_empresa(linha)
+        if linha_valida_empresa(cand):
+            return cand
 
     return ""
 
@@ -459,7 +515,7 @@ def processar_pdf_nc(nome_ficheiro: str, ficheiro_bytes: bytes, pages_to_try: in
                 if campos_qr:
                     origem = "QR imagem"
 
-        empresa = extrair_empresa_texto(texto)
+        empresa = extrair_empresa_texto(texto, campos_qr.get('A', '') if campos_qr else '')
 
         numero_nc = ""
         data_nc = ""
