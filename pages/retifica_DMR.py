@@ -8,8 +8,8 @@ import streamlit as st
 
 
 # Posições 0-based no TXT da DMR
-POS_NIF_INI = 18
-POS_NIF_FIM = 27
+POS_NIF_INI = 10
+POS_NIF_FIM = 19
 
 POS_CAT_INI = 62
 POS_CAT_FIM = 64
