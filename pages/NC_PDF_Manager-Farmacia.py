@@ -322,6 +322,109 @@ def parse_qr_at(data: str) -> dict:
     return res
 
 
+
+def obter_nif_emissor_qr(campos_qr: dict) -> str:
+    """
+    No QR AT português normal, o campo A costuma ser o NIF do emitente.
+    Nalguns layouts/exportações pode vir noutro campo, por isso procura um NIF válido.
+    """
+    if not campos_qr:
+        return ""
+
+    a = re.sub(r"\D", "", str(campos_qr.get("A", "")))
+    if len(a) == 9:
+        return a
+
+    for _, valor in campos_qr.items():
+        nif = re.sub(r"\D", "", str(valor or ""))
+        if len(nif) == 9:
+            return nif
+
+    return ""
+
+
+def obter_empresa_do_qr(campos_qr: dict) -> str:
+    """
+    Tenta retirar o nome da empresa directamente do QR.
+
+    Nota: no QR AT standard, normalmente o campo A é o NIF do emitente,
+    não o nome. Mas alguns PDFs/softwares colocam dados adicionais no texto
+    descodificado. Esta função aproveita esses campos quando existirem.
+    """
+    if not campos_qr:
+        return ""
+
+    # 1) Campos prováveis se algum software acrescentar nome/designação.
+    chaves_preferidas = [
+        "EMPRESA",
+        "NOME",
+        "NAME",
+        "EMITENTE",
+        "FORNECEDOR",
+        "SUPPLIER",
+        "VENDOR",
+        "RAZAO",
+        "RAZÃO",
+        "DESIGNACAO",
+        "DESIGNAÇÃO",
+    ]
+
+    for chave in chaves_preferidas:
+        for k, v in campos_qr.items():
+            if str(k).upper() == chave:
+                cand = limpar_empresa(v)
+                if cand and re.search(r"[A-Za-zÀ-ÿ]", cand) and len(cand) >= 4:
+                    return cand
+
+    # 2) Se algum campo tiver texto longo com letras e não for campo técnico/monetário/data.
+    campos_excluir = {
+        "A",  # NIF emitente no QR AT normal
+        "B",  # NIF adquirente no QR AT normal
+        "C", "D", "E", "F", "G", "H",
+        "I1", "I2", "I3", "I4", "I5", "I6", "I7", "I8",
+        "J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8",
+        "K1", "K2", "K3", "K4", "K5", "K6", "K7", "K8",
+        "L", "M", "N", "O", "P", "Q", "R",
+    }
+
+    lixo = re.compile(
+        r"(processado\s+por\s+programa|programa\s+certificado|certificado|"
+        r"^\d+$|^\d+[,.]\d{2}$|^\d{4}-\d{2}-\d{2}$|"
+        r"nota\s+de\s+cr[eé]dito|fatura|factura|total|iva|atcud)",
+        flags=re.IGNORECASE,
+    )
+
+    candidatos = []
+    for k, v in campos_qr.items():
+        k_norm = str(k).upper().strip()
+        val = str(v or "").strip()
+        if not val:
+            continue
+        if k_norm in campos_excluir:
+            continue
+        if lixo.search(val):
+            continue
+        if re.search(r"[A-Za-zÀ-ÿ]", val) and len(val) >= 4:
+            candidatos.append(limpar_empresa(val))
+
+    if candidatos:
+        # escolher o candidato com mais letras
+        candidatos = sorted(
+            set(candidatos),
+            key=lambda x: len(re.findall(r"[A-Za-zÀ-ÿ]", x)),
+            reverse=True,
+        )
+        return candidatos[0]
+
+    # 3) Se o campo A não for apenas um NIF e tiver letras, pode ser empresa.
+    a_raw = str(campos_qr.get("A", "") or "").strip()
+    if a_raw and not re.fullmatch(r"PT?\d{9}", a_raw, flags=re.IGNORECASE):
+        if re.search(r"[A-Za-zÀ-ÿ]", a_raw):
+            return limpar_empresa(a_raw)
+
+    return ""
+
+
 def extrair_empresa_texto(texto: str, nif_emissor: str = "") -> str:
     """
     Extrai a empresa emitente do PDF.
@@ -515,7 +618,14 @@ def processar_pdf_nc(nome_ficheiro: str, ficheiro_bytes: bytes, pages_to_try: in
                 if campos_qr:
                     origem = "QR imagem"
 
-        empresa = extrair_empresa_texto(texto, campos_qr.get('A', '') if campos_qr else '')
+        nif_emissor_qr = obter_nif_emissor_qr(campos_qr)
+        empresa = obter_empresa_do_qr(campos_qr)
+
+        if not empresa and nif_emissor_qr in EMPRESAS_POR_NIF:
+            empresa = EMPRESAS_POR_NIF[nif_emissor_qr]
+
+        if not empresa:
+            empresa = extrair_empresa_texto(texto, nif_emissor_qr)
 
         numero_nc = ""
         data_nc = ""
@@ -572,6 +682,8 @@ def processar_pdf_nc(nome_ficheiro: str, ficheiro_bytes: bytes, pages_to_try: in
             "Estado": estado,
             "Erro": erro.strip(),
             "Origem": origem,
+            "NIF Emissor QR": nif_emissor_qr,
+            "QR bruto": qr_str if qr_str else (qr_img if 'qr_img' in locals() and qr_img else ""),
         }
 
     finally:
@@ -685,6 +797,8 @@ if uploaded_files:
                     "Estado": "ERRO",
                     "Erro": str(e),
                     "Origem": "Erro",
+                    "NIF Emissor QR": "",
+                    "QR bruto": "",
                 })
 
             progress.progress((i + 1) / len(uploaded_files))
