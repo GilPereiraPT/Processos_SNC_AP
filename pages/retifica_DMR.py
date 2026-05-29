@@ -7,19 +7,23 @@ import pandas as pd
 import streamlit as st
 
 
-# Posições 0-based no TXT da DMR
+# ===================== POSIÇÕES CORRETAS DMR TXT =====================
+# Python usa posições 0-based e fim exclusivo.
+
 POS_NIF_INI = 10
 POS_NIF_FIM = 19
 
+POS_REND_INI = 39
+POS_REND_FIM = 53
+
 POS_CAT_INI = 53
-POS_CAT_FIM = 54
+POS_CAT_FIM = 56
 
-POS_REND_INI = 65
-POS_REND_FIM = 76
+POS_IRS_INI = 59
+POS_IRS_FIM = 72
 
-POS_IRS_INI = 76
-POS_IRS_FIM = 87
 
+# ===================== FUNÇÕES =====================
 
 def descobrir_folhas_excel(excel_file):
     excel_file.seek(0)
@@ -49,29 +53,46 @@ def decimal_seguro(valor) -> Decimal:
         raise ValueError(f"Valor decimal inválido: {valor!r}")
 
 
-def formatar_decimal_txt(valor: Decimal, tamanho: int) -> str:
-    valor = max(valor, Decimal("0"))
-    valor = valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return str(int(valor * 100)).zfill(tamanho)
-
-
 def ler_valor_txt(linha: str, ini: int, fim: int) -> Decimal:
     raw = linha[ini:fim].strip()
 
     if raw == "":
         return Decimal("0")
 
+    sinal = 1
+
+    if raw.startswith("+"):
+        raw = raw[1:]
+    elif raw.startswith("-"):
+        sinal = -1
+        raw = raw[1:]
+
     if not raw.isdigit():
         raise ValueError(
             f"Campo numérico inválido no TXT: {raw!r} nas posições {ini + 1}-{fim}"
         )
 
-    return Decimal(raw) / Decimal("100")
+    return Decimal(sinal) * (Decimal(raw) / Decimal("100"))
+
+
+def formatar_decimal_txt(valor: Decimal, tamanho: int, com_sinal: bool = True) -> str:
+    valor = valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    sinal = "+"
+    if valor < 0:
+        sinal = "-"
+        valor = abs(valor)
+
+    valor_centimos = int(valor * 100)
+
+    if com_sinal:
+        return sinal + str(valor_centimos).zfill(tamanho - 1)
+
+    return str(valor_centimos).zfill(tamanho)
 
 
 def substituir_intervalo(linha: str, ini: int, fim: int, novo: str) -> str:
     tamanho = fim - ini
-    novo = str(novo)
 
     if len(novo) != tamanho:
         raise ValueError(
@@ -79,6 +100,11 @@ def substituir_intervalo(linha: str, ini: int, fim: int, novo: str) -> str:
         )
 
     return linha[:ini] + novo + linha[fim:]
+
+
+def categoria_valida(categoria: str) -> bool:
+    categoria = str(categoria).strip().upper()
+    return categoria.startswith("A") and categoria != "A21"
 
 
 def ler_dmr_txt(dmr_file):
@@ -103,10 +129,10 @@ def ler_dmr_txt(dmr_file):
         if len(linha) < POS_IRS_FIM:
             continue
 
-        nif = linha[POS_NIF_INI:POS_NIF_FIM].strip().zfill(9)
+        nif = linha[POS_NIF_INI:POS_NIF_FIM].strip()
         categoria = linha[POS_CAT_INI:POS_CAT_FIM]
 
-        if categoria != "A ":
+        if not categoria_valida(categoria):
             continue
 
         try:
@@ -119,8 +145,8 @@ def ler_dmr_txt(dmr_file):
             {
                 "idx": idx,
                 "linha": linha,
-                "nif": nif,
-                "categoria": categoria,
+                "nif": nif.zfill(9),
+                "categoria": categoria.strip(),
                 "rendimento": rendimento,
                 "irs": irs,
             }
@@ -166,8 +192,7 @@ def ler_pendentes_excel(excel_file, sheet_name=None):
 
     df["Categoria"] = df["Rendimento"].astype(str).str.strip().str.upper()
 
-    df = df[df["Categoria"] == "A"]
-    df = df[df["Categoria"] != "A21"]
+    df = df[df["Categoria"].apply(categoria_valida)]
 
     df["Valor_Decimal"] = df["Valor"].apply(decimal_seguro)
     df["IRS_Decimal"] = df["IRS"].apply(decimal_seguro)
@@ -177,17 +202,18 @@ def ler_pendentes_excel(excel_file, sheet_name=None):
 
 def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
     linhas_corrigidas = list(linhas_originais)
-
     resultados = []
-    pendentes_out = pendentes_df.copy()
 
+    pendentes_out = pendentes_df.copy()
     pendentes_out["Estado"] = ""
     pendentes_out["Rendimento DMR Antes"] = ""
     pendentes_out["Rendimento DMR Depois"] = ""
     pendentes_out["IRS DMR Antes"] = ""
     pendentes_out["IRS DMR Depois"] = ""
+    pendentes_out["Categoria DMR"] = ""
 
     mapa_dmr = {}
+
     for item in linhas_006:
         mapa_dmr.setdefault(item["nif"], []).append(item)
 
@@ -197,7 +223,7 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
         irs_excel = row["IRS_Decimal"]
 
         if nif not in mapa_dmr:
-            estado = "NIF não encontrado na DMR categoria A"
+            estado = "NIF não encontrado na DMR com categoria A válida"
 
             resultados.append(
                 {
@@ -230,11 +256,13 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
         novo_rendimento_txt = formatar_decimal_txt(
             rendimento_depois,
             POS_REND_FIM - POS_REND_INI,
+            com_sinal=True,
         )
 
         novo_irs_txt = formatar_decimal_txt(
             irs_depois,
             POS_IRS_FIM - POS_IRS_INI,
+            com_sinal=True,
         )
 
         linha = substituir_intervalo(
@@ -259,6 +287,7 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
             {
                 "NIF": nif,
                 "Estado": estado,
+                "Categoria DMR": item["categoria"],
                 "Valor Excel": valor_excel,
                 "IRS Excel": irs_excel,
                 "Rendimento Antes": rendimento_antes,
@@ -273,6 +302,7 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
         pendentes_out.at[i, "Rendimento DMR Depois"] = rendimento_depois
         pendentes_out.at[i, "IRS DMR Antes"] = irs_antes
         pendentes_out.at[i, "IRS DMR Depois"] = irs_depois
+        pendentes_out.at[i, "Categoria DMR"] = item["categoria"]
 
     resultados_df = pd.DataFrame(resultados)
 
@@ -295,7 +325,7 @@ def dataframe_to_excel_bytes(df):
     return output.getvalue()
 
 
-# ---------------- STREAMLIT ----------------
+# ===================== STREAMLIT =====================
 
 st.set_page_config(page_title="Retificar DMR TXT", layout="wide")
 
@@ -306,17 +336,22 @@ st.info(
     "Depois clique em Processar ficheiros."
 )
 
-with st.expander("Posições usadas no TXT da DMR", expanded=False):
+with st.expander("Posições usadas no TXT da DMR", expanded=True):
     st.markdown(
         f"""
-- **NIF**: colunas **{POS_NIF_INI + 1}** a **{POS_NIF_FIM}**
-- **Categoria**: colunas **{POS_CAT_INI + 1}** a **{POS_CAT_FIM}**
-- **Rendimento**: colunas **{POS_REND_INI + 1}** a **{POS_REND_FIM}**
-- **IRS**: colunas **{POS_IRS_INI + 1}** a **{POS_IRS_FIM}**
+- **NIF**: posições `{POS_NIF_INI}:{POS_NIF_FIM}`
+- **Rendimento**: posições `{POS_REND_INI}:{POS_REND_FIM}`
+- **Categoria**: posições `{POS_CAT_INI}:{POS_CAT_FIM}`
+- **IRS**: posições `{POS_IRS_INI}:{POS_IRS_FIM}`
+
+Exemplo validado:
+- `00000000314719` → `3147,19`
+- `0000000067600` → `676,00`
 
 Regras:
-- Só é considerada a categoria **A**.
-- **A21** não conta.
+- Só são consideradas linhas começadas por `006`.
+- A categoria tem de começar por `A`.
+- A categoria `A21` é excluída.
 - Os valores do Excel já vêm negativos.
 - O valor do Excel é somado ao valor da DMR, reduzindo rendimento e IRS.
 - O novo rendimento e o novo IRS nunca ficam negativos.
@@ -325,15 +360,19 @@ Regras:
 
 st.subheader("1. Carregar ficheiros")
 
-dmr_file = st.file_uploader(
-    "Carregue aqui o ficheiro TXT da DMR",
-    type=["txt"],
-)
+col1, col2 = st.columns(2)
 
-excel_file = st.file_uploader(
-    "Carregue aqui o ficheiro Excel com pendentes",
-    type=["xlsx", "xls"],
-)
+with col1:
+    dmr_file = st.file_uploader(
+        "Carregue aqui o ficheiro TXT da DMR",
+        type=["txt"],
+    )
+
+with col2:
+    excel_file = st.file_uploader(
+        "Carregue aqui o ficheiro Excel com pendentes",
+        type=["xlsx", "xls"],
+    )
 
 sheet_name = None
 
@@ -389,7 +428,7 @@ if st.button("Processar ficheiros", type="primary"):
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Linhas no Excel", total_pendentes)
-        m2.metric("Linhas 006 categoria A na DMR", len(linhas_006))
+        m2.metric("Linhas 006 categoria A válida", len(linhas_006))
         m3.metric("Corrigidas", total_corrigidos)
         m4.metric("Com erro / validação", total_erro)
 
