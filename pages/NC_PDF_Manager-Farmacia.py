@@ -673,7 +673,7 @@ def processar_pdf_nc(nome_ficheiro: str, ficheiro_bytes: bytes, pages_to_try: in
 
         return {
             "Nome do ficheiro": nome_ficheiro,
-            "Empresa": empresa,
+            "Empresa": nif_emissor_qr,
             "Nº da NC": numero_nc,
             "Data da NC": data_nc,
             "Valor": valor,
