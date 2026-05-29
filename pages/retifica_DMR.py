@@ -5,15 +5,15 @@ from io import BytesIO
 import pandas as pd
 
 
-# posições 0-based no TXT
+# Posições 0-based no TXT da DMR
 POS_NIF_INI = 18
 POS_NIF_FIM = 27
 
-POS_REND_INI = 65
-POS_REND_FIM = 76
-
 POS_CAT_INI = 62
 POS_CAT_FIM = 64
+
+POS_REND_INI = 65
+POS_REND_FIM = 76
 
 POS_IRS_INI = 76
 POS_IRS_FIM = 87
@@ -24,7 +24,7 @@ def descobrir_folhas_excel(excel_file):
     return pd.ExcelFile(excel_file).sheet_names
 
 
-def decimal_seguro(valor, campo="valor") -> Decimal:
+def decimal_seguro(valor) -> Decimal:
     if pd.isna(valor):
         return Decimal("0")
 
@@ -33,34 +33,50 @@ def decimal_seguro(valor, campo="valor") -> Decimal:
     if texto == "":
         return Decimal("0")
 
-    # protege contra cabeçalhos tratados como dados
-    if texto.lower() in ["valor", "irs", "rendimento", "nif"]:
-        raise ValueError(f"Valor decimal inválido: {texto!r}")
+    if texto.lower() in {"valor", "irs", "rendimento", "nif"}:
+        return Decimal("0")
 
     texto = texto.replace("€", "").replace(" ", "")
-    texto = texto.replace(".", "").replace(",", ".")
+
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
 
     try:
         return Decimal(texto)
     except InvalidOperation:
-        raise ValueError(f"Valor decimal inválido: {texto!r}")
+        raise ValueError(f"Valor decimal inválido: {valor!r}")
 
 
 def formatar_decimal_txt(valor: Decimal, tamanho: int) -> str:
     valor = max(valor, Decimal("0"))
     valor = valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    inteiro = int(valor * 100)
-    return str(inteiro).zfill(tamanho)
+    valor_centimos = int(valor * 100)
+    return str(valor_centimos).zfill(tamanho)
 
 
 def ler_valor_txt(linha: str, ini: int, fim: int) -> Decimal:
     raw = linha[ini:fim].strip()
+
     if raw == "":
         return Decimal("0")
+
+    if not raw.isdigit():
+        raise ValueError(
+            f"Campo numérico inválido no TXT: {raw!r} nas posições {ini + 1}-{fim}"
+        )
+
     return Decimal(raw) / Decimal("100")
 
 
 def substituir_intervalo(linha: str, ini: int, fim: int, novo: str) -> str:
+    tamanho = fim - ini
+    novo = str(novo)
+
+    if len(novo) != tamanho:
+        raise ValueError(
+            f"Novo valor com tamanho errado. Esperado {tamanho}, obtido {len(novo)}: {novo}"
+        )
+
     return linha[:ini] + novo + linha[fim:]
 
 
@@ -77,22 +93,37 @@ def ler_dmr_txt(dmr_file):
         texto = conteudo
 
     linhas = texto.splitlines()
-
     linhas_006 = []
+
     for idx, linha in enumerate(linhas):
-        if linha.startswith("006"):
-            categoria = linha[POS_CAT_INI:POS_CAT_FIM]
-            if categoria == "A ":
-                linhas_006.append(
-                    {
-                        "idx": idx,
-                        "linha": linha,
-                        "nif": linha[POS_NIF_INI:POS_NIF_FIM].strip(),
-                        "categoria": categoria,
-                        "rendimento": ler_valor_txt(linha, POS_REND_INI, POS_REND_FIM),
-                        "irs": ler_valor_txt(linha, POS_IRS_INI, POS_IRS_FIM),
-                    }
-                )
+        if not linha.startswith("006"):
+            continue
+
+        if len(linha) < POS_IRS_FIM:
+            continue
+
+        nif = linha[POS_NIF_INI:POS_NIF_FIM].strip()
+        categoria = linha[POS_CAT_INI:POS_CAT_FIM]
+
+        if categoria != "A ":
+            continue
+
+        try:
+            rendimento = ler_valor_txt(linha, POS_REND_INI, POS_REND_FIM)
+            irs = ler_valor_txt(linha, POS_IRS_INI, POS_IRS_FIM)
+        except Exception:
+            continue
+
+        linhas_006.append(
+            {
+                "idx": idx,
+                "linha": linha,
+                "nif": nif.zfill(9),
+                "categoria": categoria,
+                "rendimento": rendimento,
+                "irs": irs,
+            }
+        )
 
     return linhas, linhas_006
 
@@ -104,7 +135,6 @@ def ler_pendentes_excel(excel_file, sheet_name=None):
         excel_file,
         sheet_name=sheet_name,
         header=0,
-        dtype={"NIF": str},
     )
 
     df.columns = [str(c).strip() for c in df.columns]
@@ -116,15 +146,11 @@ def ler_pendentes_excel(excel_file, sheet_name=None):
         raise ValueError(
             "O Excel não tem as colunas esperadas. "
             f"Faltam: {', '.join(em_falta)}. "
-            "Esperado: NIF, Rendimento, Valor, IRS."
+            "O ficheiro deve ter: NIF, Rendimento, Valor, IRS."
         )
 
-    df = df.copy()
+    df = df.dropna(how="all").copy()
 
-    # remove linhas totalmente vazias
-    df = df.dropna(how="all")
-
-    # protege contra cabeçalhos repetidos no meio do ficheiro
     df = df[df["NIF"].astype(str).str.strip().str.lower() != "nif"]
     df = df[df["Valor"].astype(str).str.strip().str.lower() != "valor"]
     df = df[df["IRS"].astype(str).str.strip().str.lower() != "irs"]
@@ -137,20 +163,20 @@ def ler_pendentes_excel(excel_file, sheet_name=None):
         .str.zfill(9)
     )
 
-    df["Categoria"] = df["Rendimento"].astype(str).str.strip()
+    df["Categoria"] = df["Rendimento"].astype(str).str.strip().str.upper()
 
-    # só categoria A; A21 é excluído
-    df = df[df["Categoria"].str.upper() == "A"]
-    df = df[df["Categoria"].str.upper() != "A21"]
+    df = df[df["Categoria"] == "A"]
+    df = df[df["Categoria"] != "A21"]
 
-    df["Valor_Decimal"] = df["Valor"].apply(lambda x: decimal_seguro(x, "Valor"))
-    df["IRS_Decimal"] = df["IRS"].apply(lambda x: decimal_seguro(x, "IRS"))
+    df["Valor_Decimal"] = df["Valor"].apply(decimal_seguro)
+    df["IRS_Decimal"] = df["IRS"].apply(decimal_seguro)
 
     return df.reset_index(drop=True)
 
 
 def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
     linhas_corrigidas = list(linhas_originais)
+
     resultados = []
     pendentes_out = pendentes_df.copy()
 
@@ -165,12 +191,13 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
         mapa_dmr.setdefault(item["nif"], []).append(item)
 
     for i, row in pendentes_df.iterrows():
-        nif = str(row["NIF"]).zfill(9)
+        nif = str(row["NIF"]).strip().zfill(9)
         valor_excel = row["Valor_Decimal"]
         irs_excel = row["IRS_Decimal"]
 
         if nif not in mapa_dmr:
             estado = "NIF não encontrado na DMR categoria A"
+
             resultados.append(
                 {
                     "NIF": nif,
@@ -179,6 +206,7 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
                     "IRS Excel": irs_excel,
                 }
             )
+
             pendentes_out.at[i, "Estado"] = estado
             continue
 
@@ -247,7 +275,6 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
 
     resultados_df = pd.DataFrame(resultados)
 
-    # remove colunas técnicas do Excel final
     for col in ["Valor_Decimal", "IRS_Decimal", "Categoria"]:
         if col in pendentes_out.columns:
             pendentes_out = pendentes_out.drop(columns=[col])
