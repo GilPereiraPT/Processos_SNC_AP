@@ -7,9 +7,6 @@ import pandas as pd
 import streamlit as st
 
 
-# ===================== POSIÇÕES CORRETAS DMR TXT =====================
-# Python usa posições 0-based e fim exclusivo.
-
 POS_NIF_INI = 10
 POS_NIF_FIM = 19
 
@@ -23,8 +20,6 @@ POS_IRS_INI = 59
 POS_IRS_FIM = 72
 
 
-# ===================== FUNÇÕES =====================
-
 def descobrir_folhas_excel(excel_file):
     excel_file.seek(0)
     return pd.ExcelFile(excel_file).sheet_names
@@ -36,10 +31,7 @@ def decimal_seguro(valor) -> Decimal:
 
     texto = str(valor).strip()
 
-    if texto == "":
-        return Decimal("0")
-
-    if texto.lower() in {"valor", "irs", "rendimento", "nif"}:
+    if texto == "" or texto.lower() in {"valor", "irs", "rendimento", "nif"}:
         return Decimal("0")
 
     texto = texto.replace("€", "").replace(" ", "")
@@ -68,14 +60,12 @@ def ler_valor_txt(linha: str, ini: int, fim: int) -> Decimal:
         raw = raw[1:]
 
     if not raw.isdigit():
-        raise ValueError(
-            f"Campo numérico inválido no TXT: {raw!r} nas posições {ini + 1}-{fim}"
-        )
+        raise ValueError(f"Campo numérico inválido no TXT: {raw!r}")
 
     return Decimal(sinal) * (Decimal(raw) / Decimal("100"))
 
 
-def formatar_decimal_txt(valor: Decimal, tamanho: int, com_sinal: bool = True) -> str:
+def formatar_decimal_txt(valor: Decimal, tamanho: int) -> str:
     valor = valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     sinal = "+"
@@ -83,21 +73,12 @@ def formatar_decimal_txt(valor: Decimal, tamanho: int, com_sinal: bool = True) -
         sinal = "-"
         valor = abs(valor)
 
-    valor_centimos = int(valor * 100)
-
-    if com_sinal:
-        return sinal + str(valor_centimos).zfill(tamanho - 1)
-
-    return str(valor_centimos).zfill(tamanho)
+    return sinal + str(int(valor * 100)).zfill(tamanho - 1)
 
 
 def substituir_intervalo(linha: str, ini: int, fim: int, novo: str) -> str:
-    tamanho = fim - ini
-
-    if len(novo) != tamanho:
-        raise ValueError(
-            f"Novo valor com tamanho errado. Esperado {tamanho}, obtido {len(novo)}: {novo}"
-        )
+    if len(novo) != fim - ini:
+        raise ValueError(f"Novo valor com tamanho errado: {novo}")
 
     return linha[:ini] + novo + linha[fim:]
 
@@ -129,7 +110,7 @@ def ler_dmr_txt(dmr_file):
         if len(linha) < POS_IRS_FIM:
             continue
 
-        nif = linha[POS_NIF_INI:POS_NIF_FIM].strip()
+        nif = linha[POS_NIF_INI:POS_NIF_FIM].strip().zfill(9)
         categoria = linha[POS_CAT_INI:POS_CAT_FIM]
 
         if not categoria_valida(categoria):
@@ -144,8 +125,7 @@ def ler_dmr_txt(dmr_file):
         linhas_006.append(
             {
                 "idx": idx,
-                "linha": linha,
-                "nif": nif.zfill(9),
+                "nif": nif,
                 "categoria": categoria.strip(),
                 "rendimento": rendimento,
                 "irs": irs,
@@ -158,12 +138,7 @@ def ler_dmr_txt(dmr_file):
 def ler_pendentes_excel(excel_file, sheet_name=None):
     excel_file.seek(0)
 
-    df = pd.read_excel(
-        excel_file,
-        sheet_name=sheet_name,
-        header=0,
-    )
-
+    df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
     df.columns = [str(c).strip() for c in df.columns]
 
     colunas_necessarias = ["NIF", "Rendimento", "Valor", "IRS"]
@@ -171,9 +146,7 @@ def ler_pendentes_excel(excel_file, sheet_name=None):
 
     if em_falta:
         raise ValueError(
-            "O Excel não tem as colunas esperadas. "
-            f"Faltam: {', '.join(em_falta)}. "
-            "O ficheiro deve ter: NIF, Rendimento, Valor, IRS."
+            f"O Excel não tem as colunas esperadas. Faltam: {', '.join(em_falta)}"
         )
 
     df = df.dropna(how="all").copy()
@@ -191,7 +164,6 @@ def ler_pendentes_excel(excel_file, sheet_name=None):
     )
 
     df["Categoria"] = df["Rendimento"].astype(str).str.strip().str.upper()
-
     df = df[df["Categoria"].apply(categoria_valida)]
 
     df["Valor_Decimal"] = df["Valor"].apply(decimal_seguro)
@@ -205,15 +177,15 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
     resultados = []
 
     pendentes_out = pendentes_df.copy()
-    pendentes_out["Estado"] = ""
-    pendentes_out["Rendimento DMR Antes"] = ""
-    pendentes_out["Rendimento DMR Depois"] = ""
-    pendentes_out["IRS DMR Antes"] = ""
-    pendentes_out["IRS DMR Depois"] = ""
-    pendentes_out["Categoria DMR"] = ""
+
+    pendentes_out["Estado"] = pd.Series(dtype="object")
+    pendentes_out["Rendimento DMR Antes"] = pd.Series(dtype="object")
+    pendentes_out["Rendimento DMR Depois"] = pd.Series(dtype="object")
+    pendentes_out["IRS DMR Antes"] = pd.Series(dtype="object")
+    pendentes_out["IRS DMR Depois"] = pd.Series(dtype="object")
+    pendentes_out["Categoria DMR"] = pd.Series(dtype="object")
 
     mapa_dmr = {}
-
     for item in linhas_006:
         mapa_dmr.setdefault(item["nif"], []).append(item)
 
@@ -224,17 +196,16 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
 
         if nif not in mapa_dmr:
             estado = "NIF não encontrado na DMR com categoria A válida"
+            pendentes_out.at[i, "Estado"] = estado
 
             resultados.append(
                 {
                     "NIF": nif,
                     "Estado": estado,
-                    "Valor Excel": valor_excel,
-                    "IRS Excel": irs_excel,
+                    "Valor Excel": str(valor_excel),
+                    "IRS Excel": str(irs_excel),
                 }
             )
-
-            pendentes_out.at[i, "Estado"] = estado
             continue
 
         item = mapa_dmr[nif][0]
@@ -253,56 +224,44 @@ def aplicar_retificacoes(linhas_originais, linhas_006, pendentes_df):
         if irs_depois < 0:
             irs_depois = Decimal("0")
 
-        novo_rendimento_txt = formatar_decimal_txt(
-            rendimento_depois,
-            POS_REND_FIM - POS_REND_INI,
-            com_sinal=True,
-        )
-
-        novo_irs_txt = formatar_decimal_txt(
-            irs_depois,
-            POS_IRS_FIM - POS_IRS_INI,
-            com_sinal=True,
-        )
-
         linha = substituir_intervalo(
             linha,
             POS_REND_INI,
             POS_REND_FIM,
-            novo_rendimento_txt,
+            formatar_decimal_txt(rendimento_depois, POS_REND_FIM - POS_REND_INI),
         )
 
         linha = substituir_intervalo(
             linha,
             POS_IRS_INI,
             POS_IRS_FIM,
-            novo_irs_txt,
+            formatar_decimal_txt(irs_depois, POS_IRS_FIM - POS_IRS_INI),
         )
 
         linhas_corrigidas[idx] = linha
 
         estado = "Corrigido"
 
+        pendentes_out.at[i, "Estado"] = estado
+        pendentes_out.at[i, "Rendimento DMR Antes"] = str(rendimento_antes)
+        pendentes_out.at[i, "Rendimento DMR Depois"] = str(rendimento_depois)
+        pendentes_out.at[i, "IRS DMR Antes"] = str(irs_antes)
+        pendentes_out.at[i, "IRS DMR Depois"] = str(irs_depois)
+        pendentes_out.at[i, "Categoria DMR"] = item["categoria"]
+
         resultados.append(
             {
                 "NIF": nif,
                 "Estado": estado,
                 "Categoria DMR": item["categoria"],
-                "Valor Excel": valor_excel,
-                "IRS Excel": irs_excel,
-                "Rendimento Antes": rendimento_antes,
-                "Rendimento Depois": rendimento_depois,
-                "IRS Antes": irs_antes,
-                "IRS Depois": irs_depois,
+                "Valor Excel": str(valor_excel),
+                "IRS Excel": str(irs_excel),
+                "Rendimento Antes": str(rendimento_antes),
+                "Rendimento Depois": str(rendimento_depois),
+                "IRS Antes": str(irs_antes),
+                "IRS Depois": str(irs_depois),
             }
         )
-
-        pendentes_out.at[i, "Estado"] = estado
-        pendentes_out.at[i, "Rendimento DMR Antes"] = rendimento_antes
-        pendentes_out.at[i, "Rendimento DMR Depois"] = rendimento_depois
-        pendentes_out.at[i, "IRS DMR Antes"] = irs_antes
-        pendentes_out.at[i, "IRS DMR Depois"] = irs_depois
-        pendentes_out.at[i, "Categoria DMR"] = item["categoria"]
 
     resultados_df = pd.DataFrame(resultados)
 
@@ -331,66 +290,42 @@ st.set_page_config(page_title="Retificar DMR TXT", layout="wide")
 
 st.title("Retificação de DMR em TXT")
 
-st.info(
-    "Carregue o ficheiro TXT da DMR e o Excel com pendentes. "
-    "Depois clique em Processar ficheiros."
-)
+st.info("Carregue o ficheiro TXT da DMR e o Excel com pendentes.")
 
 with st.expander("Posições usadas no TXT da DMR", expanded=True):
     st.markdown(
         f"""
-- **NIF**: posições `{POS_NIF_INI}:{POS_NIF_FIM}`
-- **Rendimento**: posições `{POS_REND_INI}:{POS_REND_FIM}`
-- **Categoria**: posições `{POS_CAT_INI}:{POS_CAT_FIM}`
-- **IRS**: posições `{POS_IRS_INI}:{POS_IRS_FIM}`
-
-Exemplo validado:
-- `00000000314719` → `3147,19`
-- `0000000067600` → `676,00`
+- **NIF**: `{POS_NIF_INI}:{POS_NIF_FIM}`
+- **Rendimento**: `{POS_REND_INI}:{POS_REND_FIM}`
+- **Categoria**: `{POS_CAT_INI}:{POS_CAT_FIM}`
+- **IRS**: `{POS_IRS_INI}:{POS_IRS_FIM}`
 
 Regras:
 - Só são consideradas linhas começadas por `006`.
 - A categoria tem de começar por `A`.
 - A categoria `A21` é excluída.
 - Os valores do Excel já vêm negativos.
-- O valor do Excel é somado ao valor da DMR, reduzindo rendimento e IRS.
 - O novo rendimento e o novo IRS nunca ficam negativos.
 """
     )
 
-st.subheader("1. Carregar ficheiros")
-
 col1, col2 = st.columns(2)
 
 with col1:
-    dmr_file = st.file_uploader(
-        "Carregue aqui o ficheiro TXT da DMR",
-        type=["txt"],
-    )
+    dmr_file = st.file_uploader("Ficheiro TXT da DMR", type=["txt"])
 
 with col2:
-    excel_file = st.file_uploader(
-        "Carregue aqui o ficheiro Excel com pendentes",
-        type=["xlsx", "xls"],
-    )
+    excel_file = st.file_uploader("Excel com pendentes", type=["xlsx", "xls"])
 
 sheet_name = None
 
 if excel_file is not None:
     try:
         folhas = descobrir_folhas_excel(excel_file)
-
         if folhas:
-            sheet_name = st.selectbox(
-                "Escolha a folha do Excel",
-                options=folhas,
-                index=0,
-            )
-
+            sheet_name = st.selectbox("Folha do Excel", options=folhas, index=0)
     except Exception as e:
         st.warning(f"Não foi possível listar as folhas do Excel: {e}")
-
-st.subheader("2. Processar")
 
 if st.button("Processar ficheiros", type="primary"):
     try:
@@ -399,16 +334,12 @@ if st.button("Processar ficheiros", type="primary"):
             st.stop()
 
         if excel_file is None:
-            st.error("Tem de carregar o ficheiro Excel com pendentes.")
+            st.error("Tem de carregar o Excel com pendentes.")
             st.stop()
 
-        with st.spinner("A processar ficheiros..."):
+        with st.spinner("A processar..."):
             linhas_originais, linhas_006 = ler_dmr_txt(dmr_file)
-
-            pendentes_df = ler_pendentes_excel(
-                excel_file,
-                sheet_name=sheet_name,
-            )
+            pendentes_df = ler_pendentes_excel(excel_file, sheet_name=sheet_name)
 
             resultados_df, pendentes_out, dmr_corrigida_txt = aplicar_retificacoes(
                 linhas_originais,
@@ -418,26 +349,17 @@ if st.button("Processar ficheiros", type="primary"):
 
         st.success("Processamento concluído.")
 
-        total_pendentes = len(pendentes_out)
-        total_corrigidos = 0
-        total_erro = 0
-
-        if not resultados_df.empty and "Estado" in resultados_df.columns:
-            total_corrigidos = int((resultados_df["Estado"] == "Corrigido").sum())
-            total_erro = int((resultados_df["Estado"] != "Corrigido").sum())
+        total_corrigidos = int((resultados_df["Estado"] == "Corrigido").sum()) if not resultados_df.empty else 0
+        total_erro = int((resultados_df["Estado"] != "Corrigido").sum()) if not resultados_df.empty else 0
 
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Linhas no Excel", total_pendentes)
-        m2.metric("Linhas 006 categoria A válida", len(linhas_006))
+        m1.metric("Linhas no Excel", len(pendentes_out))
+        m2.metric("Linhas DMR válidas", len(linhas_006))
         m3.metric("Corrigidas", total_corrigidos)
-        m4.metric("Com erro / validação", total_erro)
+        m4.metric("Com erro", total_erro)
 
         st.subheader("Resumo das alterações")
-
-        if resultados_df.empty:
-            st.info("Não foram encontrados registos para apresentar.")
-        else:
-            st.dataframe(resultados_df, use_container_width=True)
+        st.dataframe(resultados_df, use_container_width=True)
 
         st.subheader("Excel atualizado")
         st.dataframe(pendentes_out, use_container_width=True)
@@ -453,7 +375,7 @@ if st.button("Processar ficheiros", type="primary"):
 
         with dl1:
             st.download_button(
-                label="Descarregar DMR corrigida TXT",
+                "Descarregar DMR corrigida TXT",
                 data=dmr_bytes,
                 file_name="DMR_corrigida.txt",
                 mime="text/plain",
@@ -461,7 +383,7 @@ if st.button("Processar ficheiros", type="primary"):
 
         with dl2:
             st.download_button(
-                label="Descarregar Excel atualizado",
+                "Descarregar Excel atualizado",
                 data=excel_bytes,
                 file_name="pendentes_atualizado.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
