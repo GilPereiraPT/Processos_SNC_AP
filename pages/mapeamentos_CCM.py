@@ -114,14 +114,15 @@ def load_default_mapping(
 
 
 # =========================================================
-# 🔍 Candidatos de substituição
+# 🔍 Procurar código de convenção no token
 # =========================================================
 def mapping_candidates(code: str):
     """
     Gera formas possíveis do código no token.
 
-    Exemplo:
-        30100 -> 030100, 0030100, 30100, 030100
+    A ordem é importante:
+    - primeiro com 6 dígitos, para preservar o comprimento do token;
+    - depois a forma simples.
     """
     code = normalize_mapping_key(code)
 
@@ -138,7 +139,6 @@ def mapping_candidates(code: str):
     ]
 
     out = []
-
     for c in candidates:
         if c and c not in out:
             out.append(c)
@@ -150,10 +150,14 @@ def find_mapping_for_token2(token2: str, mapping: Dict[str, str]) -> Optional[st
     """
     Procura o código de convenção dentro do segundo token.
 
-    Mantém a lógica funcional:
+    Mantém a lógica do script funcional:
     - percorre o mapa pela ordem do CSV;
     - procura a convenção dentro do token;
-    - evita ordenar artificialmente por tamanho.
+    - evita depender de ordenações artificiais por tamanho.
+
+    Isto permite que códigos específicos que aparecem antes no CSV sejam
+    apanhados antes de códigos mais genéricos que também possam existir
+    dentro da mesma sequência.
     """
     token_digits = re.sub(r"\D", "", str(token2))
 
@@ -231,45 +235,39 @@ def transform_line(
                 new_token2 = token2
                 replaced = False
 
-                # Tenta substituir a forma encontrada do código de convenção.
+                # Primeiro tenta substituir a forma com 6 dígitos.
+                # Isto preserva melhor o comprimento do segundo token.
                 for candidate in mapping_candidates(matched_conv):
                     if candidate in new_token2:
                         new_token2 = new_token2.replace(candidate, ent7, 1)
                         replaced = True
                         break
 
-                # Linhas especiais 903 / 904 / 906:
-                # mantinha a regra original.
+                if not replaced:
+                    pass
+
+                # Linhas especiais 903 / 904 / 906
                 if line.lstrip().startswith(("903", "904", "906")) and new_token2.startswith("0"):
                     new_token2 = new_token2[1:]
 
-                # Linhas 902:
-                # Se a entidade convertida originar token começado por 098...,
-                # remove-se esse zero técnico inicial.
-                #
-                # Exemplo:
-                # 0980107292019578 -> 980107292019578
-                #
-                # Não remover quando começa por 003..., porque aí o zero faz parte
-                # da estrutura correcta:
-                # 0030100998035039
-                if line.lstrip().startswith("902") and new_token2.startswith("098"):
-                    new_token2 = new_token2[1:]
-
-                # Mantém pelo menos o comprimento original do token quando aplicável.
+                # Mantém pelo menos o comprimento original do token
                 if len(new_token2) < len(token2):
                     new_token2 = new_token2.ljust(len(token2))
 
                 prefix = line[:line.find(token2)]
                 suffix = line[line.find(token2) + len(token2):]
 
-                # Nas linhas 902, o ficheiro final fica sem espaço entre
-                # o primeiro campo e o segundo token convertido.
+                # -------------------------------------------------
+                # Regra crítica de alinhamento:
+                # Nas linhas 902, o ficheiro final fica sem espaço
+                # entre o primeiro campo e o segundo token convertido.
                 #
                 # Exemplo:
                 # 902920205590030100998035039
                 #
-                # Nas restantes linhas, mantém-se o espaço.
+                # e não:
+                # 90292020559 0030100998035039
+                # -------------------------------------------------
                 if line.lstrip().startswith("902"):
                     line = prefix.rstrip() + new_token2 + suffix
                 else:
