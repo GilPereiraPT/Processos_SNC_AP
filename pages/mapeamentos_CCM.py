@@ -136,19 +136,52 @@ def load_default_mapping(
 # =========================================================
 def extract_missing_convention_from_token2(token2: str) -> Optional[str]:
     """
-    Só considera convenção em falta quando o segundo token começa
-    exatamente pelo padrão que o ficheiro usa:
-        0 + 6 algarismos
+    Só considera convenção em falta quando a parte convertível do segundo token
+    tem o padrão usado pelo ficheiro.
 
     Exemplo:
-        0202448ABC...  -> devolve 202448
+        token2 = 003010092030559
 
-    Não procura algarismos noutras partes do token.
-    Não inventa candidatos.
+    Divisão correta:
+        parte convertível = 0030100
+        parte fixa        = 92030559
+
+    Só se analisa a parte convertível.
     """
-    match = re.match(r"^0(\d{6})", token2)
+    parte_convertivel = token2[:7]
+
+    match = re.match(r"^0(\d{6})$", parte_convertivel)
     if match:
         return match.group(1)
+
+    return None
+
+
+# =========================================================
+# 🔍 Procurar convenção apenas na parte convertível do token2
+# =========================================================
+def find_mapping_for_token2(token2: str, mapping: Dict[str, str]) -> Optional[str]:
+    """
+    Procura o código de convenção apenas nos primeiros 7 caracteres
+    do segundo token.
+
+    Exemplo:
+        token2 = 003010092030559
+
+    Divisão correta:
+        parte convertível = 0030100
+        parte fixa        = 92030559
+
+    Só a parte convertível pode ser usada para procurar no mapa.
+    A parte fixa nunca deve ser pesquisada nem alterada.
+    """
+    parte_convertivel = token2[:7]
+
+    for conv_code in mapping.keys():
+        pattern7 = "0" + conv_code
+
+        if pattern7 == parte_convertivel:
+            return conv_code
 
     return None
 
@@ -187,14 +220,8 @@ def transform_line(
     if len(parts) >= 2:
         token2 = parts[1]
 
-        # Procura uma convenção já existente nos mapeamentos
-        matched_conv = next(
-            (
-                c for c in sorted(mapping.keys(), key=len, reverse=True)
-                if c in token2
-            ),
-            None
-        )
+        # Procura uma convenção apenas na parte convertível do token2
+        matched_conv = find_mapping_for_token2(token2, mapping)
 
         if matched_conv:
             ent_code = mapping[matched_conv]
@@ -202,17 +229,22 @@ def transform_line(
             try:
                 ent7 = f"{int(ent_code):07d}"
 
-                pattern7 = "0" + matched_conv
+                # -------------------------------------------------
+                # Divisão correta do segundo token:
+                #
+                # Exemplo:
+                #   003010092030559
+                #
+                #   parte_convertivel = 0030100
+                #   parte_fixa        = 92030559
+                #
+                # Só a parte convertível é substituída.
+                # A parte fixa fica intacta.
+                # -------------------------------------------------
+                parte_convertivel = token2[:7]
+                parte_fixa = token2[7:]
 
-                if pattern7 in token2:
-                    new_token2 = token2.replace(pattern7, ent7, 1)
-                else:
-                    idx = token2.find(matched_conv)
-                    new_token2 = (
-                        token2[:idx]
-                        + ent7
-                        + token2[idx + len(matched_conv):]
-                    )
+                new_token2 = ent7 + parte_fixa
 
                 # Linhas especiais 903 / 904 / 906
                 if line.lstrip().startswith(("903", "904", "906")) and new_token2.startswith("0"):
@@ -232,8 +264,8 @@ def transform_line(
 
         else:
             # -------------------------------------------------
-            # 🔍 Só regista como falta a convenção real
-            # existente no início do token2
+            # 🔍 Só regista como falta a convenção real existente
+            # na parte convertível do token2
             # -------------------------------------------------
             candidate = extract_missing_convention_from_token2(token2)
 
