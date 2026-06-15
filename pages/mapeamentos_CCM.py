@@ -13,6 +13,9 @@ MAPPING_SEPARATOR = ";"
 MAPPING_HEADER_CONV = "Cod. Convencao"
 MAPPING_HEADER_ENTITY = "Cod. Entidade"
 
+# Comprimento obrigatório dos ficheiros finais, conforme exemplos submetidos
+FINAL_LINE_LENGTH = 140
+
 # =========================================================
 # ⚙️ Estado global
 # =========================================================
@@ -159,20 +162,27 @@ def extract_missing_convention_from_token2(token2: str) -> Optional[str]:
 def transform_line(
     line: str,
     mapping: Dict[str, str],
-    expected_len: int = None
+    expected_len: int = FINAL_LINE_LENGTH
 ):
-    original_len = len(line)
-
-    if expected_len is None:
-        expected_len = original_len
-
     missing_code = None
 
     # -----------------------------------------------------
     # 1️⃣ Corrigir Coluna 12
     # -----------------------------------------------------
+    # Ficheiro bruto pode vir assim:
+    # 902920205590003010092020559...
+    #
+    # Ficheiro final tem de ficar assim:
+    # 90292020559 0003010092020559...
+    #
+    # Importante:
+    # A versão anterior fazia:
+    # line = line[:11] + " " + line[12:]
+    #
+    # Isso apagava o carácter da posição 12.
+    # Aqui apenas inserimos um espaço, sem apagar nada.
     if len(line) >= 12 and line[11] == "0":
-        line = line[:11] + " " + line[12:]
+        line = line[:11] + " " + line[11:]
 
     # -----------------------------------------------------
     # 2️⃣ Corrigir CC
@@ -246,11 +256,15 @@ def transform_line(
     # -----------------------------------------------------
     # 4️⃣ Remover NIF final
     # -----------------------------------------------------
-    line = re.sub(r"\s\d{9}\s*$", " ", line)
+    # O ficheiro bruto pode trazer um NIF de 9 dígitos no fim.
+    # O ficheiro final dos exemplos não mantém esse NIF.
+    line = re.sub(r"\s+\d{9}\s*$", "", line)
 
     # -----------------------------------------------------
-    # 5️⃣ Ajuste do comprimento final
+    # 5️⃣ Ajuste obrigatório ao formato final
     # -----------------------------------------------------
+    # Os ficheiros finais submetidos estão em formato fixo,
+    # com 140 caracteres por linha.
     if len(line) > expected_len:
         line = line[:expected_len]
     elif len(line) < expected_len:
@@ -446,6 +460,7 @@ if uploaded_files:
 
         processed = []
         missing_found_in_file = set()
+        invalid_lengths = []
 
         for i, (line_body, eol) in enumerate(lines):
 
@@ -453,7 +468,14 @@ if uploaded_files:
                 processed.append(line_body + eol)
                 continue
 
-            new_line, missing_code = transform_line(line_body, mapping_dict)
+            new_line, missing_code = transform_line(
+                line_body,
+                mapping_dict,
+                expected_len=FINAL_LINE_LENGTH
+            )
+
+            if len(new_line) != FINAL_LINE_LENGTH:
+                invalid_lengths.append((i + 1, len(new_line), repr(new_line)))
 
             if missing_code:
                 missing_found_in_file.add(missing_code)
@@ -478,6 +500,20 @@ if uploaded_files:
             output += default_eol
 
         st.success(f"✅ {f.name} convertido")
+
+        if invalid_lengths:
+            st.error(
+                f"⚠️ Foram encontradas {len(invalid_lengths)} linhas "
+                f"com comprimento diferente de {FINAL_LINE_LENGTH} caracteres."
+            )
+
+            for erro in invalid_lengths[:10]:
+                st.code(str(erro))
+        else:
+            st.caption(
+                f"Todas as linhas úteis foram ajustadas para "
+                f"{FINAL_LINE_LENGTH} caracteres."
+            )
 
         if missing_found_in_file:
             st.warning(
