@@ -13,9 +13,6 @@ MAPPING_SEPARATOR = ";"
 MAPPING_HEADER_CONV = "Cod. Convencao"
 MAPPING_HEADER_ENTITY = "Cod. Entidade"
 
-# Os ficheiros finais dos exemplos têm 140 caracteres por linha
-FINAL_LINE_LENGTH = 140
-
 # =========================================================
 # ⚙️ Estado global
 # =========================================================
@@ -25,6 +22,17 @@ if "mapping_dict" not in st.session_state:
 if "mapping_df" not in st.session_state:
     st.session_state.mapping_df = None
 
+# Estrutura:
+# {
+#   "123456": {
+#       "ficheiro|linha|texto": {
+#           "Convencao": "123456",
+#           "Ficheiro": "ficheiro.txt",
+#           "Linha": 15,
+#           "Conteudo da linha": "..."
+#       }
+#   }
+# }
 if "missing_codes" not in st.session_state or not isinstance(st.session_state.missing_codes, dict):
     st.session_state.missing_codes = {}
 
@@ -34,9 +42,13 @@ if "missing_codes" not in st.session_state or not isinstance(st.session_state.mi
 # =========================================================
 def normalize_mapping_key(value: str) -> str:
     """
-    Normaliza a convenção apenas para uso interno na app:
+    Normaliza a convenção apenas para uso interno na app.
+    Mantém o princípio que já existia:
     - remove tudo o que não é dígito
     - completa à esquerda até 6 dígitos
+
+    Importante:
+    Isto NÃO altera o valor guardado no CSV exportado.
     """
     digits = re.sub(r"\D", "", str(value))
     return digits.zfill(6) if digits else ""
@@ -44,7 +56,8 @@ def normalize_mapping_key(value: str) -> str:
 
 def normalize_entity_value(value: str) -> str:
     """
-    Limpa o código de entidade, mantendo apenas dígitos.
+    Limpa o código de entidade introduzido pelo utilizador,
+    mantendo apenas dígitos.
     """
     return re.sub(r"\D", "", str(value))
 
@@ -56,12 +69,15 @@ def convention_for_csv(value: str) -> str:
     Mantém o código de convenção sem zeros artificiais à esquerda,
     tal como no ficheiro original funcional:
         202448;9803476
+
+    Se internamente existir '000401', exporta '401'.
     """
     digits = re.sub(r"\D", "", str(value))
 
     if not digits:
         return ""
 
+    # Remove zeros à esquerda, mas preserva "0" se fosse o único valor
     return str(int(digits))
 
 
@@ -81,6 +97,7 @@ def load_default_mapping(
             keep_default_na=False
         )
 
+        # Garantir que o ficheiro tem as colunas esperadas
         required_columns = [MAPPING_HEADER_CONV, MAPPING_HEADER_ENTITY]
 
         if list(df.columns[:2]) != required_columns:
@@ -89,8 +106,10 @@ def load_default_mapping(
                 f"Esperado: {MAPPING_HEADER_CONV};{MAPPING_HEADER_ENTITY}"
             )
 
+        # Ficar apenas com as duas colunas necessárias
         df = df[[MAPPING_HEADER_CONV, MAPPING_HEADER_ENTITY]].copy()
 
+        # Limpeza mínima, sem alterar a estrutura do CSV
         df[MAPPING_HEADER_CONV] = df[MAPPING_HEADER_CONV].astype(str).str.strip()
         df[MAPPING_HEADER_ENTITY] = df[MAPPING_HEADER_ENTITY].astype(str).str.strip()
 
@@ -118,11 +137,14 @@ def load_default_mapping(
 def extract_missing_convention_from_token2(token2: str) -> Optional[str]:
     """
     Só considera convenção em falta quando o segundo token começa
-    exatamente pelo padrão:
+    exatamente pelo padrão que o ficheiro usa:
         0 + 6 algarismos
 
     Exemplo:
-        0202448ABC... -> devolve 202448
+        0202448ABC...  -> devolve 202448
+
+    Não procura algarismos noutras partes do token.
+    Não inventa candidatos.
     """
     match = re.match(r"^0(\d{6})", token2)
     if match:
@@ -137,35 +159,18 @@ def extract_missing_convention_from_token2(token2: str) -> Optional[str]:
 def transform_line(
     line: str,
     mapping: Dict[str, str],
-    expected_len: int = FINAL_LINE_LENGTH
+    expected_len: int = None
 ):
-    """
-    Transforma uma linha do ficheiro bruto para o formato final fixo.
+    original_len = len(line)
 
-    Mantém a lógica original do script:
-    - quando a posição 12 tem '0', substitui essa posição por espaço,
-      removendo o zero excedente;
-    - aplica o mapa de convenções;
-    - remove NIF final;
-    - força o resultado para 140 caracteres.
-    """
+    if expected_len is None:
+        expected_len = original_len
+
     missing_code = None
 
     # -----------------------------------------------------
-    # 1️⃣ Corrigir coluna 12
+    # 1️⃣ Corrigir Coluna 12
     # -----------------------------------------------------
-    # Este comportamento é intencional.
-    #
-    # Bruto:
-    # 902920205590003010092020559...
-    #
-    # Depois desta operação:
-    # 90292020559 003010092020559...
-    #
-    # Ou seja: remove-se o zero da posição 12 e coloca-se espaço.
-    # Não é apenas inserir espaço. É isto que permite depois o mapeamento
-    # produzir tokens como:
-    # 0030100998035039
     if len(line) >= 12 and line[11] == "0":
         line = line[:11] + " " + line[12:]
 
@@ -182,6 +187,7 @@ def transform_line(
     if len(parts) >= 2:
         token2 = parts[1]
 
+        # Procura uma convenção já existente nos mapeamentos
         matched_conv = next(
             (
                 c for c in sorted(mapping.keys(), key=len, reverse=True)
@@ -212,12 +218,10 @@ def transform_line(
                 if line.lstrip().startswith(("903", "904", "906")) and new_token2.startswith("0"):
                     new_token2 = new_token2[1:]
 
-                # Mantém pelo menos o comprimento original do token.
-                # Se a substituição aumentar 1 carácter, como acontecia
-                # no script funcional, mantém esse aumento.
-                if len(new_token2) < len(token2):
-                    new_token2 = new_token2.ljust(len(token2))
+                # Manter o comprimento original do token
+                new_token2 = new_token2.ljust(len(token2))
 
+                # Reconstrução segura da linha
                 prefix = line[:line.find(token2)]
                 suffix = line[line.find(token2) + len(token2):]
 
@@ -227,6 +231,10 @@ def transform_line(
                 pass
 
         else:
+            # -------------------------------------------------
+            # 🔍 Só regista como falta a convenção real
+            # existente no início do token2
+            # -------------------------------------------------
             candidate = extract_missing_convention_from_token2(token2)
 
             if candidate:
@@ -238,12 +246,10 @@ def transform_line(
     # -----------------------------------------------------
     # 4️⃣ Remover NIF final
     # -----------------------------------------------------
-    # O ficheiro bruto pode trazer um NIF final de 9 dígitos.
-    # Nos ficheiros finais esse campo desaparece e fica espaço.
-    line = re.sub(r"\s+\d{9}\s*$", "", line)
+    line = re.sub(r"\s\d{9}\s*$", " ", line)
 
     # -----------------------------------------------------
-    # 5️⃣ Ajustar obrigatoriamente para 140 caracteres
+    # 5️⃣ Ajuste do comprimento final
     # -----------------------------------------------------
     if len(line) > expected_len:
         line = line[:expected_len]
@@ -312,6 +318,9 @@ def build_updated_mapping_dataframe() -> pd.DataFrame:
     """
     Parte SEMPRE do DataFrame original carregado do CSV
     e acrescenta apenas os mapeamentos novos existentes na sessão.
+
+    Não reconstrói o histórico inteiro a partir do dicionário.
+    Isto evita perdas de dados e preserva o formato base do CSV.
     """
     if st.session_state.mapping_df is None:
         return pd.DataFrame(
@@ -320,6 +329,7 @@ def build_updated_mapping_dataframe() -> pd.DataFrame:
 
     df = st.session_state.mapping_df.copy()
 
+    # Mapeamentos já presentes no CSV, normalizados internamente
     existing_internal_codes = set(
         df[MAPPING_HEADER_CONV]
         .astype(str)
@@ -348,6 +358,10 @@ def build_mapping_csv_bytes() -> bytes:
     Gera CSV exatamente com:
         Cod. Convencao;Cod. Entidade
         202448;9803476
+
+    - separador ;
+    - UTF-8 com BOM
+    - sem índice
     """
     df = build_updated_mapping_dataframe()
 
@@ -432,7 +446,6 @@ if uploaded_files:
 
         processed = []
         missing_found_in_file = set()
-        invalid_lengths = []
 
         for i, (line_body, eol) in enumerate(lines):
 
@@ -440,14 +453,7 @@ if uploaded_files:
                 processed.append(line_body + eol)
                 continue
 
-            new_line, missing_code = transform_line(
-                line_body,
-                mapping_dict,
-                expected_len=FINAL_LINE_LENGTH
-            )
-
-            if len(new_line) != FINAL_LINE_LENGTH:
-                invalid_lengths.append((i + 1, len(new_line), repr(new_line)))
+            new_line, missing_code = transform_line(line_body, mapping_dict)
 
             if missing_code:
                 missing_found_in_file.add(missing_code)
@@ -473,20 +479,6 @@ if uploaded_files:
 
         st.success(f"✅ {f.name} convertido")
 
-        if invalid_lengths:
-            st.error(
-                f"⚠️ Foram encontradas {len(invalid_lengths)} linhas "
-                f"com comprimento diferente de {FINAL_LINE_LENGTH} caracteres."
-            )
-
-            for erro in invalid_lengths[:10]:
-                st.code(str(erro))
-        else:
-            st.caption(
-                f"Todas as linhas úteis foram ajustadas para "
-                f"{FINAL_LINE_LENGTH} caracteres."
-            )
-
         if missing_found_in_file:
             st.warning(
                 f"⚠️ Neste ficheiro foram encontradas "
@@ -495,7 +487,7 @@ if uploaded_files:
 
         st.download_button(
             f"📥 Download {f.name}",
-            output.encode("latin-1"),
+            output.encode("utf-8"),
             f"CORRIGIDO_{f.name}",
             "text/plain",
             key=f"download_{f.name}"
@@ -520,6 +512,9 @@ if st.session_state.missing_codes:
         f"sem mapeamento, em **{total_occurrences} ocorrências**."
     )
 
+    # -----------------------------------------------------
+    # 📋 Tabela com linhas completas onde ocorreu o erro
+    # -----------------------------------------------------
     all_missing_rows = []
 
     for code, occurrences in st.session_state.missing_codes.items():
@@ -541,6 +536,9 @@ if st.session_state.missing_codes:
             hide_index=True
         )
 
+    # -----------------------------------------------------
+    # ✍️ Introdução dos novos códigos de entidade
+    # -----------------------------------------------------
     st.subheader("✍️ Atualizar mapeamentos em falta")
 
     new_entries = {}
@@ -571,6 +569,9 @@ if st.session_state.missing_codes:
         with col3:
             st.caption(f"{occurrences_count} ocorrência(s)")
 
+    # -----------------------------------------------------
+    # 💾 Guardar novos mapeamentos na sessão
+    # -----------------------------------------------------
     if st.button("💾 Guardar novos mapeamentos na sessão"):
         if not new_entries:
             st.warning("⚠️ Não foi preenchido qualquer código de entidade.")
