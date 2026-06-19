@@ -132,25 +132,93 @@ def load_default_mapping(
 
 
 # =========================================================
+# 🔍 Regras de layout por código de ficheiro
+# =========================================================
+def get_file_code(line: str) -> str:
+    """
+    Código de ficheiro = 3 primeiras colunas/caracteres da linha.
+    Exemplo:
+        702... = medicamentos
+        902/903/904/906... = layout MCDT/Termas
+    """
+    return line[:3] if len(line) >= 3 else ""
+
+
+def get_token2_rule(file_code: str, token2: str) -> dict:
+    """
+    Define como ler a parte convertível do 2.º token, consoante
+    o código de ficheiro existente nas 3 primeiras colunas da linha.
+
+    Regras conhecidas:
+      - 702: medicamentos
+          token2 = CCCCCCPPPPPPPP
+          parte convertível = 6 primeiros dígitos
+          exemplo: 80089292015442 -> 800892 + 92015442
+
+      - 902/903/904/906: MCDT/Termas
+          token2 = 0CCCCCCPPPPPPPP
+          parte convertível = 7 primeiros dígitos
+          exemplo: 003010092030559 -> 0030100 + 92030559
+
+    Fallback:
+      - se começar por 0 + 6 dígitos, usa regra de 7
+      - caso contrário, tenta regra de 6
+    """
+    if file_code == "702":
+        return {
+            "name": "medicamentos",
+            "convert_len": 6,
+            "has_leading_zero": False,
+        }
+
+    if file_code in {"902", "903", "904", "906"}:
+        return {
+            "name": "mcdt_termas",
+            "convert_len": 7,
+            "has_leading_zero": True,
+        }
+
+    # Fallback automático para ficheiros não catalogados
+    if re.match(r"^0\d{6}", token2):
+        return {
+            "name": "auto_0_6",
+            "convert_len": 7,
+            "has_leading_zero": True,
+        }
+
+    return {
+        "name": "auto_6",
+        "convert_len": 6,
+        "has_leading_zero": False,
+    }
+
+
+# =========================================================
 # 🔍 Detetar convenção em falta
 # =========================================================
-def extract_missing_convention_from_token2(token2: str) -> Optional[str]:
+def extract_missing_convention_from_token2(
+    token2: str,
+    file_code: str
+) -> Optional[str]:
     """
-    Só considera convenção em falta quando a parte convertível do segundo token
-    tem o padrão usado pelo ficheiro.
-
-    Exemplo:
-        token2 = 003010092030559
-
-    Divisão correta:
-        parte convertível = 0030100
-        parte fixa        = 92030559
-
-    Só se analisa a parte convertível.
+    Extrai a convenção candidata apenas da parte convertível do 2.º token,
+    de acordo com o código de ficheiro das 3 primeiras colunas.
     """
-    parte_convertivel = token2[:7]
+    rule = get_token2_rule(file_code, token2)
+    convert_len = rule["convert_len"]
 
-    match = re.match(r"^0(\d{6})$", parte_convertivel)
+    if len(token2) < convert_len:
+        return None
+
+    parte_convertivel = token2[:convert_len]
+
+    if rule["has_leading_zero"]:
+        match = re.match(r"^0(\d{6})$", parte_convertivel)
+        if match:
+            return match.group(1)
+        return None
+
+    match = re.match(r"^(\d{6})$", parte_convertivel)
     if match:
         return match.group(1)
 
@@ -160,31 +228,34 @@ def extract_missing_convention_from_token2(token2: str) -> Optional[str]:
 # =========================================================
 # 🔍 Procurar convenção apenas na parte convertível do token2
 # =========================================================
-def find_mapping_for_token2(token2: str, mapping: Dict[str, str]) -> Optional[str]:
+def find_mapping_for_token2(
+    token2: str,
+    mapping: Dict[str, str],
+    file_code: str
+) -> Optional[str]:
     """
-    Procura o código de convenção apenas nos primeiros 7 caracteres
-    do segundo token.
+    Procura o código de convenção apenas na parte convertível do 2.º token,
+    escolhendo a regra através do código de ficheiro nas 3 primeiras colunas.
 
-    Exemplo:
-        token2 = 003010092030559
+    Medicamentos:
+        80089292015442
+        800892 = convenção
 
-    Divisão correta:
-        parte convertível = 0030100
-        parte fixa        = 92030559
-
-    Só a parte convertível pode ser usada para procurar no mapa.
-    A parte fixa nunca deve ser pesquisada nem alterada.
+    MCDT/Termas:
+        003010092030559
+        0030100 = 0 + convenção 030100
     """
-    parte_convertivel = token2[:7]
+    candidate = extract_missing_convention_from_token2(token2, file_code)
 
-    for conv_code in mapping.keys():
-        pattern7 = "0" + conv_code
+    if not candidate:
+        return None
 
-        if pattern7 == parte_convertivel:
-            return conv_code
+    candidate_internal = normalize_mapping_key(candidate)
+
+    if candidate_internal in mapping:
+        return candidate_internal
 
     return None
-
 
 # =========================================================
 # 🧩 Transformação + deteção de convenções em falta
@@ -215,13 +286,18 @@ def transform_line(
     # -----------------------------------------------------
     # 3️⃣ Processar tokens
     # -----------------------------------------------------
+    file_code = get_file_code(line)
     parts = line.split(maxsplit=2)
 
     if len(parts) >= 2:
         token2 = parts[1]
 
-        # Procura uma convenção apenas na parte convertível do token2
-        matched_conv = find_mapping_for_token2(token2, mapping)
+        # Escolhe a regra pela estrutura/código do ficheiro nas 3 primeiras colunas
+        rule = get_token2_rule(file_code, token2)
+        convert_len = rule["convert_len"]
+
+        # Procura a convenção apenas na parte convertível do token2
+        matched_conv = find_mapping_for_token2(token2, mapping, file_code)
 
         if matched_conv:
             ent_code = mapping[matched_conv]
@@ -230,28 +306,34 @@ def transform_line(
                 ent7 = f"{int(ent_code):07d}"
 
                 # -------------------------------------------------
-                # Divisão correta do segundo token:
+                # Divisão correta do segundo token, dependente do ficheiro:
                 #
-                # Exemplo:
+                # Medicamentos, código 702:
+                #   80089292015442
+                #   parte_convertivel = 800892
+                #   parte_fixa        = 92015442
+                #
+                # MCDT/Termas, códigos 902/903/904/906:
                 #   003010092030559
-                #
                 #   parte_convertivel = 0030100
                 #   parte_fixa        = 92030559
                 #
                 # Só a parte convertível é substituída.
                 # A parte fixa fica intacta.
                 # -------------------------------------------------
-                parte_convertivel = token2[:7]
-                parte_fixa = token2[7:]
+                parte_convertivel = token2[:convert_len]
+                parte_fixa = token2[convert_len:]
 
                 new_token2 = ent7 + parte_fixa
 
                 # Linhas especiais 903 / 904 / 906
-                if line.lstrip().startswith(("903", "904", "906")) and new_token2.startswith("0"):
+                if file_code in {"903", "904", "906"} and new_token2.startswith("0"):
                     new_token2 = new_token2[1:]
 
-                # Manter o comprimento original do token
-                new_token2 = new_token2.ljust(len(token2))
+                # Nos medicamentos (702), a convenção tem 6 dígitos e a entidade tem 7.
+                # Por isso o token pode crescer 1 carácter. Não se deve cortar aqui.
+                if len(new_token2) < len(token2):
+                    new_token2 = new_token2.ljust(len(token2))
 
                 # Reconstrução segura da linha
                 prefix = line[:line.find(token2)]
@@ -267,7 +349,7 @@ def transform_line(
             # 🔍 Só regista como falta a convenção real existente
             # na parte convertível do token2
             # -------------------------------------------------
-            candidate = extract_missing_convention_from_token2(token2)
+            candidate = extract_missing_convention_from_token2(token2, file_code)
 
             if candidate:
                 candidate_internal = normalize_mapping_key(candidate)
