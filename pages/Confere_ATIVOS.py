@@ -691,6 +691,15 @@ def controlar_fichas(
         | (controlo["data_utilizacao"] > data_referencia)
     )
 
+    # Valor líquido após depreciações/amortizações acumuladas.
+    # Quando este valor é zero (ou residual dentro da tolerância), o bem já não
+    # tem base para reconhecer depreciação/amortização no período.
+    controlo["valor_liquido_apos_acumuladas"] = (
+        controlo["valor_contabilistico"]
+        - controlo["depreciacao_acumulada"]
+    )
+
+    # Valor ainda depreciável, considerando também valor residual e imparidade.
     controlo["valor_depreciavel_remanescente"] = (
         controlo["valor_contabilistico"]
         - controlo["valor_residual"]
@@ -699,7 +708,9 @@ def controlar_fichas(
     )
 
     controlo["totalmente_depreciado"] = (
-        controlo["valor_depreciavel_remanescente"] <= tolerancia
+        (controlo["valor_liquido_apos_acumuladas"] <= tolerancia)
+        | (controlo["valor_depreciavel_remanescente"] <= tolerancia)
+        | (controlo["quantia_escriturada"] <= controlo["valor_residual"] + tolerancia)
     )
 
     controlo["elegivel_para_depreciacao"] = ~(
@@ -748,12 +759,13 @@ def controlar_fichas(
         "data_utilizacao",
         "taxa",
         "valor_contabilistico",
+        "depreciacao_acumulada",
+        "valor_liquido_apos_acumuladas",
         "valor_residual",
         "quantia_escriturada",
         "valor_depreciavel_remanescente",
         "depreciacao_periodo",
         "depreciacao_exercicio",
-        "depreciacao_acumulada",
         "motivo",
     ]
     problemas = problemas[colunas_problemas].rename(
@@ -765,6 +777,8 @@ def controlar_fichas(
             "data_utilizacao": "Data de utilização",
             "taxa": "Taxa",
             "valor_contabilistico": "Valor contabilístico",
+            "depreciacao_acumulada": "Amortização/depreciação acumulada",
+            "valor_liquido_apos_acumuladas": "Valor contabilístico líquido após acumuladas",
             "valor_residual": "Valor residual",
             "quantia_escriturada": "Quantia escriturada",
             "valor_depreciavel_remanescente": "Valor por depreciar/amortizar",
