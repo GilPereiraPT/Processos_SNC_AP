@@ -352,36 +352,40 @@ def carregar_primavera(ficheiro: BinaryIO) -> tuple[pd.DataFrame, pd.DataFrame]:
 def conta_ativo_por_gasto(conta_gasto: str) -> str:
     """
     642... -> 43...
-    643... -> 443...
+    643... -> 443
 
     Exemplos:
     6423   -> 433
     642331 -> 43331
     643    -> 443
-    6431   -> 4431
+    6433   -> 443
     """
     if conta_gasto.startswith("642"):
         return "43" + conta_gasto[3:]
     if conta_gasto.startswith("643"):
-        return "443" + conta_gasto[3:]
+        # No plano de contas utilizado, todas as amortizações de ativos
+        # intangíveis (incluindo 6433) são reconciliadas com a conta 443
+        # do mapa Primavera.
+        return "443"
     return ""
 
 
 def conta_ativo_por_acumulada(conta_acumulada: str) -> str:
     """
     438...  -> 43...
-    4483... -> 443...
+    4483... -> 443
 
     Exemplos:
     4383   -> 433
     438331 -> 43331
     4483   -> 443
-    44831  -> 4431
     """
     if conta_acumulada.startswith("438"):
         return "43" + conta_acumulada[3:]
     if conta_acumulada.startswith("4483"):
-        return "443" + conta_acumulada[4:]
+        # A amortização acumulada 4483 corresponde à conta 443
+        # (Programas de computador e sistemas de informação) no Primavera.
+        return "443"
     return ""
 
 
