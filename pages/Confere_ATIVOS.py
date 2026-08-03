@@ -133,12 +133,16 @@ def load_primavera(uploaded: BinaryIO) -> pd.DataFrame:
     )
     out = out[out["code"] != ""].reset_index(drop=True)
 
-    # Cada ficha herda a conta analítica 43x mais recente.
+    # Cada ficha herda a conta analítica de ativo mais recente:
+    # 431–437 para ativos fixos tangíveis e 443 para ativos intangíveis.
     current_account = ""
     assigned = []
     for _, row in out.iterrows():
-        if row["is_account"] and row["code"].startswith("43") and not row["code"].startswith(("438", "439")):
-            current_account = row["code"]
+        code = row["code"]
+        is_aft = code.startswith(("431", "432", "433", "434", "435", "436", "437"))
+        is_intangible = code.startswith("443")
+        if row["is_account"] and (is_aft or is_intangible):
+            current_account = code
         assigned.append(current_account)
     out["asset_account"] = assigned
     return out
@@ -151,33 +155,39 @@ def leaf_rows(df: pd.DataFrame, prefix: str) -> pd.DataFrame:
     return part[part["is_leaf"]].copy()
 
 
-def asset_prefix_from_account(account: str, source_prefix: str) -> str:
-    return "43" + account[len(source_prefix):]
+def asset_prefix_from_account(account: str, source_prefix: str, target_prefix: str) -> str:
+    """Converte uma conta SICC na raiz da conta de ativo correspondente no Primavera."""
+    return target_prefix + account[len(source_prefix):]
 
 
 def compare_depreciation(sicc: pd.DataFrame, primavera: pd.DataFrame, tolerance: float) -> pd.DataFrame:
-    items = primavera[~primavera["is_account"] & primavera["asset_account"].str.startswith("43")].copy()
+    items = primavera[~primavera["is_account"] & primavera["asset_account"].str.startswith(("431", "432", "433", "434", "435", "436", "437", "443"))].copy()
     records = []
 
-    for source_prefix, component, sicc_col, prim_col in [
-        ("642", "Depreciação do período", "period_net_debit", "dep_period"),
-        ("642", "Depreciação do exercício", "exercise_net_debit", "dep_exercise"),
-        ("438", "Depreciação acumulada", "accumulated_credit_balance", "dep_accumulated"),
-    ]:
+    rules = [
+        ("642", "43", "AFT — depreciação do período", "period_net_debit", "dep_period"),
+        ("642", "43", "AFT — depreciação do exercício", "exercise_net_debit", "dep_exercise"),
+        ("438", "43", "AFT — depreciação acumulada", "accumulated_credit_balance", "dep_accumulated"),
+        ("643", "443", "Intangíveis — amortização do período", "period_net_debit", "dep_period"),
+        ("643", "443", "Intangíveis — amortização do exercício", "exercise_net_debit", "dep_exercise"),
+        ("4483", "443", "Intangíveis — amortização acumulada", "accumulated_credit_balance", "dep_accumulated"),
+    ]
+
+    for source_prefix, target_prefix, component, sicc_col, prim_col in rules:
         rows = leaf_rows(sicc, source_prefix)
-        available = not rows.empty
-        if not available:
+        target_items = items[items["asset_account"].str.startswith(target_prefix)]
+        if rows.empty:
             records.append({
-                "Componente": component, "Conta SICC": "—", "Conta(s) Primavera": "—",
+                "Componente": component, "Conta SICC": "—", "Conta(s) Primavera": target_prefix + "…",
                 "Descrição SICC": "Conta não incluída no ficheiro", "SICC": pd.NA,
-                "Primavera": float(items[prim_col].sum()), "Diferença": pd.NA,
+                "Primavera": float(target_items[prim_col].sum()), "Diferença": pd.NA,
                 "Estado": "Não disponível",
             })
             continue
 
         for _, r in rows.iterrows():
-            asset_prefix = asset_prefix_from_account(r["account"], source_prefix)
-            matched = items[items["asset_account"].str.startswith(asset_prefix)]
+            asset_prefix = asset_prefix_from_account(r["account"], source_prefix, target_prefix)
+            matched = target_items[target_items["asset_account"].str.startswith(asset_prefix)]
             prim_value = float(matched[prim_col].sum())
             sicc_value = float(r[sicc_col])
             diff = sicc_value - prim_value
@@ -196,15 +206,20 @@ def compare_depreciation(sicc: pd.DataFrame, primavera: pd.DataFrame, tolerance:
 
 
 def global_summary(sicc: pd.DataFrame, primavera: pd.DataFrame, detail: pd.DataFrame, tolerance: float) -> pd.DataFrame:
-    items = primavera[~primavera["is_account"] & primavera["asset_account"].str.startswith("43")]
+    items = primavera[~primavera["is_account"] & primavera["asset_account"].str.startswith(("431", "432", "433", "434", "435", "436", "437", "443"))]
     rows = []
-    for component, prefix, sicc_col, prim_col in [
-        ("Depreciação do período", "642", "period_net_debit", "dep_period"),
-        ("Depreciação do exercício", "642", "exercise_net_debit", "dep_exercise"),
-        ("Depreciação acumulada", "438", "accumulated_credit_balance", "dep_accumulated"),
-    ]:
+    rules = [
+        ("AFT — depreciação do período", "642", "43", "period_net_debit", "dep_period"),
+        ("AFT — depreciação do exercício", "642", "43", "exercise_net_debit", "dep_exercise"),
+        ("AFT — depreciação acumulada", "438", "43", "accumulated_credit_balance", "dep_accumulated"),
+        ("Intangíveis — amortização do período", "643", "443", "period_net_debit", "dep_period"),
+        ("Intangíveis — amortização do exercício", "643", "443", "exercise_net_debit", "dep_exercise"),
+        ("Intangíveis — amortização acumulada", "4483", "443", "accumulated_credit_balance", "dep_accumulated"),
+    ]
+    for component, prefix, target_prefix, sicc_col, prim_col in rules:
         src = leaf_rows(sicc, prefix)
-        prim = float(items[prim_col].sum())
+        target_items = items[items["asset_account"].str.startswith(target_prefix)]
+        prim = float(target_items[prim_col].sum())
         if src.empty:
             rows.append({"Componente": component, "SICC": pd.NA, "Primavera": prim, "Diferença": pd.NA, "Estado": "Não disponível"})
         else:
@@ -212,29 +227,27 @@ def global_summary(sicc: pd.DataFrame, primavera: pd.DataFrame, detail: pd.DataF
             diff = val - prim
             rows.append({"Componente": component, "SICC": val, "Primavera": prim, "Diferença": diff, "Estado": "OK" if abs(diff) <= tolerance else "Divergência"})
 
-    # Apenas possível quando o ficheiro contém contas patrimoniais 43.
-    asset43 = leaf_rows(sicc, "43")
-    asset43 = asset43[~asset43["account"].str.startswith(("438", "439"))]
-    prim_gross = float(items["gross_value"].sum())
-    prim_net = float(items["carrying_amount"].sum())
-    if asset43.empty:
-        rows += [
-            {"Componente": "Valor bruto dos ativos", "SICC": pd.NA, "Primavera": prim_gross, "Diferença": pd.NA, "Estado": "Não disponível"},
-            {"Componente": "Quantia escriturada", "SICC": pd.NA, "Primavera": prim_net, "Diferença": pd.NA, "Estado": "Não disponível"},
-        ]
-    else:
-        gross = float(asset43["exercise_net_debit"].sum())
-        dep438 = leaf_rows(sicc, "438")
-        dep = float(dep438["accumulated_credit_balance"].sum()) if not dep438.empty else 0.0
-        net = gross - dep
-        for component, s, p in [("Valor bruto dos ativos", gross, prim_gross), ("Quantia escriturada", net, prim_net)]:
-            d = s - p
-            rows.append({"Componente": component, "SICC": s, "Primavera": p, "Diferença": d, "Estado": "OK" if abs(d) <= tolerance else "Divergência"})
+    # Valor contabilístico: 431–437 para AFT e 443 para intangíveis, quando presentes no SICC.
+    for label, prefixes, prim_prefix in [
+        ("Valor contabilístico AFT", ("431", "432", "433", "434", "435", "436", "437"), "43"),
+        ("Valor contabilístico intangíveis", ("443",), "443"),
+    ]:
+        src_parts = [leaf_rows(sicc, prefix) for prefix in prefixes]
+        src_parts = [part for part in src_parts if not part.empty]
+        target_items = items[items["asset_account"].str.startswith(prim_prefix)]
+        prim = float(target_items["gross_value"].sum())
+        if not src_parts:
+            rows.append({"Componente": label, "SICC": pd.NA, "Primavera": prim, "Diferença": pd.NA, "Estado": "Não disponível"})
+        else:
+            src = pd.concat(src_parts, ignore_index=True).drop_duplicates(subset=["account"] )
+            val = float(src["exercise_net_debit"].sum())
+            diff = val - prim
+            rows.append({"Componente": label, "SICC": val, "Primavera": prim, "Diferença": diff, "Estado": "OK" if abs(diff) <= tolerance else "Divergência"})
     return pd.DataFrame(rows)
 
 
 def validate_assets(primavera: pd.DataFrame, tolerance: float) -> tuple[pd.DataFrame, pd.DataFrame]:
-    items = primavera[~primavera["is_account"] & primavera["asset_account"].str.startswith("43")].copy()
+    items = primavera[~primavera["is_account"] & primavera["asset_account"].str.startswith(("431", "432", "433", "434", "435", "436", "437", "443"))].copy()
     items["remaining_depreciable"] = (items["gross_value"] - items["residual_value"] - items["dep_accumulated"]).clip(lower=0)
     desc = items["description"].map(norm_text)
     items["is_land"] = items["asset_account"].str.startswith("431") | desc.str.contains(r"\bterreno|recurso natural", regex=True)
@@ -319,8 +332,8 @@ if sicc_file and primavera_file:
         control_summary, issues = validate_assets(primavera, tolerance)
 
         available = []
-        for prefix, label in [("642", "642 — depreciações do período/exercício"), ("438", "438 — depreciações acumuladas"), ("43", "43 — valor patrimonial dos ativos")]:
-            available.append({"Grupo": label, "Incluído no SICC": "Sim" if sicc["account"].str.startswith(prefix).any() else "Não"})
+        for prefix, label in [("642", "642 — depreciações dos AFT"), ("643", "643 — amortizações dos intangíveis"), ("438", "438 — depreciações acumuladas dos AFT"), ("4483", "4483 — amortizações acumuladas dos intangíveis"), ("431", "431–437 — valor contabilístico dos AFT"), ("443", "443 — valor contabilístico dos intangíveis")]:
+            available.append({"Grupo": label, "Incluído no SICC": "Sim" if ((sicc["account"].str.startswith(("431", "432", "433", "434", "435", "436", "437")).any()) if prefix == "431" else sicc["account"].str.startswith(prefix).any()) else "Não"})
         st.subheader("Cobertura do ficheiro SICC")
         st.dataframe(pd.DataFrame(available), use_container_width=True, hide_index=True)
 
@@ -356,10 +369,11 @@ else:
 
 with st.expander("Lógica aplicada"):
     st.markdown("""
-- **Primavera — Período** ↔ movimento líquido do período nas contas **642x**.
-- **Primavera — Exercício** ↔ saldo líquido das contas **642x**.
-- **Primavera — Acumulada** ↔ saldo credor das contas **438x**, quando estas constam do ficheiro.
-- O cruzamento de **valor bruto** e **quantia escriturada** só é efetuado quando o SICC inclui contas **43x**.
+- **AFT:** contas Primavera **431–437** ↔ valor contabilístico SICC **431–437**; período/exercício ↔ **642**; acumulada ↔ saldo credor **438**.
+- **Intangíveis:** conta Primavera **443** ↔ valor contabilístico SICC **443**; período/exercício ↔ **643**; acumulada ↔ saldo credor **4483**.
+- Nas contas **642/643**, o período é **valor a débito − valor a crédito** e o exercício é **saldo a débito − saldo a crédito**.
+- Nas contas **438/4483**, a acumulada é **saldo a crédito − saldo a débito**.
+- Os cruzamentos patrimoniais só são efetuados quando as respetivas contas constam do ficheiro SICC.
 - Terrenos, bens totalmente depreciados e fichas sem data de utilização são excluídos do teste de ausência de depreciação.
 - Uma conta ausente no ficheiro de movimentos é marcada como **Não disponível**, e não como zero.
 """)
