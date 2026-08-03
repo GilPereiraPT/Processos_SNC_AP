@@ -4,376 +4,1108 @@ import io
 import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
-from typing import BinaryIO
+from typing import BinaryIO, Iterable
 
 import pandas as pd
 import streamlit as st
-
-st.set_page_config(page_title="Reconciliação Contabilidade × Ativos", page_icon="📊", layout="wide")
-TOLERANCE_DEFAULT = 0.10
+from openpyxl.utils import get_column_letter
 
 
-def norm_text(value: object) -> str:
-    text = "" if value is None else str(value)
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"\s+", " ", text.strip().lower())
+# ============================================================
+# CONFIGURAÇÃO DA PÁGINA
+# ============================================================
+
+st.set_page_config(
+    page_title="Conferência Contabilidade × Ativos",
+    page_icon="📊",
+    layout="wide",
+)
+
+TOLERANCIA_PREDEFINIDA = 0.10
 
 
-def norm_code(value: object) -> str:
-    if value is None or pd.isna(value):
+# ============================================================
+# FUNÇÕES GERAIS
+# ============================================================
+
+
+def normalizar_texto(valor: object) -> str:
+    texto = "" if valor is None else str(valor)
+    texto = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", texto.strip().lower())
+
+
+def normalizar_codigo(valor: object) -> str:
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
         return ""
-    text = str(value).strip()
-    if text.endswith(".0"):
-        text = text[:-2]
-    return re.sub(r"[^0-9A-Za-z]", "", text)
+
+    texto = str(valor).strip()
+    if texto.endswith(".0"):
+        texto = texto[:-2]
+
+    return re.sub(r"[^0-9A-Za-z]", "", texto)
 
 
-def money(value: object) -> float:
-    if value is None or pd.isna(value):
+def converter_montante(valor: object) -> float:
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
         return 0.0
-    if isinstance(value, (int, float, Decimal)):
-        return float(value)
-    text = str(value).strip().replace("€", "").replace("\u00a0", "").replace(" ", "")
-    if not text or text in {"-", "—"}:
+
+    if isinstance(valor, (int, float, Decimal)):
+        return float(valor)
+
+    texto = (
+        str(valor)
+        .strip()
+        .replace("€", "")
+        .replace("\u00a0", "")
+        .replace(" ", "")
+    )
+
+    if texto in {"", "-", "—"}:
         return 0.0
-    if "," in text:
-        text = text.replace(".", "").replace(",", ".")
+
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+
     try:
-        return float(Decimal(text))
+        return float(Decimal(texto))
     except (InvalidOperation, ValueError):
         return 0.0
 
 
-def decode_csv(data: bytes) -> str:
+def formatar_euro(valor: float) -> str:
+    return f"{valor:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def descodificar_csv(dados: bytes) -> str:
     for encoding in ("utf-8-sig", "cp1252", "latin1"):
         try:
-            return data.decode(encoding)
+            texto = dados.decode(encoding)
+            if ";" in texto:
+                return texto
         except UnicodeDecodeError:
-            pass
-    return data.decode("latin1", errors="replace")
+            continue
+
+    return dados.decode("latin1", errors="replace")
 
 
-def load_sicc(uploaded: BinaryIO) -> pd.DataFrame:
-    text = decode_csv(uploaded.read())
-    lines = text.splitlines()
-    header_idx = next((i for i, line in enumerate(lines) if norm_text(line).startswith("conta;designacao da conta")), None)
-    if header_idx is None:
+def encontrar_coluna(colunas: Iterable[str], alternativas: Iterable[str]) -> str | None:
+    mapa = {normalizar_texto(c): c for c in colunas}
+
+    for alternativa in alternativas:
+        chave = normalizar_texto(alternativa)
+        if chave in mapa:
+            return mapa[chave]
+
+    return None
+
+
+def e_conta_aft(codigo: str) -> bool:
+    return bool(re.match(r"^43[1-7]", codigo))
+
+
+def e_conta_ai(codigo: str) -> bool:
+    return codigo.startswith("443")
+
+
+def natureza_ativo(codigo: str) -> str:
+    if e_conta_aft(codigo):
+        return "Ativo fixo tangível"
+    if e_conta_ai(codigo):
+        return "Ativo intangível"
+    return "Fora do âmbito"
+
+
+def contas_finais(codigos: Iterable[str]) -> set[str]:
+    lista = sorted({str(c) for c in codigos if str(c)})
+    return {
+        codigo
+        for codigo in lista
+        if not any(outro.startswith(codigo) and outro != codigo for outro in lista)
+    }
+
+
+# ============================================================
+# LEITURA DO BALANCETE SICC
+# ============================================================
+
+
+def carregar_sicc(ficheiro: BinaryIO) -> pd.DataFrame:
+    dados = ficheiro.read()
+    texto = descodificar_csv(dados)
+    linhas = texto.splitlines()
+
+    indice_cabecalho = next(
+        (
+            i
+            for i, linha in enumerate(linhas)
+            if normalizar_texto(linha).startswith("conta;designacao da conta")
+        ),
+        None,
+    )
+
+    if indice_cabecalho is None:
         raise ValueError("Não foi encontrado o cabeçalho do balancete SICC.")
 
-    df = pd.read_csv(io.StringIO("\n".join(lines[header_idx:])), sep=";", dtype=str)
-    df = df.loc[:, ~df.columns.str.match(r"^Unnamed")]
-    df.columns = [norm_text(c) for c in df.columns]
-    required = {
-        "conta", "designacao da conta", "valor a debito", "valor a credito",
-        "valor acumulado a debito", "valor acumulado a credito",
-        "saldo a debito", "saldo a credito",
-    }
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"Faltam colunas no SICC: {', '.join(sorted(missing))}")
-
-    out = pd.DataFrame({
-        "account": df["conta"].map(norm_code),
-        "description": df["designacao da conta"].fillna(""),
-        "period_debit": df["valor a debito"].map(money),
-        "period_credit": df["valor a credito"].map(money),
-        "accum_debit": df["valor acumulado a debito"].map(money),
-        "accum_credit": df["valor acumulado a credito"].map(money),
-        "balance_debit": df["saldo a debito"].map(money),
-        "balance_credit": df["saldo a credito"].map(money),
-    })
-    out["period_net_debit"] = out["period_debit"] - out["period_credit"]
-    out["exercise_net_debit"] = out["balance_debit"] - out["balance_credit"]
-    out["accumulated_credit_balance"] = out["balance_credit"] - out["balance_debit"]
-    return out[out["account"] != ""].reset_index(drop=True)
-
-
-def find_header(raw: pd.DataFrame) -> int:
-    for idx in range(min(30, len(raw))):
-        vals = {norm_text(v) for v in raw.iloc[idx].tolist() if pd.notna(v)}
-        if {"codigo", "descricao", "valor contabilistico"}.issubset(vals):
-            return idx
-    raise ValueError("Não foi encontrado o cabeçalho do balancete Primavera.")
-
-
-def load_primavera(uploaded: BinaryIO) -> pd.DataFrame:
-    raw = pd.read_excel(io.BytesIO(uploaded.read()), header=None, engine="openpyxl")
-    h = find_header(raw)
-    header = [norm_text(v) for v in raw.iloc[h].tolist()]
-    df = raw.iloc[h + 1:].copy()
-    df.columns = header
-
-    cols = list(df.columns)
-    code_pos = cols.index("codigo")
-    desc_pos = cols.index("descricao")
-    date_pos = cols.index("data utilizacao")
-    gross_pos = cols.index("valor contabilistico")
-    residual_pos = cols.index("valor residual")
-    rate_pos = cols.index("taxa")
-    carrying_pos = cols.index("quantia escriturada")
-
-    out = pd.DataFrame({
-        "code_raw": df.iloc[:, code_pos],
-        "code": df.iloc[:, code_pos].map(norm_code),
-        "description": df.iloc[:, desc_pos].fillna(""),
-        "use_date": pd.to_datetime(df.iloc[:, date_pos], errors="coerce"),
-        "gross_value": df.iloc[:, gross_pos].map(money),
-        "residual_value": df.iloc[:, residual_pos].map(money),
-        "rate": df.iloc[:, rate_pos].map(money),
-        "dep_period": df.iloc[:, 7].map(money),
-        "dep_exercise": df.iloc[:, 8].map(money),
-        "dep_accumulated": df.iloc[:, 9].map(money),
-        "imp_period": df.iloc[:, 10].map(money),
-        "imp_exercise": df.iloc[:, 11].map(money),
-        "imp_accumulated": df.iloc[:, 12].map(money),
-        "carrying_amount": df.iloc[:, carrying_pos].map(money),
-    })
-    out["is_account"] = out["code_raw"].map(
-        lambda v: bool(v is not None and not pd.isna(v) and not str(v).startswith(" "))
+    df = pd.read_csv(
+        io.StringIO("\n".join(linhas[indice_cabecalho:])),
+        sep=";",
+        dtype=str,
     )
-    out = out[out["code"] != ""].reset_index(drop=True)
+    df = df.loc[:, ~df.columns.astype(str).str.match(r"^Unnamed")]
+    df.columns = [normalizar_texto(c) for c in df.columns]
 
-    # Cada ficha herda a conta analítica de ativo mais recente:
-    # 431–437 para ativos fixos tangíveis e 443 para ativos intangíveis.
-    current_account = ""
-    assigned = []
-    for _, row in out.iterrows():
-        code = row["code"]
-        is_aft = code.startswith(("431", "432", "433", "434", "435", "436", "437"))
-        is_intangible = code.startswith("443")
-        if row["is_account"] and (is_aft or is_intangible):
-            current_account = code
-        assigned.append(current_account)
-    out["asset_account"] = assigned
+    conta_col = encontrar_coluna(df.columns, ["Conta"])
+    descricao_col = encontrar_coluna(df.columns, ["Designação da conta", "Designacao da conta"])
+    valor_debito_col = encontrar_coluna(
+        df.columns,
+        ["Valor a débito", "Valor a debito", "Débito", "Debito"],
+    )
+    valor_credito_col = encontrar_coluna(
+        df.columns,
+        ["Valor a crédito", "Valor a credito", "Crédito", "Credito"],
+    )
+    saldo_debito_col = encontrar_coluna(df.columns, ["Saldo a débito", "Saldo a debito"])
+    saldo_credito_col = encontrar_coluna(df.columns, ["Saldo a crédito", "Saldo a credito"])
+    acumulado_debito_col = encontrar_coluna(
+        df.columns,
+        ["Valor acumulado a débito", "Valor acumulado a debito"],
+    )
+    acumulado_credito_col = encontrar_coluna(
+        df.columns,
+        ["Valor acumulado a crédito", "Valor acumulado a credito"],
+    )
+
+    obrigatorias = {
+        "Conta": conta_col,
+        "Designação da conta": descricao_col,
+        "Saldo a débito": saldo_debito_col,
+        "Saldo a crédito": saldo_credito_col,
+    }
+    em_falta = [nome for nome, coluna in obrigatorias.items() if coluna is None]
+
+    if em_falta:
+        raise ValueError(f"Faltam colunas obrigatórias no SICC: {', '.join(em_falta)}")
+
+    # Há versões do SICC em que o movimento do período surge como
+    # "Valor a débito/crédito" e outras em que apenas aparece o acumulado.
+    # O período só é calculado quando as colunas próprias existem.
+    out = pd.DataFrame(
+        {
+            "conta": df[conta_col].map(normalizar_codigo),
+            "descricao": df[descricao_col].fillna(""),
+            "valor_debito_periodo": (
+                df[valor_debito_col].map(converter_montante)
+                if valor_debito_col
+                else 0.0
+            ),
+            "valor_credito_periodo": (
+                df[valor_credito_col].map(converter_montante)
+                if valor_credito_col
+                else 0.0
+            ),
+            "saldo_debito": df[saldo_debito_col].map(converter_montante),
+            "saldo_credito": df[saldo_credito_col].map(converter_montante),
+            "valor_acumulado_debito": (
+                df[acumulado_debito_col].map(converter_montante)
+                if acumulado_debito_col
+                else df[saldo_debito_col].map(converter_montante)
+            ),
+            "valor_acumulado_credito": (
+                df[acumulado_credito_col].map(converter_montante)
+                if acumulado_credito_col
+                else df[saldo_credito_col].map(converter_montante)
+            ),
+        }
+    )
+
+    out["movimento_periodo_liquido"] = (
+        out["valor_debito_periodo"] - out["valor_credito_periodo"]
+    )
+    out["saldo_liquido_devedor"] = out["saldo_debito"] - out["saldo_credito"]
+    out["saldo_liquido_credor"] = out["saldo_credito"] - out["saldo_debito"]
+
+    out["tem_colunas_periodo"] = bool(valor_debito_col and valor_credito_col)
+    out = out[out["conta"] != ""].reset_index(drop=True)
+
+    if out.empty:
+        raise ValueError("O balancete SICC não contém contas válidas.")
+
     return out
 
 
-def leaf_rows(df: pd.DataFrame, prefix: str) -> pd.DataFrame:
-    part = df[df["account"].str.startswith(prefix)].copy()
-    codes = part["account"].tolist()
-    part["is_leaf"] = [not any(other.startswith(code) and other != code for other in codes) for code in codes]
-    return part[part["is_leaf"]].copy()
+# ============================================================
+# LEITURA DO BALANCETE PRIMAVERA
+# ============================================================
 
 
-def asset_prefix_from_account(account: str, source_prefix: str, target_prefix: str) -> str:
-    """Converte uma conta SICC na raiz da conta de ativo correspondente no Primavera."""
-    return target_prefix + account[len(source_prefix):]
+def encontrar_cabecalho_primavera(raw: pd.DataFrame) -> int:
+    for idx in range(min(40, len(raw))):
+        valores = {normalizar_texto(v) for v in raw.iloc[idx].tolist() if pd.notna(v)}
+        if {"codigo", "descricao", "valor contabilistico"}.issubset(valores):
+            return idx
+
+    raise ValueError("Não foi encontrado o cabeçalho do balancete Primavera.")
 
 
-def compare_depreciation(sicc: pd.DataFrame, primavera: pd.DataFrame, tolerance: float) -> pd.DataFrame:
-    items = primavera[~primavera["is_account"] & primavera["asset_account"].str.startswith(("431", "432", "433", "434", "435", "436", "437", "443"))].copy()
-    records = []
+def carregar_primavera(ficheiro: BinaryIO) -> tuple[pd.DataFrame, pd.DataFrame]:
+    dados = ficheiro.read()
+    raw = pd.read_excel(io.BytesIO(dados), header=None, engine="openpyxl")
+    cabecalho_idx = encontrar_cabecalho_primavera(raw)
 
-    rules = [
-        ("642", "43", "AFT — depreciação do período", "period_net_debit", "dep_period"),
-        ("642", "43", "AFT — depreciação do exercício", "exercise_net_debit", "dep_exercise"),
-        ("438", "43", "AFT — depreciação acumulada", "accumulated_credit_balance", "dep_accumulated"),
-        ("643", "443", "Intangíveis — amortização do período", "period_net_debit", "dep_period"),
-        ("643", "443", "Intangíveis — amortização do exercício", "exercise_net_debit", "dep_exercise"),
-        ("4483", "443", "Intangíveis — amortização acumulada", "accumulated_credit_balance", "dep_accumulated"),
+    cabecalho = [normalizar_texto(v) for v in raw.iloc[cabecalho_idx].tolist()]
+    df = raw.iloc[cabecalho_idx + 1 :].copy()
+    df.columns = cabecalho
+
+    colunas = list(df.columns)
+
+    try:
+        pos_codigo = colunas.index("codigo")
+        pos_descricao = colunas.index("descricao")
+        pos_data = colunas.index("data utilizacao")
+        pos_valor = colunas.index("valor contabilistico")
+        pos_residual = colunas.index("valor residual")
+        pos_taxa = colunas.index("taxa")
+        pos_quantia = colunas.index("quantia escriturada")
+    except ValueError as exc:
+        raise ValueError(f"Estrutura inesperada no ficheiro Primavera: {exc}") from exc
+
+    # Estrutura conhecida do relatório Primavera:
+    # 7 Período depreciação; 8 Exercício; 9 Acumulada;
+    # 10 Período imparidade; 11 Exercício; 12 Acumulada.
+    if len(colunas) < 14:
+        raise ValueError("O balancete Primavera não contém todas as colunas esperadas.")
+
+    pos_dep_periodo = 7
+    pos_dep_exercicio = 8
+    pos_dep_acumulada = 9
+    pos_imp_periodo = 10
+    pos_imp_exercicio = 11
+    pos_imp_acumulada = 12
+
+    linhas = pd.DataFrame(
+        {
+            "codigo_original": df.iloc[:, pos_codigo],
+            "codigo": df.iloc[:, pos_codigo].map(normalizar_codigo),
+            "descricao": df.iloc[:, pos_descricao].fillna(""),
+            "data_utilizacao": pd.to_datetime(df.iloc[:, pos_data], errors="coerce"),
+            "valor_contabilistico": df.iloc[:, pos_valor].map(converter_montante),
+            "valor_residual": df.iloc[:, pos_residual].map(converter_montante),
+            "taxa": df.iloc[:, pos_taxa].map(converter_montante),
+            "depreciacao_periodo": df.iloc[:, pos_dep_periodo].map(converter_montante),
+            "depreciacao_exercicio": df.iloc[:, pos_dep_exercicio].map(converter_montante),
+            "depreciacao_acumulada": df.iloc[:, pos_dep_acumulada].map(converter_montante),
+            "imparidade_periodo": df.iloc[:, pos_imp_periodo].map(converter_montante),
+            "imparidade_exercicio": df.iloc[:, pos_imp_exercicio].map(converter_montante),
+            "imparidade_acumulada": df.iloc[:, pos_imp_acumulada].map(converter_montante),
+            "quantia_escriturada": df.iloc[:, pos_quantia].map(converter_montante),
+        }
+    )
+
+    linhas["e_conta"] = linhas["codigo_original"].map(
+        lambda v: bool(
+            v is not None
+            and not (isinstance(v, float) and pd.isna(v))
+            and not str(v).startswith(" ")
+        )
+    )
+
+    linhas = linhas[linhas["codigo"] != ""].reset_index(drop=True)
+
+    # Atribui cada ficha individual à conta contabilística imediatamente anterior.
+    conta_corrente = ""
+    contas_ficha: list[str] = []
+
+    for _, linha in linhas.iterrows():
+        codigo = linha["codigo"]
+        if linha["e_conta"]:
+            conta_corrente = codigo
+            contas_ficha.append(codigo)
+        else:
+            contas_ficha.append(conta_corrente)
+
+    linhas["conta_ativo"] = contas_ficha
+    linhas["natureza"] = linhas["conta_ativo"].map(natureza_ativo)
+
+    contas = linhas[
+        linhas["e_conta"]
+        & (
+            linhas["codigo"].map(e_conta_aft)
+            | linhas["codigo"].map(e_conta_ai)
+            | linhas["codigo"].isin(["43", "44"])
+        )
+    ].copy()
+
+    fichas = linhas[
+        ~linhas["e_conta"]
+        & (linhas["conta_ativo"].map(e_conta_aft) | linhas["conta_ativo"].map(e_conta_ai))
+    ].copy()
+
+    return contas.reset_index(drop=True), fichas.reset_index(drop=True)
+
+
+# ============================================================
+# MAPEAMENTOS CONTABILÍSTICOS
+# ============================================================
+
+
+def conta_ativo_por_gasto(conta_gasto: str) -> str:
+    """
+    642... -> 43...
+    643... -> 443...
+
+    Exemplos:
+    6423   -> 433
+    642331 -> 43331
+    643    -> 443
+    6431   -> 4431
+    """
+    if conta_gasto.startswith("642"):
+        return "43" + conta_gasto[3:]
+    if conta_gasto.startswith("643"):
+        return "443" + conta_gasto[3:]
+    return ""
+
+
+def conta_ativo_por_acumulada(conta_acumulada: str) -> str:
+    """
+    438...  -> 43...
+    4483... -> 443...
+
+    Exemplos:
+    4383   -> 433
+    438331 -> 43331
+    4483   -> 443
+    44831  -> 4431
+    """
+    if conta_acumulada.startswith("438"):
+        return "43" + conta_acumulada[3:]
+    if conta_acumulada.startswith("4483"):
+        return "443" + conta_acumulada[4:]
+    return ""
+
+
+def somar_primavera_por_prefixo(
+    contas_primavera: pd.DataFrame,
+    prefixo: str,
+    coluna: str,
+) -> float:
+    """
+    Usa a linha exata quando existe. Se não existir, soma apenas contas finais
+    descendentes para evitar duplicação entre contas-mãe e subcontas.
+    """
+    exata = contas_primavera[contas_primavera["codigo"] == prefixo]
+    if not exata.empty:
+        return float(exata.iloc[0][coluna])
+
+    descendentes = contas_primavera[contas_primavera["codigo"].str.startswith(prefixo)].copy()
+    if descendentes.empty:
+        return 0.0
+
+    finais = contas_finais(descendentes["codigo"])
+    return float(descendentes[descendentes["codigo"].isin(finais)][coluna].sum())
+
+
+def descricao_primavera_por_prefixo(contas_primavera: pd.DataFrame, prefixo: str) -> str:
+    exata = contas_primavera[contas_primavera["codigo"] == prefixo]
+    if not exata.empty:
+        return str(exata.iloc[0]["descricao"])
+    return ""
+
+
+# ============================================================
+# RECONCILIAÇÃO CONTABILÍSTICA
+# ============================================================
+
+
+def reconciliar_contas(
+    sicc: pd.DataFrame,
+    contas_primavera: pd.DataFrame,
+    tolerancia: float,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    detalhes: list[dict] = []
+
+    # --------------------------------------------------------
+    # 1. Valor contabilístico dos ativos
+    # AFT: 431...437
+    # AI:  443...
+    # SICC: saldo a débito - saldo a crédito
+    # --------------------------------------------------------
+    contas_valor = sicc[
+        sicc["conta"].map(e_conta_aft) | sicc["conta"].map(e_conta_ai)
+    ].copy()
+
+    finais_valor = contas_finais(contas_valor["conta"])
+    contas_valor = contas_valor[contas_valor["conta"].isin(finais_valor)]
+
+    for _, linha in contas_valor.iterrows():
+        conta = linha["conta"]
+        valor_sicc = float(linha["saldo_liquido_devedor"])
+        valor_primavera = somar_primavera_por_prefixo(
+            contas_primavera,
+            conta,
+            "valor_contabilistico",
+        )
+        diferenca = valor_sicc - valor_primavera
+
+        detalhes.append(
+            {
+                "Componente": "Valor contabilístico",
+                "Natureza": natureza_ativo(conta),
+                "Conta SICC": conta,
+                "Conta Primavera": conta,
+                "Descrição SICC": linha["descricao"],
+                "Descrição Primavera": descricao_primavera_por_prefixo(contas_primavera, conta),
+                "Cálculo SICC": "Saldo a débito - Saldo a crédito",
+                "SICC": valor_sicc,
+                "Primavera": valor_primavera,
+                "Diferença SICC - Primavera": diferenca,
+                "Estado": "OK" if abs(diferenca) <= tolerancia else "Divergência",
+            }
+        )
+
+    # --------------------------------------------------------
+    # 2. Depreciações/amortizações do período e exercício
+    # AFT: 642...
+    # AI:  643...
+    # Período: Valor a débito - Valor a crédito
+    # Exercício: Saldo a débito - Saldo a crédito
+    # --------------------------------------------------------
+    contas_gasto = sicc[sicc["conta"].str.startswith(("642", "643"))].copy()
+    finais_gasto = contas_finais(contas_gasto["conta"])
+    contas_gasto = contas_gasto[contas_gasto["conta"].isin(finais_gasto)]
+
+    for _, linha in contas_gasto.iterrows():
+        conta_sicc = linha["conta"]
+        conta_primavera = conta_ativo_por_gasto(conta_sicc)
+        natureza = natureza_ativo(conta_primavera)
+
+        periodo_sicc = float(linha["movimento_periodo_liquido"])
+        periodo_primavera = somar_primavera_por_prefixo(
+            contas_primavera,
+            conta_primavera,
+            "depreciacao_periodo",
+        )
+        dif_periodo = periodo_sicc - periodo_primavera
+
+        detalhes.append(
+            {
+                "Componente": "Depreciação/amortização do período",
+                "Natureza": natureza,
+                "Conta SICC": conta_sicc,
+                "Conta Primavera": conta_primavera,
+                "Descrição SICC": linha["descricao"],
+                "Descrição Primavera": descricao_primavera_por_prefixo(
+                    contas_primavera,
+                    conta_primavera,
+                ),
+                "Cálculo SICC": "Valor a débito - Valor a crédito",
+                "SICC": periodo_sicc,
+                "Primavera": periodo_primavera,
+                "Diferença SICC - Primavera": dif_periodo,
+                "Estado": "OK" if abs(dif_periodo) <= tolerancia else "Divergência",
+            }
+        )
+
+        exercicio_sicc = float(linha["saldo_liquido_devedor"])
+        exercicio_primavera = somar_primavera_por_prefixo(
+            contas_primavera,
+            conta_primavera,
+            "depreciacao_exercicio",
+        )
+        dif_exercicio = exercicio_sicc - exercicio_primavera
+
+        detalhes.append(
+            {
+                "Componente": "Depreciação/amortização do exercício",
+                "Natureza": natureza,
+                "Conta SICC": conta_sicc,
+                "Conta Primavera": conta_primavera,
+                "Descrição SICC": linha["descricao"],
+                "Descrição Primavera": descricao_primavera_por_prefixo(
+                    contas_primavera,
+                    conta_primavera,
+                ),
+                "Cálculo SICC": "Saldo a débito - Saldo a crédito",
+                "SICC": exercicio_sicc,
+                "Primavera": exercicio_primavera,
+                "Diferença SICC - Primavera": dif_exercicio,
+                "Estado": "OK" if abs(dif_exercicio) <= tolerancia else "Divergência",
+            }
+        )
+
+    # --------------------------------------------------------
+    # 3. Depreciações/amortizações acumuladas
+    # AFT: 438...
+    # AI:  4483...
+    # SICC: saldo a crédito - saldo a débito
+    # --------------------------------------------------------
+    contas_acumuladas = sicc[
+        sicc["conta"].str.startswith("438")
+        | sicc["conta"].str.startswith("4483")
+    ].copy()
+    finais_acumuladas = contas_finais(contas_acumuladas["conta"])
+    contas_acumuladas = contas_acumuladas[
+        contas_acumuladas["conta"].isin(finais_acumuladas)
     ]
 
-    for source_prefix, target_prefix, component, sicc_col, prim_col in rules:
-        rows = leaf_rows(sicc, source_prefix)
-        target_items = items[items["asset_account"].str.startswith(target_prefix)]
-        if rows.empty:
-            records.append({
-                "Componente": component, "Conta SICC": "—", "Conta(s) Primavera": target_prefix + "…",
-                "Descrição SICC": "Conta não incluída no ficheiro", "SICC": pd.NA,
-                "Primavera": float(target_items[prim_col].sum()), "Diferença": pd.NA,
-                "Estado": "Não disponível",
-            })
-            continue
+    for _, linha in contas_acumuladas.iterrows():
+        conta_sicc = linha["conta"]
+        conta_primavera = conta_ativo_por_acumulada(conta_sicc)
+        valor_sicc = float(linha["saldo_liquido_credor"])
+        valor_primavera = somar_primavera_por_prefixo(
+            contas_primavera,
+            conta_primavera,
+            "depreciacao_acumulada",
+        )
+        diferenca = valor_sicc - valor_primavera
 
-        for _, r in rows.iterrows():
-            asset_prefix = asset_prefix_from_account(r["account"], source_prefix, target_prefix)
-            matched = target_items[target_items["asset_account"].str.startswith(asset_prefix)]
-            prim_value = float(matched[prim_col].sum())
-            sicc_value = float(r[sicc_col])
-            diff = sicc_value - prim_value
-            prim_accounts = ", ".join(sorted(matched["asset_account"].dropna().unique())) or asset_prefix
-            records.append({
-                "Componente": component,
-                "Conta SICC": r["account"],
-                "Conta(s) Primavera": prim_accounts,
-                "Descrição SICC": r["description"],
-                "SICC": sicc_value,
-                "Primavera": prim_value,
-                "Diferença": diff,
-                "Estado": "OK" if abs(diff) <= tolerance else "Divergência",
-            })
-    return pd.DataFrame(records)
+        detalhes.append(
+            {
+                "Componente": "Depreciação/amortização acumulada",
+                "Natureza": natureza_ativo(conta_primavera),
+                "Conta SICC": conta_sicc,
+                "Conta Primavera": conta_primavera,
+                "Descrição SICC": linha["descricao"],
+                "Descrição Primavera": descricao_primavera_por_prefixo(
+                    contas_primavera,
+                    conta_primavera,
+                ),
+                "Cálculo SICC": "Saldo a crédito - Saldo a débito",
+                "SICC": valor_sicc,
+                "Primavera": valor_primavera,
+                "Diferença SICC - Primavera": diferenca,
+                "Estado": "OK" if abs(diferenca) <= tolerancia else "Divergência",
+            }
+        )
+
+    detalhe = pd.DataFrame(detalhes)
+
+    if detalhe.empty:
+        detalhe = pd.DataFrame(
+            columns=[
+                "Componente",
+                "Natureza",
+                "Conta SICC",
+                "Conta Primavera",
+                "Descrição SICC",
+                "Descrição Primavera",
+                "Cálculo SICC",
+                "SICC",
+                "Primavera",
+                "Diferença SICC - Primavera",
+                "Estado",
+            ]
+        )
+
+    # Resumo por componente e natureza.
+    if detalhe.empty:
+        resumo = pd.DataFrame(
+            columns=[
+                "Componente",
+                "Natureza",
+                "SICC",
+                "Primavera",
+                "Diferença SICC - Primavera",
+                "Estado",
+            ]
+        )
+    else:
+        resumo = (
+            detalhe.groupby(["Componente", "Natureza"], as_index=False)[["SICC", "Primavera"]]
+            .sum()
+        )
+        resumo["Diferença SICC - Primavera"] = resumo["SICC"] - resumo["Primavera"]
+        resumo["Estado"] = resumo["Diferença SICC - Primavera"].abs().map(
+            lambda v: "OK" if v <= tolerancia else "Divergência"
+        )
+
+    cobertura = pd.DataFrame(
+        [
+            {
+                "Grupo de contas": "431 a 437",
+                "Finalidade": "Valor contabilístico dos AFT",
+                "Disponível no SICC": bool(sicc["conta"].map(e_conta_aft).any()),
+            },
+            {
+                "Grupo de contas": "443",
+                "Finalidade": "Valor contabilístico dos ativos intangíveis",
+                "Disponível no SICC": bool(sicc["conta"].map(e_conta_ai).any()),
+            },
+            {
+                "Grupo de contas": "642",
+                "Finalidade": "Depreciações dos AFT — período e exercício",
+                "Disponível no SICC": bool(sicc["conta"].str.startswith("642").any()),
+            },
+            {
+                "Grupo de contas": "643",
+                "Finalidade": "Amortizações dos intangíveis — período e exercício",
+                "Disponível no SICC": bool(sicc["conta"].str.startswith("643").any()),
+            },
+            {
+                "Grupo de contas": "438",
+                "Finalidade": "Depreciações acumuladas dos AFT",
+                "Disponível no SICC": bool(sicc["conta"].str.startswith("438").any()),
+            },
+            {
+                "Grupo de contas": "4483",
+                "Finalidade": "Amortizações acumuladas dos ativos intangíveis",
+                "Disponível no SICC": bool(sicc["conta"].str.startswith("4483").any()),
+            },
+        ]
+    )
+
+    return resumo, detalhe, cobertura
 
 
-def global_summary(sicc: pd.DataFrame, primavera: pd.DataFrame, detail: pd.DataFrame, tolerance: float) -> pd.DataFrame:
-    items = primavera[~primavera["is_account"] & primavera["asset_account"].str.startswith(("431", "432", "433", "434", "435", "436", "437", "443"))]
-    rows = []
-    rules = [
-        ("AFT — depreciação do período", "642", "43", "period_net_debit", "dep_period"),
-        ("AFT — depreciação do exercício", "642", "43", "exercise_net_debit", "dep_exercise"),
-        ("AFT — depreciação acumulada", "438", "43", "accumulated_credit_balance", "dep_accumulated"),
-        ("Intangíveis — amortização do período", "643", "443", "period_net_debit", "dep_period"),
-        ("Intangíveis — amortização do exercício", "643", "443", "exercise_net_debit", "dep_exercise"),
-        ("Intangíveis — amortização acumulada", "4483", "443", "accumulated_credit_balance", "dep_accumulated"),
+# ============================================================
+# CONTROLO DOS BENS SEM DEPRECIAÇÃO/AMORTIZAÇÃO
+# ============================================================
+
+
+def controlar_fichas(
+    fichas: pd.DataFrame,
+    tolerancia: float,
+    data_referencia: pd.Timestamp,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if fichas.empty:
+        resumo = pd.DataFrame(
+            [
+                {
+                    "Indicador": "Fichas individuais analisadas",
+                    "Quantidade": 0,
+                }
+            ]
+        )
+        return resumo, pd.DataFrame()
+
+    controlo = fichas.copy()
+    controlo["descricao_normalizada"] = controlo["descricao"].map(normalizar_texto)
+
+    controlo["terreno"] = (
+        controlo["conta_ativo"].str.startswith("431")
+        | controlo["descricao_normalizada"].str.contains(r"\bterreno\b", regex=True)
+    )
+    controlo["ainda_nao_em_utilizacao"] = (
+        controlo["data_utilizacao"].isna()
+        | (controlo["data_utilizacao"] > data_referencia)
+    )
+
+    controlo["valor_depreciavel_remanescente"] = (
+        controlo["valor_contabilistico"]
+        - controlo["valor_residual"]
+        - controlo["depreciacao_acumulada"]
+        - controlo["imparidade_acumulada"]
+    )
+
+    controlo["totalmente_depreciado"] = (
+        controlo["valor_depreciavel_remanescente"] <= tolerancia
+    )
+
+    controlo["elegivel_para_depreciacao"] = ~(
+        controlo["terreno"]
+        | controlo["ainda_nao_em_utilizacao"]
+        | controlo["totalmente_depreciado"]
+    )
+
+    controlo["sem_depreciacao_periodo"] = (
+        controlo["elegivel_para_depreciacao"]
+        & (controlo["depreciacao_periodo"].abs() <= tolerancia)
+    )
+    controlo["taxa_zero"] = (
+        controlo["elegivel_para_depreciacao"]
+        & (controlo["taxa"].abs() <= tolerancia)
+    )
+    controlo["exercicio_inferior_periodo"] = (
+        controlo["depreciacao_exercicio"] + tolerancia
+        < controlo["depreciacao_periodo"]
+    )
+    controlo["acumulada_inferior_exercicio"] = (
+        controlo["depreciacao_acumulada"] + tolerancia
+        < controlo["depreciacao_exercicio"]
+    )
+
+    def motivos(linha: pd.Series) -> str:
+        lista: list[str] = []
+        if linha["sem_depreciacao_periodo"]:
+            lista.append("Bem amortizável sem depreciação/amortização no período")
+        if linha["taxa_zero"]:
+            lista.append("Taxa de depreciação/amortização igual a zero")
+        if linha["exercicio_inferior_periodo"]:
+            lista.append("Valor do exercício inferior ao valor do período")
+        if linha["acumulada_inferior_exercicio"]:
+            lista.append("Valor acumulado inferior ao valor do exercício")
+        return "; ".join(lista)
+
+    controlo["motivo"] = controlo.apply(motivos, axis=1)
+    problemas = controlo[controlo["motivo"] != ""].copy()
+
+    colunas_problemas = [
+        "codigo",
+        "conta_ativo",
+        "natureza",
+        "descricao",
+        "data_utilizacao",
+        "taxa",
+        "valor_contabilistico",
+        "valor_residual",
+        "quantia_escriturada",
+        "valor_depreciavel_remanescente",
+        "depreciacao_periodo",
+        "depreciacao_exercicio",
+        "depreciacao_acumulada",
+        "motivo",
     ]
-    for component, prefix, target_prefix, sicc_col, prim_col in rules:
-        src = leaf_rows(sicc, prefix)
-        target_items = items[items["asset_account"].str.startswith(target_prefix)]
-        prim = float(target_items[prim_col].sum())
-        if src.empty:
-            rows.append({"Componente": component, "SICC": pd.NA, "Primavera": prim, "Diferença": pd.NA, "Estado": "Não disponível"})
-        else:
-            val = float(src[sicc_col].sum())
-            diff = val - prim
-            rows.append({"Componente": component, "SICC": val, "Primavera": prim, "Diferença": diff, "Estado": "OK" if abs(diff) <= tolerance else "Divergência"})
+    problemas = problemas[colunas_problemas].rename(
+        columns={
+            "codigo": "Ficha",
+            "conta_ativo": "Conta do ativo",
+            "natureza": "Natureza",
+            "descricao": "Descrição",
+            "data_utilizacao": "Data de utilização",
+            "taxa": "Taxa",
+            "valor_contabilistico": "Valor contabilístico",
+            "valor_residual": "Valor residual",
+            "quantia_escriturada": "Quantia escriturada",
+            "valor_depreciavel_remanescente": "Valor por depreciar/amortizar",
+            "depreciacao_periodo": "Período",
+            "depreciacao_exercicio": "Exercício",
+            "depreciacao_acumulada": "Acumulada",
+            "motivo": "Motivo",
+        }
+    )
 
-    # Valor contabilístico: 431–437 para AFT e 443 para intangíveis, quando presentes no SICC.
-    for label, prefixes, prim_prefix in [
-        ("Valor contabilístico AFT", ("431", "432", "433", "434", "435", "436", "437"), "43"),
-        ("Valor contabilístico intangíveis", ("443",), "443"),
-    ]:
-        src_parts = [leaf_rows(sicc, prefix) for prefix in prefixes]
-        src_parts = [part for part in src_parts if not part.empty]
-        target_items = items[items["asset_account"].str.startswith(prim_prefix)]
-        prim = float(target_items["gross_value"].sum())
-        if not src_parts:
-            rows.append({"Componente": label, "SICC": pd.NA, "Primavera": prim, "Diferença": pd.NA, "Estado": "Não disponível"})
-        else:
-            src = pd.concat(src_parts, ignore_index=True).drop_duplicates(subset=["account"] )
-            val = float(src["exercise_net_debit"].sum())
-            diff = val - prim
-            rows.append({"Componente": label, "SICC": val, "Primavera": prim, "Diferença": diff, "Estado": "OK" if abs(diff) <= tolerance else "Divergência"})
-    return pd.DataFrame(rows)
+    resumo = pd.DataFrame(
+        [
+            {"Indicador": "Fichas individuais analisadas", "Quantidade": int(len(controlo))},
+            {"Indicador": "Terrenos excluídos", "Quantidade": int(controlo["terreno"].sum())},
+            {
+                "Indicador": "Bens ainda não colocados em utilização",
+                "Quantidade": int(controlo["ainda_nao_em_utilizacao"].sum()),
+            },
+            {
+                "Indicador": "Bens totalmente depreciados/amortizados",
+                "Quantidade": int(controlo["totalmente_depreciado"].sum()),
+            },
+            {
+                "Indicador": "Bens elegíveis para depreciação/amortização",
+                "Quantidade": int(controlo["elegivel_para_depreciacao"].sum()),
+            },
+            {
+                "Indicador": "Bens elegíveis sem valor no período",
+                "Quantidade": int(controlo["sem_depreciacao_periodo"].sum()),
+            },
+            {
+                "Indicador": "Bens elegíveis com taxa zero",
+                "Quantidade": int(controlo["taxa_zero"].sum()),
+            },
+            {
+                "Indicador": "Fichas com incoerências",
+                "Quantidade": int(len(problemas)),
+            },
+        ]
+    )
 
-
-def validate_assets(primavera: pd.DataFrame, tolerance: float) -> tuple[pd.DataFrame, pd.DataFrame]:
-    items = primavera[~primavera["is_account"] & primavera["asset_account"].str.startswith(("431", "432", "433", "434", "435", "436", "437", "443"))].copy()
-    items["remaining_depreciable"] = (items["gross_value"] - items["residual_value"] - items["dep_accumulated"]).clip(lower=0)
-    desc = items["description"].map(norm_text)
-    items["is_land"] = items["asset_account"].str.startswith("431") | desc.str.contains(r"\bterreno|recurso natural", regex=True)
-    items["fully_depreciated"] = items["remaining_depreciable"] <= tolerance
-    items["not_in_use"] = items["use_date"].isna()
-    items["eligible"] = ~items["is_land"] & ~items["fully_depreciated"] & ~items["not_in_use"]
-
-    def reason(row: pd.Series) -> str:
-        reasons = []
-        if row["eligible"] and row["dep_period"] <= tolerance:
-            reasons.append("Sem depreciação no período")
-        if row["eligible"] and row["rate"] <= 0:
-            reasons.append("Taxa de depreciação zero/não preenchida")
-        if row["dep_exercise"] + tolerance < row["dep_period"]:
-            reasons.append("Exercício inferior ao período")
-        if row["dep_accumulated"] + tolerance < row["dep_exercise"]:
-            reasons.append("Acumulada inferior ao exercício")
-        return "; ".join(reasons)
-
-    items["Motivo"] = items.apply(reason, axis=1)
-    issues = items[items["Motivo"] != ""].copy()
-    cols = ["code", "asset_account", "description", "use_date", "rate", "gross_value", "residual_value", "carrying_amount", "remaining_depreciable", "dep_period", "dep_exercise", "dep_accumulated", "Motivo"]
-    issues = issues[cols].rename(columns={
-        "code": "Ficha", "asset_account": "Conta", "description": "Descrição", "use_date": "Data utilização",
-        "rate": "Taxa", "gross_value": "Valor contabilístico", "residual_value": "Valor residual",
-        "carrying_amount": "Quantia escriturada", "remaining_depreciable": "Valor por depreciar",
-        "dep_period": "Depreciação período", "dep_exercise": "Depreciação exercício",
-        "dep_accumulated": "Depreciação acumulada",
-    })
-    summary = pd.DataFrame([
-        {"Controlo": "Fichas analisadas", "Quantidade": len(items)},
-        {"Controlo": "Terrenos excluídos", "Quantidade": int(items["is_land"].sum())},
-        {"Controlo": "Totalmente depreciados", "Quantidade": int(items["fully_depreciated"].sum())},
-        {"Controlo": "Sem data de utilização", "Quantidade": int(items["not_in_use"].sum())},
-        {"Controlo": "Bens sujeitos a depreciação", "Quantidade": int(items["eligible"].sum())},
-        {"Controlo": "Bens a verificar", "Quantidade": len(issues)},
-    ])
-    return summary, issues
+    return resumo, problemas
 
 
-def style_money(df: pd.DataFrame, cols: list[str]):
-    fmt = {c: "{:,.2f} €" for c in cols if c in df.columns}
-    return df.style.format(fmt, na_rep="—")
+# ============================================================
+# GERAÇÃO SEGURA DO EXCEL
+# ============================================================
 
 
-def to_excel(summary, detail, control_summary, issues, sicc, primavera) -> bytes:
+def gerar_excel(
+    resumo: pd.DataFrame,
+    detalhe: pd.DataFrame,
+    cobertura: pd.DataFrame,
+    resumo_controlo: pd.DataFrame,
+    problemas: pd.DataFrame,
+    sicc: pd.DataFrame,
+    contas_primavera: pd.DataFrame,
+    fichas_primavera: pd.DataFrame,
+) -> bytes:
     output = io.BytesIO()
+
+    conjuntos = [
+        ("Resumo", resumo),
+        ("Contas divergentes", detalhe),
+        ("Cobertura", cobertura),
+        ("Resumo controlo", resumo_controlo),
+        ("Bens a verificar", problemas),
+        ("SICC normalizado", sicc),
+        ("Primavera contas", contas_primavera),
+        ("Primavera fichas", fichas_primavera),
+    ]
+
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        summary.to_excel(writer, "Resumo", index=False)
-        detail.to_excel(writer, "Contas divergentes", index=False)
-        control_summary.to_excel(writer, "Controlo fichas", index=False)
-        issues.to_excel(writer, "Bens a verificar", index=False)
-        sicc.to_excel(writer, "SICC normalizado", index=False)
-        primavera.to_excel(writer, "Primavera normalizado", index=False)
+        folhas_escritas = 0
+
+        for nome_folha, dados in conjuntos:
+            if dados is None:
+                df = pd.DataFrame()
+            elif isinstance(dados, pd.DataFrame):
+                df = dados.copy()
+            else:
+                try:
+                    df = pd.DataFrame(dados)
+                except Exception:
+                    df = pd.DataFrame(
+                        {"Aviso": [f"Não foi possível converter o conteúdo de {nome_folha}."]}
+                    )
+
+            # A folha Resumo é sempre criada, ainda que não existam resultados.
+            if nome_folha == "Resumo" and df.empty and len(df.columns) == 0:
+                df = pd.DataFrame(
+                    {
+                        "Estado": ["Sem resultados"],
+                        "Observação": [
+                            "Os ficheiros foram processados, mas não foram encontradas contas conciliáveis."
+                        ],
+                    }
+                )
+
+            if nome_folha != "Resumo" and df.empty and len(df.columns) == 0:
+                continue
+
+            df.to_excel(writer, sheet_name=nome_folha[:31], index=False)
+            folhas_escritas += 1
+
+        # Proteção final contra workbook sem folhas visíveis.
+        if folhas_escritas == 0:
+            pd.DataFrame(
+                {
+                    "Estado": ["Relatório sem dados"],
+                    "Observação": ["Não foi possível gerar folhas com os dados recebidos."],
+                }
+            ).to_excel(writer, sheet_name="Diagnóstico", index=False)
+
         for ws in writer.book.worksheets:
+            ws.sheet_state = "visible"
             ws.freeze_panes = "A2"
-            ws.auto_filter.ref = ws.dimensions
-            for cells in ws.columns:
-                ws.column_dimensions[cells[0].column_letter].width = min(max(len(str(c.value or "")) for c in cells) + 2, 45)
+
+            if ws.max_row >= 1 and ws.max_column >= 1:
+                ws.auto_filter.ref = ws.dimensions
+
+            for coluna_idx in range(1, ws.max_column + 1):
+                valores = [
+                    str(ws.cell(row=linha_idx, column=coluna_idx).value or "")
+                    for linha_idx in range(1, ws.max_row + 1)
+                ]
+                largura = min(max((len(v) for v in valores), default=0) + 2, 45)
+                ws.column_dimensions[get_column_letter(coluna_idx)].width = max(largura, 10)
+
+        writer.book.active = 0
+
+    output.seek(0)
     return output.getvalue()
 
 
-st.title("Reconciliação da Contabilidade com o Registo de Ativos")
-st.caption("Compatível com balancetes SICC que contenham apenas contas com movimento. As verificações indisponíveis são identificadas, nunca tratadas como diferença zero.")
+# ============================================================
+# FORMATAÇÃO STREAMLIT
+# ============================================================
+
+
+def estilizar_tabela(df: pd.DataFrame, colunas_monetarias: list[str]):
+    formatos = {col: "{:,.2f} €" for col in colunas_monetarias if col in df.columns}
+    styler = df.style.format(formatos)
+
+    if "Estado" in df.columns:
+        styler = styler.map(
+            lambda valor: (
+                "background-color: #ffe5e5"
+                if valor == "Divergência"
+                else "background-color: #e7f6e7"
+                if valor == "OK"
+                else ""
+            ),
+            subset=["Estado"],
+        )
+
+    return styler
+
+
+# ============================================================
+# INTERFACE
+# ============================================================
+
+st.title("Conferência do Balancete Contabilístico com o Registo de Ativos")
+st.caption(
+    "Reconcilia AFT e ativos intangíveis entre o SICC e o Primavera e identifica bens potencialmente sem depreciação ou amortização."
+)
 
 with st.sidebar:
-    tolerance = st.number_input("Tolerância (€)", min_value=0.0, value=TOLERANCE_DEFAULT, step=0.01, format="%.2f")
-    only_differences = st.checkbox("Mostrar apenas divergências", value=True)
+    st.header("Parâmetros")
+    tolerancia = st.number_input(
+        "Tolerância (€)",
+        min_value=0.0,
+        value=TOLERANCIA_PREDEFINIDA,
+        step=0.01,
+        format="%.2f",
+    )
+    apenas_divergencias = st.checkbox("Mostrar apenas divergências", value=True)
+    data_referencia = st.date_input("Data de referência do balancete")
 
-c1, c2 = st.columns(2)
-with c1:
-    sicc_file = st.file_uploader("Balancete SICC (CSV)", type=["csv"])
-with c2:
-    primavera_file = st.file_uploader("Balancete Primavera (XLSX)", type=["xlsx"])
+coluna_1, coluna_2 = st.columns(2)
 
-if sicc_file and primavera_file:
+with coluna_1:
+    ficheiro_sicc = st.file_uploader(
+        "Balancete da contabilidade — SICC (CSV)",
+        type=["csv"],
+    )
+
+with coluna_2:
+    ficheiro_primavera = st.file_uploader(
+        "Balancete do registo de ativos — Primavera (XLSX)",
+        type=["xlsx"],
+    )
+
+if ficheiro_sicc and ficheiro_primavera:
     try:
-        sicc = load_sicc(sicc_file)
-        primavera = load_primavera(primavera_file)
-        detail = compare_depreciation(sicc, primavera, tolerance)
-        summary = global_summary(sicc, primavera, detail, tolerance)
-        control_summary, issues = validate_assets(primavera, tolerance)
+        sicc = carregar_sicc(ficheiro_sicc)
+        contas_primavera, fichas_primavera = carregar_primavera(ficheiro_primavera)
 
-        available = []
-        for prefix, label in [("642", "642 — depreciações dos AFT"), ("643", "643 — amortizações dos intangíveis"), ("438", "438 — depreciações acumuladas dos AFT"), ("4483", "4483 — amortizações acumuladas dos intangíveis"), ("431", "431–437 — valor contabilístico dos AFT"), ("443", "443 — valor contabilístico dos intangíveis")]:
-            available.append({"Grupo": label, "Incluído no SICC": "Sim" if ((sicc["account"].str.startswith(("431", "432", "433", "434", "435", "436", "437")).any()) if prefix == "431" else sicc["account"].str.startswith(prefix).any()) else "Não"})
-        st.subheader("Cobertura do ficheiro SICC")
-        st.dataframe(pd.DataFrame(available), use_container_width=True, hide_index=True)
+        resumo, detalhe, cobertura = reconciliar_contas(
+            sicc,
+            contas_primavera,
+            tolerancia,
+        )
 
-        st.subheader("Resumo da reconciliação")
-        st.dataframe(style_money(summary, ["SICC", "Primavera", "Diferença"]), use_container_width=True, hide_index=True)
+        resumo_controlo, problemas = controlar_fichas(
+            fichas_primavera,
+            tolerancia,
+            pd.Timestamp(data_referencia),
+        )
 
-        shown = detail.copy()
-        if only_differences:
-            shown = shown[shown["Estado"].isin(["Divergência", "Não disponível"])]
-        shown = shown.sort_values(["Componente", "Conta SICC"])
-        st.subheader("Reconciliação por conta")
-        st.dataframe(style_money(shown, ["SICC", "Primavera", "Diferença"]), use_container_width=True, hide_index=True)
+        separador_1, separador_2, separador_3, separador_4 = st.tabs(
+            [
+                "Resumo",
+                "Divergências por conta",
+                "Bens sem amortização",
+                "Cobertura e lógica",
+            ]
+        )
 
-        st.subheader("Validação das fichas de ativos")
-        st.dataframe(control_summary, use_container_width=True, hide_index=True)
-        if issues.empty:
-            st.success("Não foram encontrados bens amortizáveis sem depreciação no período nem inconsistências entre período, exercício e acumulada.")
-        else:
-            st.warning(f"Foram identificadas {len(issues)} fichas a verificar.")
-            st.dataframe(style_money(issues, ["Valor contabilístico", "Valor residual", "Quantia escriturada", "Valor por depreciar", "Depreciação período", "Depreciação exercício", "Depreciação acumulada"]), use_container_width=True, hide_index=True)
+        with separador_1:
+            st.subheader("Resumo da reconciliação")
+
+            if resumo.empty:
+                st.warning("Não foram encontradas contas conciliáveis nos ficheiros carregados.")
+            else:
+                st.dataframe(
+                    estilizar_tabela(
+                        resumo,
+                        ["SICC", "Primavera", "Diferença SICC - Primavera"],
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                total_divergencias = int((resumo["Estado"] == "Divergência").sum())
+                maior_diferenca = float(
+                    resumo["Diferença SICC - Primavera"].abs().max()
+                )
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Componentes divergentes", total_divergencias)
+                c2.metric("Maior diferença", formatar_euro(maior_diferenca))
+                c3.metric("Bens a verificar", int(len(problemas)))
+
+            st.subheader("Controlo das fichas")
+            st.dataframe(resumo_controlo, use_container_width=True, hide_index=True)
+
+        with separador_2:
+            st.subheader("Reconciliação detalhada por conta")
+            tabela_detalhe = detalhe.copy()
+
+            if apenas_divergencias and not tabela_detalhe.empty:
+                tabela_detalhe = tabela_detalhe[
+                    tabela_detalhe["Estado"] == "Divergência"
+                ]
+
+            if tabela_detalhe.empty:
+                st.success("Não existem divergências para os critérios selecionados.")
+            else:
+                tabela_detalhe = tabela_detalhe.sort_values(
+                    "Diferença SICC - Primavera",
+                    key=lambda s: s.abs(),
+                    ascending=False,
+                )
+                st.dataframe(
+                    estilizar_tabela(
+                        tabela_detalhe,
+                        ["SICC", "Primavera", "Diferença SICC - Primavera"],
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+        with separador_3:
+            st.subheader("Possíveis bens sem depreciação ou amortização")
+            st.caption(
+                "São excluídos os terrenos, os bens ainda não colocados em utilização e os bens totalmente depreciados ou amortizados."
+            )
+
+            if problemas.empty:
+                st.success(
+                    "Não foram identificados bens elegíveis sem depreciação/amortização ou com incoerências."
+                )
+            else:
+                st.dataframe(
+                    estilizar_tabela(
+                        problemas,
+                        [
+                            "Valor contabilístico",
+                            "Valor residual",
+                            "Quantia escriturada",
+                            "Valor por depreciar/amortizar",
+                            "Período",
+                            "Exercício",
+                            "Acumulada",
+                        ],
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+        with separador_4:
+            st.subheader("Cobertura do ficheiro SICC")
+            st.dataframe(cobertura, use_container_width=True, hide_index=True)
+
+            st.subheader("Lógica aplicada")
+            st.markdown(
+                """
+- **AFT — valor contabilístico:** contas `431…437` do SICC, calculadas por **saldo a débito − saldo a crédito**, comparadas com o **Valor Contabilístico** do Primavera.
+- **Ativos intangíveis — valor contabilístico:** contas `443…` do SICC, calculadas por **saldo a débito − saldo a crédito**, comparadas com o **Valor Contabilístico** do Primavera.
+- **AFT — depreciação do período:** contas `642…`, calculadas por **valor a débito − valor a crédito**, comparadas com a coluna **Período** do Primavera.
+- **Ativos intangíveis — amortização do período:** contas `643…`, calculadas por **valor a débito − valor a crédito**, comparadas com a coluna **Período** do Primavera.
+- **AFT — depreciação do exercício:** contas `642…`, calculadas por **saldo a débito − saldo a crédito**, comparadas com a coluna **Exercício** do Primavera.
+- **Ativos intangíveis — amortização do exercício:** contas `643…`, calculadas por **saldo a débito − saldo a crédito**, comparadas com a coluna **Exercício** do Primavera.
+- **AFT — depreciação acumulada:** contas `438…`, calculadas por **saldo a crédito − saldo a débito**, comparadas com a coluna **Acumulada** do Primavera.
+- **Ativos intangíveis — amortização acumulada:** contas `4483…`, calculadas por **saldo a crédito − saldo a débito**, comparadas com a coluna **Acumulada** do Primavera.
+- Nas contas hierárquicas são usadas apenas as contas finais do SICC, evitando a duplicação de contas-mãe e subcontas.
+                """
+            )
+
+        relatorio_excel = gerar_excel(
+            resumo,
+            detalhe,
+            cobertura,
+            resumo_controlo,
+            problemas,
+            sicc,
+            contas_primavera,
+            fichas_primavera,
+        )
 
         st.download_button(
             "Descarregar relatório Excel",
-            data=to_excel(summary, detail, control_summary, issues, sicc, primavera),
-            file_name="relatorio_reconciliacao_ativos.xlsx",
+            data=relatorio_excel,
+            file_name="relatorio_conferencia_ativos.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+
     except Exception as exc:
         st.error(f"Não foi possível processar os ficheiros: {exc}")
         st.exception(exc)
-else:
-    st.info("Carregue os dois ficheiros para iniciar a reconciliação.")
 
-with st.expander("Lógica aplicada"):
-    st.markdown("""
-- **AFT:** contas Primavera **431–437** ↔ valor contabilístico SICC **431–437**; período/exercício ↔ **642**; acumulada ↔ saldo credor **438**.
-- **Intangíveis:** conta Primavera **443** ↔ valor contabilístico SICC **443**; período/exercício ↔ **643**; acumulada ↔ saldo credor **4483**.
-- Nas contas **642/643**, o período é **valor a débito − valor a crédito** e o exercício é **saldo a débito − saldo a crédito**.
-- Nas contas **438/4483**, a acumulada é **saldo a crédito − saldo a débito**.
-- Os cruzamentos patrimoniais só são efetuados quando as respetivas contas constam do ficheiro SICC.
-- Terrenos, bens totalmente depreciados e fichas sem data de utilização são excluídos do teste de ausência de depreciação.
-- Uma conta ausente no ficheiro de movimentos é marcada como **Não disponível**, e não como zero.
-""")
+else:
+    st.info("Carregue o balancete SICC e o balancete Primavera para iniciar a análise.")
