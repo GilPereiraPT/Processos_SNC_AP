@@ -349,44 +349,114 @@ def carregar_primavera(ficheiro: BinaryIO) -> tuple[pd.DataFrame, pd.DataFrame]:
 # ============================================================
 
 
-def conta_ativo_por_gasto(conta_gasto: str) -> str:
+def raiz_base_por_gasto(conta_gasto: str) -> str:
     """
-    642... -> 43...
-    643... -> 443
+    Converte a conta de gasto na raiz contabilística do ativo.
 
     Exemplos:
-    6423   -> 433
+    6422   -> 432   (abrange 4321, 4324, ...)
     642331 -> 43331
-    643    -> 443
+    6424   -> 434
     6433   -> 443
     """
+    conta_gasto = normalizar_codigo(conta_gasto)
     if conta_gasto.startswith("642"):
         return "43" + conta_gasto[3:]
     if conta_gasto.startswith("643"):
-        # No plano de contas utilizado, todas as amortizações de ativos
-        # intangíveis (incluindo 6433) são reconciliadas com a conta 443
-        # do mapa Primavera.
         return "443"
     return ""
 
 
-def conta_ativo_por_acumulada(conta_acumulada: str) -> str:
+def raiz_base_por_acumulada(conta_acumulada: str) -> str:
     """
-    438...  -> 43...
-    4483... -> 443
+    Converte a conta de depreciação/amortização acumulada na raiz do ativo.
 
     Exemplos:
-    4383   -> 433
+    4382   -> 432   (abrange 4321, 4324, ...)
     438331 -> 43331
+    4384   -> 434
     4483   -> 443
     """
+    conta_acumulada = normalizar_codigo(conta_acumulada)
     if conta_acumulada.startswith("438"):
         return "43" + conta_acumulada[3:]
     if conta_acumulada.startswith("4483"):
-        # A amortização acumulada 4483 corresponde à conta 443
-        # (Programas de computador e sistemas de informação) no Primavera.
         return "443"
     return ""
+
+
+def resolver_raiz_primavera(
+    contas_primavera: pd.DataFrame,
+    raiz_proposta: str,
+) -> str:
+    """
+    Resolve a raiz efetivamente existente no Primavera.
+
+    A conta de amortização pode ter menos detalhe do que as contas de aquisição.
+    Nesse caso mantém-se a raiz mais específica que possua contas descendentes
+    no Primavera. Se a raiz proposta não existir, recua progressivamente na
+    hierarquia, sem sair do grupo 431-437 ou 443.
+    """
+    raiz = normalizar_codigo(raiz_proposta)
+    if not raiz:
+        return ""
+
+    codigos = contas_primavera["codigo"].astype(str)
+
+    def existe(prefixo: str) -> bool:
+        return bool(codigos.str.startswith(prefixo).any())
+
+    if existe(raiz):
+        return raiz
+
+    minimo = 3 if raiz.startswith("43") else len(raiz)
+    while len(raiz) > minimo:
+        raiz = raiz[:-1]
+        if (e_conta_aft(raiz) or e_conta_ai(raiz)) and existe(raiz):
+            return raiz
+
+    return raiz_proposta
+
+
+def contas_primavera_abrangidas(
+    contas_primavera: pd.DataFrame,
+    raiz: str,
+) -> list[str]:
+    """Lista apenas as contas finais do Primavera abrangidas pela raiz."""
+    grupo = contas_primavera[
+        contas_primavera["codigo"].astype(str).str.startswith(raiz)
+    ].copy()
+    if grupo.empty:
+        return []
+    finais = contas_finais(grupo["codigo"])
+    return sorted(finais)
+
+
+def somar_primavera_por_raiz(
+    contas_primavera: pd.DataFrame,
+    raiz: str,
+    coluna: str,
+) -> float:
+    """
+    Soma todas as contas finais do Primavera pertencentes à raiz.
+
+    Para reconciliação de amortizações não usa automaticamente a linha-mãe,
+    porque a conta SICC pode agregar várias contas de aquisição do Primavera.
+    Assim, 4382/6422 compara com a soma das contas finais 432..., sem duplicar
+    linhas agregadoras e subcontas.
+    """
+    grupo = contas_primavera[
+        contas_primavera["codigo"].astype(str).str.startswith(raiz)
+    ].copy()
+    if grupo.empty:
+        return 0.0
+
+    finais = contas_finais(grupo["codigo"])
+    if finais:
+        return float(grupo[grupo["codigo"].isin(finais)][coluna].sum())
+
+    exata = grupo[grupo["codigo"] == raiz]
+    return float(exata[coluna].sum()) if not exata.empty else 0.0
 
 
 def somar_primavera_por_prefixo(
@@ -395,21 +465,21 @@ def somar_primavera_por_prefixo(
     coluna: str,
 ) -> float:
     """
-    Usa a linha exata quando existe. Se não existir, soma apenas contas finais
-    descendentes para evitar duplicação entre contas-mãe e subcontas.
+    Para o valor contabilístico, usa a conta exata quando existe; caso contrário,
+    soma apenas contas finais descendentes.
     """
     exata = contas_primavera[contas_primavera["codigo"] == prefixo]
     if not exata.empty:
         return float(exata.iloc[0][coluna])
 
-    descendentes = contas_primavera[contas_primavera["codigo"].str.startswith(prefixo)].copy()
+    descendentes = contas_primavera[
+        contas_primavera["codigo"].astype(str).str.startswith(prefixo)
+    ].copy()
     if descendentes.empty:
         return 0.0
 
     finais = contas_finais(descendentes["codigo"])
     return float(descendentes[descendentes["codigo"].isin(finais)][coluna].sum())
-
-
 
 
 def somar_sicc_grupo_sem_duplicacao(
@@ -507,6 +577,7 @@ def reconciliar_contas(
                 "Natureza": natureza_ativo(conta),
                 "Conta SICC": conta,
                 "Conta Primavera": conta,
+                "Contas Primavera abrangidas": conta,
                 "Descrição SICC": linha["descricao"],
                 "Descrição Primavera": descricao_primavera_por_prefixo(contas_primavera, conta),
                 "Cálculo SICC": "Saldo a débito - Saldo a crédito",
@@ -530,11 +601,12 @@ def reconciliar_contas(
 
     for _, linha in contas_gasto.iterrows():
         conta_sicc = linha["conta"]
-        conta_primavera = conta_ativo_por_gasto(conta_sicc)
+        raiz_proposta = raiz_base_por_gasto(conta_sicc)
+        conta_primavera = resolver_raiz_primavera(contas_primavera, raiz_proposta)
         natureza = natureza_ativo(conta_primavera)
 
         periodo_sicc = float(linha["movimento_periodo_liquido"])
-        periodo_primavera = somar_primavera_por_prefixo(
+        periodo_primavera = somar_primavera_por_raiz(
             contas_primavera,
             conta_primavera,
             "depreciacao_periodo",
@@ -547,6 +619,9 @@ def reconciliar_contas(
                 "Natureza": natureza,
                 "Conta SICC": conta_sicc,
                 "Conta Primavera": conta_primavera,
+                "Contas Primavera abrangidas": ", ".join(
+                    contas_primavera_abrangidas(contas_primavera, conta_primavera)
+                ),
                 "Descrição SICC": linha["descricao"],
                 "Descrição Primavera": descricao_primavera_por_prefixo(
                     contas_primavera,
@@ -561,7 +636,7 @@ def reconciliar_contas(
         )
 
         exercicio_sicc = float(linha["saldo_liquido_devedor"])
-        exercicio_primavera = somar_primavera_por_prefixo(
+        exercicio_primavera = somar_primavera_por_raiz(
             contas_primavera,
             conta_primavera,
             "depreciacao_exercicio",
@@ -574,6 +649,9 @@ def reconciliar_contas(
                 "Natureza": natureza,
                 "Conta SICC": conta_sicc,
                 "Conta Primavera": conta_primavera,
+                "Contas Primavera abrangidas": ", ".join(
+                    contas_primavera_abrangidas(contas_primavera, conta_primavera)
+                ),
                 "Descrição SICC": linha["descricao"],
                 "Descrição Primavera": descricao_primavera_por_prefixo(
                     contas_primavera,
@@ -604,9 +682,10 @@ def reconciliar_contas(
 
     for _, linha in contas_acumuladas.iterrows():
         conta_sicc = linha["conta"]
-        conta_primavera = conta_ativo_por_acumulada(conta_sicc)
+        raiz_proposta = raiz_base_por_acumulada(conta_sicc)
+        conta_primavera = resolver_raiz_primavera(contas_primavera, raiz_proposta)
         valor_sicc = float(linha["saldo_liquido_credor"])
-        valor_primavera = somar_primavera_por_prefixo(
+        valor_primavera = somar_primavera_por_raiz(
             contas_primavera,
             conta_primavera,
             "depreciacao_acumulada",
@@ -619,6 +698,9 @@ def reconciliar_contas(
                 "Natureza": natureza_ativo(conta_primavera),
                 "Conta SICC": conta_sicc,
                 "Conta Primavera": conta_primavera,
+                "Contas Primavera abrangidas": ", ".join(
+                    contas_primavera_abrangidas(contas_primavera, conta_primavera)
+                ),
                 "Descrição SICC": linha["descricao"],
                 "Descrição Primavera": descricao_primavera_por_prefixo(
                     contas_primavera,
@@ -1176,11 +1258,11 @@ if ficheiro_sicc and ficheiro_primavera:
                 """
 - **AFT — valor contabilístico:** contas `431…437` do SICC, calculadas por **saldo a débito − saldo a crédito**, comparadas com o **Valor Contabilístico** do Primavera.
 - **Ativos intangíveis — valor contabilístico:** contas `443…` do SICC, calculadas por **saldo a débito − saldo a crédito**, comparadas com o **Valor Contabilístico** do Primavera.
-- **AFT — depreciação do período:** contas `642…`, calculadas por **valor a débito − valor a crédito**, comparadas com a coluna **Período** do Primavera.
+- **AFT — depreciação do período:** contas `642…`, calculadas por **valor a débito − valor a crédito**, comparadas com a soma das contas finais do Primavera pertencentes à respetiva raiz (por exemplo, `6422 → 432…`).
 - **Ativos intangíveis — amortização do período:** contas `643…`, calculadas por **valor a débito − valor a crédito**, comparadas com a coluna **Período** do Primavera.
-- **AFT — depreciação do exercício:** contas `642…`, calculadas por **saldo a débito − saldo a crédito**, comparadas com a coluna **Exercício** do Primavera.
+- **AFT — depreciação do exercício:** contas `642…`, calculadas por **saldo a débito − saldo a crédito**, comparadas com a soma das contas finais do Primavera pertencentes à respetiva raiz.
 - **Ativos intangíveis — amortização do exercício:** contas `643…`, calculadas por **saldo a débito − saldo a crédito**, comparadas com a coluna **Exercício** do Primavera.
-- **AFT — depreciação acumulada:** contas `438…`, calculadas por **saldo a crédito − saldo a débito**, comparadas com a coluna **Acumulada** do Primavera.
+- **AFT — depreciação acumulada:** contas `438…`, calculadas por **saldo a crédito − saldo a débito**, comparadas com a soma das contas finais do Primavera pertencentes à respetiva raiz (por exemplo, `4382 → 432…`).
 - **Ativos intangíveis — amortização acumulada:** contas `4483…`, calculadas por **saldo a crédito − saldo a débito**, comparadas com a coluna **Acumulada** do Primavera.
 - Nas contas hierárquicas são usadas apenas as contas finais do SICC, evitando a duplicação de contas-mãe e subcontas.
                 """
