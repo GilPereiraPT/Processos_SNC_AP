@@ -410,6 +410,55 @@ def somar_primavera_por_prefixo(
     return float(descendentes[descendentes["codigo"].isin(finais)][coluna].sum())
 
 
+
+
+def somar_sicc_grupo_sem_duplicacao(
+    sicc: pd.DataFrame,
+    prefixo: str,
+    coluna: str,
+) -> float:
+    """
+    Obtém o total de um grupo contabilístico sem duplicar contas-mãe e subcontas.
+
+    Regra:
+    1. Se existir a conta agregadora exata (por exemplo, 438), usa essa linha.
+    2. Se não existir, soma apenas as contas finais descendentes.
+    3. Se houver linhas repetidas para a mesma conta, agrega-as primeiro.
+    """
+    grupo = sicc[sicc["conta"].str.startswith(prefixo)].copy()
+    if grupo.empty:
+        return 0.0
+
+    grupo = (
+        grupo.groupby("conta", as_index=False)[coluna]
+        .sum()
+    )
+
+    exata = grupo[grupo["conta"] == prefixo]
+    if not exata.empty:
+        return float(exata[coluna].sum())
+
+    finais = contas_finais(grupo["conta"])
+    return float(grupo[grupo["conta"].isin(finais)][coluna].sum())
+
+
+def somar_primavera_por_natureza(
+    contas_primavera: pd.DataFrame,
+    natureza: str,
+    coluna: str,
+) -> float:
+    """Soma o Primavera por natureza sem duplicar níveis hierárquicos."""
+    if natureza == "Ativo fixo tangível":
+        return float(sum(
+            somar_primavera_por_prefixo(contas_primavera, prefixo, coluna)
+            for prefixo in ("431", "432", "433", "434", "435", "436", "437")
+        ))
+
+    if natureza == "Ativo intangível":
+        return float(somar_primavera_por_prefixo(contas_primavera, "443", coluna))
+
+    return 0.0
+
 def descricao_primavera_por_prefixo(contas_primavera: pd.DataFrame, prefixo: str) -> str:
     exata = contas_primavera[contas_primavera["codigo"] == prefixo]
     if not exata.empty:
@@ -619,6 +668,40 @@ def reconciliar_contas(
             detalhe.groupby(["Componente", "Natureza"], as_index=False)[["SICC", "Primavera"]]
             .sum()
         )
+        # Corrige os totais das depreciações/amortizações acumuladas.
+        # O detalhe é apresentado por contas finais, mas o resumo deve usar a
+        # conta agregadora quando ela existe (438 para AFT e 4483 para AI).
+        # Isto impede a dupla contagem de contas-mãe e subcontas.
+        ajustes_acumuladas = [
+            (
+                "Ativo fixo tangível",
+                "438",
+                somar_sicc_grupo_sem_duplicacao(
+                    sicc, "438", "saldo_liquido_credor"
+                ),
+            ),
+            (
+                "Ativo intangível",
+                "4483",
+                somar_sicc_grupo_sem_duplicacao(
+                    sicc, "4483", "saldo_liquido_credor"
+                ),
+            ),
+        ]
+
+        for natureza, _prefixo_sicc, total_sicc in ajustes_acumuladas:
+            mascara = (
+                (resumo["Componente"] == "Depreciação/amortização acumulada")
+                & (resumo["Natureza"] == natureza)
+            )
+            if mascara.any():
+                resumo.loc[mascara, "SICC"] = total_sicc
+                resumo.loc[mascara, "Primavera"] = somar_primavera_por_natureza(
+                    contas_primavera,
+                    natureza,
+                    "depreciacao_acumulada",
+                )
+
         resumo["Diferença SICC - Primavera"] = resumo["SICC"] - resumo["Primavera"]
         resumo["Estado"] = resumo["Diferença SICC - Primavera"].abs().map(
             lambda v: "OK" if v <= tolerancia else "Divergência"
