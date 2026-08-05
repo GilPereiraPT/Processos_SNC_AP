@@ -953,8 +953,6 @@ def reconciliar_contas(
 
 def controlar_fichas(
     fichas: pd.DataFrame,
-    tolerancia: float,
-    data_referencia: pd.Timestamp,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     if fichas.empty:
         resumo = pd.DataFrame(
@@ -974,70 +972,41 @@ def controlar_fichas(
         controlo["conta_ativo"].str.startswith("431")
         | controlo["descricao_normalizada"].str.contains(r"\bterreno\b", regex=True)
     )
-    controlo["ainda_nao_em_utilizacao"] = (
-        controlo["data_utilizacao"].isna()
-        | (controlo["data_utilizacao"] > data_referencia)
-    )
 
-    # Valor líquido após depreciações/amortizações acumuladas.
-    # Quando este valor é zero (ou residual dentro da tolerância), o bem já não
-    # tem base para reconhecer depreciação/amortização no período.
-    controlo["valor_liquido_apos_acumuladas"] = (
+    # Regra de controlo:
+    # 1. Os terrenos não depreciam/amortizam.
+    # 2. Nos restantes bens, se o valor de aquisição menos as depreciações/
+    #    amortizações acumuladas for positivo, tem de existir um valor positivo
+    #    de depreciação/amortização no período.
+    #
+    # A tolerância usada na reconciliação contabilística não é aplicada aqui:
+    # para este controlo, qualquer valor remanescente superior a zero exige que
+    # o valor do período seja também estritamente superior a zero.
+    controlo["valor_aquisicao_menos_acumuladas"] = (
         controlo["valor_contabilistico"]
         - controlo["depreciacao_acumulada"]
     )
-
-    # Valor ainda depreciável, considerando também valor residual e imparidade.
-    controlo["valor_depreciavel_remanescente"] = (
-        controlo["valor_contabilistico"]
-        - controlo["valor_residual"]
-        - controlo["depreciacao_acumulada"]
-        - controlo["imparidade_acumulada"]
+    controlo["tem_valor_por_amortizar"] = (
+        controlo["valor_aquisicao_menos_acumuladas"] > 0
+    )
+    controlo["deve_amortizar_no_periodo"] = (
+        ~controlo["terreno"]
+        & controlo["tem_valor_por_amortizar"]
+    )
+    controlo["erro_sem_amortizacao_periodo"] = (
+        controlo["deve_amortizar_no_periodo"]
+        & (controlo["depreciacao_periodo"] <= 0)
     )
 
-    controlo["totalmente_depreciado"] = (
-        (controlo["valor_liquido_apos_acumuladas"] <= tolerancia)
-        | (controlo["valor_depreciavel_remanescente"] <= tolerancia)
-        | (controlo["quantia_escriturada"] <= controlo["valor_residual"] + tolerancia)
+    controlo["motivo"] = ""
+    controlo.loc[
+        controlo["erro_sem_amortizacao_periodo"],
+        "motivo",
+    ] = (
+        "Valor de aquisição menos amortizações/depreciações acumuladas é "
+        "positivo, mas a amortização/depreciação do período não é superior a zero"
     )
-
-    controlo["elegivel_para_depreciacao"] = ~(
-        controlo["terreno"]
-        | controlo["ainda_nao_em_utilizacao"]
-        | controlo["totalmente_depreciado"]
-    )
-
-    controlo["sem_depreciacao_periodo"] = (
-        controlo["elegivel_para_depreciacao"]
-        & (controlo["depreciacao_periodo"].abs() <= tolerancia)
-    )
-    controlo["taxa_zero"] = (
-        controlo["elegivel_para_depreciacao"]
-        & (controlo["taxa"].abs() <= tolerancia)
-    )
-    controlo["exercicio_inferior_periodo"] = (
-        controlo["depreciacao_exercicio"] + tolerancia
-        < controlo["depreciacao_periodo"]
-    )
-    controlo["acumulada_inferior_exercicio"] = (
-        controlo["depreciacao_acumulada"] + tolerancia
-        < controlo["depreciacao_exercicio"]
-    )
-
-    def motivos(linha: pd.Series) -> str:
-        lista: list[str] = []
-        if linha["sem_depreciacao_periodo"]:
-            lista.append("Bem amortizável sem depreciação/amortização no período")
-        if linha["taxa_zero"]:
-            lista.append("Taxa de depreciação/amortização igual a zero")
-        if linha["exercicio_inferior_periodo"]:
-            lista.append("Valor do exercício inferior ao valor do período")
-        if linha["acumulada_inferior_exercicio"]:
-            lista.append("Valor acumulado inferior ao valor do exercício")
-        return "; ".join(lista)
-
-    controlo["motivo"] = controlo.apply(motivos, axis=1)
-    problemas = controlo[controlo["motivo"] != ""].copy()
+    problemas = controlo[controlo["erro_sem_amortizacao_periodo"]].copy()
 
     colunas_problemas = [
         "codigo",
@@ -1048,10 +1017,7 @@ def controlar_fichas(
         "taxa",
         "valor_contabilistico",
         "depreciacao_acumulada",
-        "valor_liquido_apos_acumuladas",
-        "valor_residual",
-        "quantia_escriturada",
-        "valor_depreciavel_remanescente",
+        "valor_aquisicao_menos_acumuladas",
         "depreciacao_periodo",
         "depreciacao_exercicio",
         "motivo",
@@ -1064,15 +1030,11 @@ def controlar_fichas(
             "descricao": "Descrição",
             "data_utilizacao": "Data de utilização",
             "taxa": "Taxa",
-            "valor_contabilistico": "Valor contabilístico",
-            "depreciacao_acumulada": "Amortização/depreciação acumulada",
-            "valor_liquido_apos_acumuladas": "Valor contabilístico líquido após acumuladas",
-            "valor_residual": "Valor residual",
-            "quantia_escriturada": "Quantia escriturada",
-            "valor_depreciavel_remanescente": "Valor por depreciar/amortizar",
+            "valor_contabilistico": "Valor de aquisição",
+            "depreciacao_acumulada": "Acumulada",
+            "valor_aquisicao_menos_acumuladas": "Valor de aquisição - acumulada",
             "depreciacao_periodo": "Período",
             "depreciacao_exercicio": "Exercício",
-            "depreciacao_acumulada": "Acumulada",
             "motivo": "Motivo",
         }
     )
@@ -1082,27 +1044,15 @@ def controlar_fichas(
             {"Indicador": "Fichas individuais analisadas", "Quantidade": int(len(controlo))},
             {"Indicador": "Terrenos excluídos", "Quantidade": int(controlo["terreno"].sum())},
             {
-                "Indicador": "Bens ainda não colocados em utilização",
-                "Quantidade": int(controlo["ainda_nao_em_utilizacao"].sum()),
+                "Indicador": "Bens não terrenos com valor por amortizar",
+                "Quantidade": int(controlo["deve_amortizar_no_periodo"].sum()),
             },
             {
-                "Indicador": "Bens totalmente depreciados/amortizados",
-                "Quantidade": int(controlo["totalmente_depreciado"].sum()),
+                "Indicador": "Bens sem valor por amortizar",
+                "Quantidade": int((~controlo["tem_valor_por_amortizar"]).sum()),
             },
             {
-                "Indicador": "Bens elegíveis para depreciação/amortização",
-                "Quantidade": int(controlo["elegivel_para_depreciacao"].sum()),
-            },
-            {
-                "Indicador": "Bens elegíveis sem valor no período",
-                "Quantidade": int(controlo["sem_depreciacao_periodo"].sum()),
-            },
-            {
-                "Indicador": "Bens elegíveis com taxa zero",
-                "Quantidade": int(controlo["taxa_zero"].sum()),
-            },
-            {
-                "Indicador": "Fichas com incoerências",
+                "Indicador": "Erros: bens que deviam amortizar sem valor positivo no período",
                 "Quantidade": int(len(problemas)),
             },
         ]
@@ -1245,7 +1195,6 @@ with st.sidebar:
         format="%.2f",
     )
     apenas_divergencias = st.checkbox("Mostrar apenas divergências", value=True)
-    data_referencia = st.date_input("Data de referência do balancete")
 
 coluna_1, coluna_2 = st.columns(2)
 
@@ -1274,8 +1223,6 @@ if ficheiro_sicc and ficheiro_primavera:
 
         resumo_controlo, problemas = controlar_fichas(
             fichas_primavera,
-            tolerancia,
-            pd.Timestamp(data_referencia),
         )
 
         separador_1, separador_2, separador_3, separador_4 = st.tabs(
@@ -1343,7 +1290,7 @@ if ficheiro_sicc and ficheiro_primavera:
         with separador_3:
             st.subheader("Possíveis bens sem depreciação ou amortização")
             st.caption(
-                "São excluídos os terrenos, os bens ainda não colocados em utilização e os bens totalmente depreciados ou amortizados."
+                "São excluídos os terrenos. Nos restantes bens, se o valor de aquisição menos as amortizações/depreciações acumuladas for positivo, o valor do período tem de ser superior a zero."
             )
 
             if problemas.empty:
@@ -1355,10 +1302,8 @@ if ficheiro_sicc and ficheiro_primavera:
                     estilizar_tabela(
                         problemas,
                         [
-                            "Valor contabilístico",
-                            "Valor residual",
-                            "Quantia escriturada",
-                            "Valor por depreciar/amortizar",
+                            "Valor de aquisição",
+                            "Valor de aquisição - acumulada",
                             "Período",
                             "Exercício",
                             "Acumulada",
@@ -1384,6 +1329,7 @@ if ficheiro_sicc and ficheiro_primavera:
 - **AFT — depreciação acumulada:** contas `438…`, calculadas por **saldo a crédito − saldo a débito**, usando o mapa específico quando várias contas de aquisição acumulam numa só conta. Exemplo: `43859 → 4352 + 4353 + 4359`.
 - **Ativos intangíveis — amortização acumulada:** contas `4483…`, calculadas por **saldo a crédito − saldo a débito**, comparadas com a coluna **Acumulada** do Primavera.
 - Nas contas hierárquicas são usadas apenas as contas finais do SICC, evitando a duplicação de contas-mãe e subcontas.
+- **Bens sem amortização/depreciação:** os terrenos são excluídos. Para cada outro bem, calcula-se **Valor de aquisição − Acumulada**. Se o resultado for positivo, o valor da coluna **Período** tem de ser estritamente superior a zero; caso contrário, a ficha é assinalada como erro.
                 """
             )
 
