@@ -21,12 +21,16 @@ Carregue vários ficheiros Excel, ou um arquivo **ZIP/RAR** com vários Excel, p
 **um único ficheiro consolidado**.
 
 Por defeito, a aplicação **inclui todas as linhas**, mesmo quando existem números de documento repetidos.
-Se pretender, pode ativar a opção de remover duplicados.
+As datas podem ser convertidas automaticamente para **dd/mm/aaaa** e os valores monetários para o formato **45,46 €**.
 """
 )
 
 EXTENSOES_EXCEL = {".xlsx", ".xlsm", ".xls"}
 
+
+# -----------------------------------------------------------------------------
+# UTILITÁRIOS DE NORMALIZAÇÃO
+# -----------------------------------------------------------------------------
 
 def normalizar_nome_coluna(valor):
     texto = str(valor).strip().lower()
@@ -89,6 +93,179 @@ def sugerir_coluna_documento(colunas):
 
     return colunas[0] if colunas else None
 
+
+# -----------------------------------------------------------------------------
+# DETEÇÃO / CONVERSÃO DE DATAS E VALORES
+# -----------------------------------------------------------------------------
+
+def parece_data(valor):
+    """Deteta textos com aspeto de data sem confundir contas/códigos numéricos."""
+    if pd.isna(valor):
+        return False
+
+    texto = str(valor).strip()
+    if not texto:
+        return False
+
+    padroes = [
+        r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[T\s].*)?$",   # 2026/07/03T...
+        r"^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}(?:[T\s].*)?$", # 03/07/2026
+        r"^\d{4}-\d{2}-\d{2}T.*$",                      # ISO
+    ]
+    return any(re.match(padrao, texto) for padrao in padroes)
+
+
+def detetar_colunas_data(df):
+    encontradas = []
+
+    for coluna in df.columns:
+        nome = normalizar_nome_coluna(coluna)
+
+        # Nome da coluna é um forte indicador.
+        nome_data = (
+            nome == "data"
+            or nome.startswith("data ")
+            or nome.endswith(" data")
+            or " date" in f" {nome}"
+        )
+
+        valores = df[coluna].astype(str)
+        amostra = [v for v in valores.head(300) if str(v).strip()]
+
+        proporcao = 0
+        if amostra:
+            proporcao = sum(parece_data(v) for v in amostra) / len(amostra)
+
+        if nome_data or proporcao >= 0.80:
+            encontradas.append(coluna)
+
+    return encontradas
+
+
+def detetar_colunas_monetarias(df):
+    """Sugere apenas colunas cujo cabeçalho indica valor monetário."""
+    palavras = {
+        "valor",
+        "montante",
+        "debito",
+        "credito",
+        "saldo",
+        "total",
+        "preco",
+        "importe",
+        "liquido",
+        "ilíquido",
+        "iliquido",
+        "iva",
+        "base tributavel",
+    }
+
+    encontradas = []
+
+    for coluna in df.columns:
+        nome = normalizar_nome_coluna(coluna)
+        tokens = set(nome.split())
+
+        if any(p in nome for p in palavras) or tokens.intersection(palavras):
+            encontradas.append(coluna)
+
+    return encontradas
+
+
+def converter_data(valor):
+    if pd.isna(valor) or str(valor).strip() == "":
+        return pd.NaT
+
+    texto = str(valor).strip()
+
+    try:
+        dt = pd.to_datetime(texto, errors="coerce", dayfirst=True, utc=True)
+        if pd.isna(dt):
+            dt = pd.to_datetime(texto, errors="coerce", dayfirst=True)
+        if pd.isna(dt):
+            return pd.NaT
+
+        # XlsxWriter/Excel não aceita datetime com timezone.
+        if getattr(dt, "tzinfo", None) is not None:
+            dt = dt.tz_localize(None)
+
+        return dt
+    except Exception:
+        return pd.NaT
+
+
+def converter_numero(valor):
+    """Converte números PT/EN em float: 1.234,56; 1234.56; 45,46 €; etc."""
+    if pd.isna(valor):
+        return None
+
+    texto = str(valor).strip()
+    if not texto:
+        return None
+
+    negativo_parenteses = texto.startswith("(") and texto.endswith(")")
+    texto = texto.strip("()")
+    texto = texto.replace("€", "").replace("EUR", "").replace("eur", "")
+    texto = texto.replace("\u00a0", "").replace(" ", "")
+
+    # Mantém apenas algarismos, sinal e separadores decimais/milhar.
+    texto = re.sub(r"[^0-9,\.\-+]", "", texto)
+
+    if not texto:
+        return None
+
+    if "," in texto and "." in texto:
+        # O último separador é assumido como decimal.
+        if texto.rfind(",") > texto.rfind("."):
+            texto = texto.replace(".", "").replace(",", ".")
+        else:
+            texto = texto.replace(",", "")
+    elif "," in texto:
+        # Vírgula decimal portuguesa.
+        texto = texto.replace(".", "").replace(",", ".")
+    elif texto.count(".") > 1:
+        # Ex.: 1.234.567 -> separadores de milhar.
+        texto = texto.replace(".", "")
+
+    try:
+        numero = float(texto)
+        if negativo_parenteses:
+            numero = -abs(numero)
+        return numero
+    except ValueError:
+        return None
+
+
+def preparar_formatos(df, colunas_data, colunas_monetarias):
+    """Converte apenas as colunas escolhidas, preservando as restantes."""
+    resultado = df.copy()
+
+    for coluna in colunas_data:
+        if coluna in resultado.columns:
+            original = resultado[coluna].copy()
+            convertido = original.map(converter_data)
+
+            # Se um valor não for reconhecido como data, mantém o conteúdo original.
+            resultado[coluna] = convertido.astype(object)
+            falhou = convertido.isna() & original.astype(str).str.strip().ne("")
+            resultado.loc[falhou, coluna] = original.loc[falhou]
+
+    for coluna in colunas_monetarias:
+        if coluna in resultado.columns and coluna not in colunas_data:
+            original = resultado[coluna].copy()
+            convertido = original.map(converter_numero)
+
+            resultado[coluna] = convertido.astype(object)
+            falhou = convertido.isna() & original.astype(str).str.strip().ne("")
+            resultado.loc[falhou, coluna] = original.loc[falhou]
+            resultado.loc[original.astype(str).str.strip().eq(""), coluna] = ""
+
+    return resultado
+
+
+# -----------------------------------------------------------------------------
+# LEITURA DE EXCEL / ZIP / RAR
+# -----------------------------------------------------------------------------
 
 def ler_excel_bytes(conteudo, nome_ficheiro, todas_as_folhas=False):
     extensao = Path(nome_ficheiro).suffix.lower()
@@ -185,11 +362,24 @@ def nome_excel_real(nome_origem):
     return nome_origem.split(" → ", 1)[-1]
 
 
-def criar_excel(df):
+# -----------------------------------------------------------------------------
+# GERAÇÃO DO EXCEL FINAL
+# -----------------------------------------------------------------------------
+
+def criar_excel(df, colunas_data=None, colunas_monetarias=None):
+    colunas_data = colunas_data or []
+    colunas_monetarias = colunas_monetarias or []
+
+    df_saida = preparar_formatos(df, colunas_data, colunas_monetarias)
     output = io.BytesIO()
 
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        df.to_excel(writer, sheet_name="Consolidado", index=False)
+    with pd.ExcelWriter(
+        output,
+        engine="xlsxwriter",
+        datetime_format="dd/mm/yyyy",
+        date_format="dd/mm/yyyy",
+    ) as writer:
+        df_saida.to_excel(writer, sheet_name="Consolidado", index=False)
 
         workbook = writer.book
         worksheet = writer.sheets["Consolidado"]
@@ -202,24 +392,37 @@ def criar_excel(df):
                 "valign": "top",
             }
         )
+        formato_data = workbook.add_format({"num_format": "dd/mm/yyyy"})
+        formato_euro = workbook.add_format({"num_format": '#,##0.00 "€"'})
 
-        for col_num, valor in enumerate(df.columns):
+        for col_num, valor in enumerate(df_saida.columns):
             worksheet.write(0, col_num, valor, formato_cabecalho)
 
         worksheet.freeze_panes(1, 0)
-        worksheet.autofilter(0, 0, max(len(df), 1), max(len(df.columns) - 1, 0))
+        worksheet.autofilter(0, 0, max(len(df_saida), 1), max(len(df_saida.columns) - 1, 0))
 
-        for idx, coluna in enumerate(df.columns):
-            valores = df[coluna].astype(str).head(1000)
+        for idx, coluna in enumerate(df_saida.columns):
+            valores = df_saida[coluna].astype(str).head(1000)
             largura = max(
                 len(str(coluna)),
                 valores.map(len).max() if not valores.empty else 0,
             )
-            worksheet.set_column(idx, idx, min(max(largura + 2, 10), 45))
+            largura = min(max(largura + 2, 10), 45)
+
+            if coluna in colunas_data:
+                worksheet.set_column(idx, idx, max(largura, 12), formato_data)
+            elif coluna in colunas_monetarias:
+                worksheet.set_column(idx, idx, max(largura, 14), formato_euro)
+            else:
+                worksheet.set_column(idx, idx, largura)
 
     output.seek(0)
     return output.getvalue()
 
+
+# -----------------------------------------------------------------------------
+# INTERFACE
+# -----------------------------------------------------------------------------
 
 st.divider()
 
@@ -260,7 +463,33 @@ if ficheiros:
     if blocos:
         total = pd.concat(blocos, ignore_index=True, sort=False).fillna("")
 
-        st.subheader("Configuração")
+        st.subheader("Formatação do ficheiro final")
+
+        sugestao_datas = detetar_colunas_data(total)
+        sugestao_valores = [
+            c for c in detetar_colunas_monetarias(total)
+            if c not in sugestao_datas
+        ]
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            colunas_data = st.multiselect(
+                "Colunas de data → dd/mm/aaaa",
+                options=list(total.columns),
+                default=sugestao_datas,
+                help="As colunas detetadas automaticamente já vêm selecionadas. Pode acrescentar ou retirar colunas.",
+            )
+
+        with col2:
+            colunas_monetarias = st.multiselect(
+                "Colunas de valores → 45,46 €",
+                options=[c for c in total.columns if c not in colunas_data],
+                default=[c for c in sugestao_valores if c not in colunas_data],
+                help="Selecione as colunas que representam montantes. Contas, documentos e códigos não são formatados como euros.",
+            )
+
+        st.subheader("Opções")
 
         remover_duplicados = st.checkbox(
             "Remover números de documento repetidos",
@@ -348,10 +577,19 @@ if ficheiros:
             c3.metric("Duplicados removidos", "0")
             st.info("Todas as linhas foram incluídas, incluindo números de documento repetidos.")
 
+        if colunas_data:
+            st.caption("Datas formatadas: " + ", ".join(map(str, colunas_data)))
+        if colunas_monetarias:
+            st.caption("Valores em euros: " + ", ".join(map(str, colunas_monetarias)))
+
         with st.expander("Pré-visualizar resultado"):
             st.dataframe(consolidado.head(200), use_container_width=True)
 
-        excel = criar_excel(consolidado)
+        excel = criar_excel(
+            consolidado,
+            colunas_data=colunas_data,
+            colunas_monetarias=colunas_monetarias,
+        )
 
         st.download_button(
             "⬇️ Descarregar Excel consolidado",
@@ -364,5 +602,5 @@ if ficheiros:
 
         st.caption(
             "O ficheiro descarregado contém uma única folha chamada 'Consolidado'. "
-            "Por defeito, todas as linhas são mantidas. A remoção de duplicados só é aplicada quando ativada manualmente."
+            "Por defeito, todas as linhas são mantidas. Datas e valores são gravados como tipos reais do Excel, não apenas como texto formatado."
         )
