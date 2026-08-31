@@ -21,7 +21,7 @@ Carregue vários ficheiros Excel, ou um arquivo **ZIP/RAR** com vários Excel, p
 **um único ficheiro consolidado**.
 
 Por defeito, a aplicação **inclui todas as linhas**, mesmo quando existem números de documento repetidos.
-As datas podem ser convertidas automaticamente para **dd/mm/aaaa** e os valores monetários para o formato **45,46 €**.
+As datas podem ser convertidas automaticamente para **dd/mm/aaaa** e os valores monetários para **45,46 €**.
 """
 )
 
@@ -29,7 +29,7 @@ EXTENSOES_EXCEL = {".xlsx", ".xlsm", ".xls"}
 
 
 # -----------------------------------------------------------------------------
-# UTILITÁRIOS DE NORMALIZAÇÃO
+# NORMALIZAÇÃO
 # -----------------------------------------------------------------------------
 
 def normalizar_nome_coluna(valor):
@@ -95,11 +95,10 @@ def sugerir_coluna_documento(colunas):
 
 
 # -----------------------------------------------------------------------------
-# DETEÇÃO / CONVERSÃO DE DATAS E VALORES
+# DATAS E VALORES
 # -----------------------------------------------------------------------------
 
 def parece_data(valor):
-    """Deteta textos com aspeto de data sem confundir contas/códigos numéricos."""
     if pd.isna(valor):
         return False
 
@@ -108,9 +107,9 @@ def parece_data(valor):
         return False
 
     padroes = [
-        r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[T\s].*)?$",   # 2026/07/03T...
-        r"^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}(?:[T\s].*)?$", # 03/07/2026
-        r"^\d{4}-\d{2}-\d{2}T.*$",                      # ISO
+        r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[T\s].*)?$",
+        r"^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}(?:[T\s].*)?$",
+        r"^\d{4}-\d{2}-\d{2}T.*$",
     ]
     return any(re.match(padrao, texto) for padrao in padroes)
 
@@ -120,19 +119,24 @@ def detetar_colunas_data(df):
 
     for coluna in df.columns:
         nome = normalizar_nome_coluna(coluna)
-
-        # Nome da coluna é um forte indicador.
         nome_data = (
             nome == "data"
             or nome.startswith("data ")
             or nome.endswith(" data")
-            or " date" in f" {nome}"
+            or nome == "date"
+            or nome.startswith("date ")
+            or nome.endswith(" date")
         )
 
-        valores = df[coluna].astype(str)
-        amostra = [v for v in valores.head(300) if str(v).strip()]
+        amostra = []
+        for valor in df[coluna].head(300).tolist():
+            if pd.isna(valor):
+                continue
+            texto = str(valor).strip()
+            if texto:
+                amostra.append(texto)
 
-        proporcao = 0
+        proporcao = 0.0
         if amostra:
             proporcao = sum(parece_data(v) for v in amostra) / len(amostra)
 
@@ -143,7 +147,6 @@ def detetar_colunas_data(df):
 
 
 def detetar_colunas_monetarias(df):
-    """Sugere apenas colunas cujo cabeçalho indica valor monetário."""
     palavras = {
         "valor",
         "montante",
@@ -154,7 +157,6 @@ def detetar_colunas_monetarias(df):
         "preco",
         "importe",
         "liquido",
-        "ilíquido",
         "iliquido",
         "iva",
         "base tributavel",
@@ -174,28 +176,24 @@ def detetar_colunas_monetarias(df):
 
 def converter_data(valor):
     if pd.isna(valor) or str(valor).strip() == "":
-        return pd.NaT
+        return None
 
     texto = str(valor).strip()
 
     try:
         dt = pd.to_datetime(texto, errors="coerce", dayfirst=True, utc=True)
         if pd.isna(dt):
-            dt = pd.to_datetime(texto, errors="coerce", dayfirst=True)
-        if pd.isna(dt):
-            return pd.NaT
+            return None
 
-        # XlsxWriter/Excel não aceita datetime com timezone.
         if getattr(dt, "tzinfo", None) is not None:
             dt = dt.tz_localize(None)
 
-        return dt
+        return dt.to_pydatetime() if hasattr(dt, "to_pydatetime") else dt
     except Exception:
-        return pd.NaT
+        return None
 
 
 def converter_numero(valor):
-    """Converte números PT/EN em float: 1.234,56; 1234.56; 45,46 €; etc."""
     if pd.isna(valor):
         return None
 
@@ -207,24 +205,19 @@ def converter_numero(valor):
     texto = texto.strip("()")
     texto = texto.replace("€", "").replace("EUR", "").replace("eur", "")
     texto = texto.replace("\u00a0", "").replace(" ", "")
-
-    # Mantém apenas algarismos, sinal e separadores decimais/milhar.
     texto = re.sub(r"[^0-9,\.\-+]", "", texto)
 
     if not texto:
         return None
 
     if "," in texto and "." in texto:
-        # O último separador é assumido como decimal.
         if texto.rfind(",") > texto.rfind("."):
             texto = texto.replace(".", "").replace(",", ".")
         else:
             texto = texto.replace(",", "")
     elif "," in texto:
-        # Vírgula decimal portuguesa.
         texto = texto.replace(".", "").replace(",", ".")
     elif texto.count(".") > 1:
-        # Ex.: 1.234.567 -> separadores de milhar.
         texto = texto.replace(".", "")
 
     try:
@@ -237,28 +230,37 @@ def converter_numero(valor):
 
 
 def preparar_formatos(df, colunas_data, colunas_monetarias):
-    """Converte apenas as colunas escolhidas, preservando as restantes."""
-    resultado = df.copy()
+    resultado = df.copy().astype(object)
 
     for coluna in colunas_data:
-        if coluna in resultado.columns:
-            original = resultado[coluna].copy()
-            convertido = original.map(converter_data)
+        if coluna not in resultado.columns:
+            continue
 
-            # Se um valor não for reconhecido como data, mantém o conteúdo original.
-            resultado[coluna] = convertido.astype(object)
-            falhou = convertido.isna() & original.astype(str).str.strip().ne("")
-            resultado.loc[falhou, coluna] = original.loc[falhou]
+        novos = []
+        for valor in resultado[coluna].tolist():
+            if pd.isna(valor) or str(valor).strip() == "":
+                novos.append("")
+                continue
+
+            convertido = converter_data(valor)
+            novos.append(convertido if convertido is not None else valor)
+
+        resultado[coluna] = novos
 
     for coluna in colunas_monetarias:
-        if coluna in resultado.columns and coluna not in colunas_data:
-            original = resultado[coluna].copy()
-            convertido = original.map(converter_numero)
+        if coluna not in resultado.columns or coluna in colunas_data:
+            continue
 
-            resultado[coluna] = convertido.astype(object)
-            falhou = convertido.isna() & original.astype(str).str.strip().ne("")
-            resultado.loc[falhou, coluna] = original.loc[falhou]
-            resultado.loc[original.astype(str).str.strip().eq(""), coluna] = ""
+        novos = []
+        for valor in resultado[coluna].tolist():
+            if pd.isna(valor) or str(valor).strip() == "":
+                novos.append("")
+                continue
+
+            convertido = converter_numero(valor)
+            novos.append(convertido if convertido is not None else valor)
+
+        resultado[coluna] = novos
 
     return resultado
 
@@ -304,25 +306,37 @@ def ler_excel_bytes(conteudo, nome_ficheiro, todas_as_folhas=False):
 
 def extrair_excels_zip(conteudo):
     encontrados = []
+
     with zipfile.ZipFile(io.BytesIO(conteudo)) as arquivo:
         for info in arquivo.infolist():
             if info.is_dir():
                 continue
+
             nome = info.filename
-            if Path(nome).suffix.lower() in EXTENSOES_EXCEL and not Path(nome).name.startswith("~$"):
+            if (
+                Path(nome).suffix.lower() in EXTENSOES_EXCEL
+                and not Path(nome).name.startswith("~$")
+            ):
                 encontrados.append((nome, arquivo.read(info)))
+
     return encontrados
 
 
 def extrair_excels_rar(conteudo):
     encontrados = []
+
     with rarfile.RarFile(io.BytesIO(conteudo)) as arquivo:
         for info in arquivo.infolist():
             if info.isdir():
                 continue
+
             nome = info.filename
-            if Path(nome).suffix.lower() in EXTENSOES_EXCEL and not Path(nome).name.startswith("~$"):
+            if (
+                Path(nome).suffix.lower() in EXTENSOES_EXCEL
+                and not Path(nome).name.startswith("~$")
+            ):
                 encontrados.append((nome, arquivo.read(info)))
+
     return encontrados
 
 
@@ -338,18 +352,27 @@ def recolher_excels(uploaded_files):
         try:
             if extensao in EXTENSOES_EXCEL:
                 excels.append((nome, conteudo))
+
             elif extensao == ".zip":
                 internos = extrair_excels_zip(conteudo)
                 if not internos:
                     erros.append(f"{nome}: o ZIP não contém ficheiros Excel suportados.")
-                excels.extend([(f"{nome} → {interno}", dados) for interno, dados in internos])
+                excels.extend(
+                    [(f"{nome} → {interno}", dados) for interno, dados in internos]
+                )
+
             elif extensao == ".rar":
                 internos = extrair_excels_rar(conteudo)
                 if not internos:
                     erros.append(f"{nome}: o RAR não contém ficheiros Excel suportados.")
-                excels.extend([(f"{nome} → {interno}", dados) for interno, dados in internos])
+                excels.extend(
+                    [(f"{nome} → {interno}", dados) for interno, dados in internos]
+                )
+
         except rarfile.NeedFirstVolume:
-            erros.append(f"{nome}: RAR multipartes — carregue o primeiro volume e os restantes volumes necessários.")
+            erros.append(
+                f"{nome}: RAR multipartes — carregue o primeiro volume e os restantes volumes necessários."
+            )
         except rarfile.PasswordRequired:
             erros.append(f"{nome}: o RAR está protegido por palavra-passe.")
         except Exception as exc:
@@ -363,8 +386,25 @@ def nome_excel_real(nome_origem):
 
 
 # -----------------------------------------------------------------------------
-# GERAÇÃO DO EXCEL FINAL
+# EXCEL FINAL
 # -----------------------------------------------------------------------------
+
+def comprimento_seguro(valor):
+    """Calcula comprimento para largura da coluna sem falhar com NA/data/números."""
+    try:
+        if valor is None:
+            return 0
+        resultado_na = pd.isna(valor)
+        if isinstance(resultado_na, bool) and resultado_na:
+            return 0
+    except Exception:
+        pass
+
+    try:
+        return len(str(valor))
+    except Exception:
+        return 0
+
 
 def criar_excel(df, colunas_data=None, colunas_monetarias=None):
     colunas_data = colunas_data or []
@@ -379,7 +419,12 @@ def criar_excel(df, colunas_data=None, colunas_monetarias=None):
         datetime_format="dd/mm/yyyy",
         date_format="dd/mm/yyyy",
     ) as writer:
-        df_saida.to_excel(writer, sheet_name="Consolidado", index=False)
+        df_saida.to_excel(
+            writer,
+            sheet_name="Consolidado",
+            index=False,
+            na_rep="",
+        )
 
         workbook = writer.book
         worksheet = writer.sheets["Consolidado"]
@@ -399,14 +444,22 @@ def criar_excel(df, colunas_data=None, colunas_monetarias=None):
             worksheet.write(0, col_num, valor, formato_cabecalho)
 
         worksheet.freeze_panes(1, 0)
-        worksheet.autofilter(0, 0, max(len(df_saida), 1), max(len(df_saida.columns) - 1, 0))
+
+        if len(df_saida.columns) > 0:
+            worksheet.autofilter(
+                0,
+                0,
+                max(len(df_saida), 1),
+                len(df_saida.columns) - 1,
+            )
 
         for idx, coluna in enumerate(df_saida.columns):
-            valores = df_saida[coluna].astype(str).head(1000)
-            largura = max(
-                len(str(coluna)),
-                valores.map(len).max() if not valores.empty else 0,
-            )
+            largura = len(str(coluna))
+
+            # Não usa Series.map(len): datas, Arrow NA e outros tipos podem causar TypeError.
+            for valor in df_saida[coluna].head(1000).tolist():
+                largura = max(largura, comprimento_seguro(valor))
+
             largura = min(max(largura + 2, 10), 45)
 
             if coluna in colunas_data:
@@ -448,7 +501,9 @@ if ficheiros:
     for nome_origem, conteudo in excels:
         try:
             nome_real = nome_excel_real(nome_origem)
-            blocos.extend(ler_excel_bytes(conteudo, nome_real, todas_as_folhas))
+            blocos.extend(
+                ler_excel_bytes(conteudo, nome_real, todas_as_folhas)
+            )
         except Exception as exc:
             erros.append(f"{nome_origem}: {exc}")
 
@@ -458,16 +513,22 @@ if ficheiros:
             st.write(f"- {erro}")
 
     if excels:
-        st.caption(f"Foram encontrados {len(excels)} ficheiro(s) Excel para consolidação.")
+        st.caption(
+            f"Foram encontrados {len(excels)} ficheiro(s) Excel para consolidação."
+        )
 
     if blocos:
         total = pd.concat(blocos, ignore_index=True, sort=False).fillna("")
 
+        # ---------------------------------------------------------------------
+        # FORMATAÇÃO
+        # ---------------------------------------------------------------------
         st.subheader("Formatação do ficheiro final")
 
         sugestao_datas = detetar_colunas_data(total)
         sugestao_valores = [
-            c for c in detetar_colunas_monetarias(total)
+            c
+            for c in detetar_colunas_monetarias(total)
             if c not in sugestao_datas
         ]
 
@@ -478,17 +539,33 @@ if ficheiros:
                 "Colunas de data → dd/mm/aaaa",
                 options=list(total.columns),
                 default=sugestao_datas,
-                help="As colunas detetadas automaticamente já vêm selecionadas. Pode acrescentar ou retirar colunas.",
+                help=(
+                    "As colunas detetadas automaticamente já vêm selecionadas. "
+                    "Pode acrescentar ou retirar colunas."
+                ),
             )
 
         with col2:
+            opcoes_monetarias = [
+                c for c in total.columns if c not in colunas_data
+            ]
+            predefinidas_monetarias = [
+                c for c in sugestao_valores if c in opcoes_monetarias
+            ]
+
             colunas_monetarias = st.multiselect(
                 "Colunas de valores → 45,46 €",
-                options=[c for c in total.columns if c not in colunas_data],
-                default=[c for c in sugestao_valores if c not in colunas_data],
-                help="Selecione as colunas que representam montantes. Contas, documentos e códigos não são formatados como euros.",
+                options=opcoes_monetarias,
+                default=predefinidas_monetarias,
+                help=(
+                    "Selecione as colunas que representam montantes. "
+                    "Contas, documentos e códigos não são formatados como euros."
+                ),
             )
 
+        # ---------------------------------------------------------------------
+        # DUPLICADOS
+        # ---------------------------------------------------------------------
         st.subheader("Opções")
 
         remover_duplicados = st.checkbox(
@@ -514,7 +591,10 @@ if ficheiros:
 
             manter = st.radio(
                 "Quando o mesmo documento aparece mais do que uma vez:",
-                options=["Manter a primeira ocorrência", "Manter a última ocorrência"],
+                options=[
+                    "Manter a primeira ocorrência",
+                    "Manter a última ocorrência",
+                ],
                 horizontal=True,
             )
 
@@ -524,21 +604,33 @@ if ficheiros:
             )
 
             resultado = total.copy()
-            resultado["__chave_documento__"] = resultado[coluna_documento].map(normalizar_documento)
+            resultado["__chave_documento__"] = resultado[coluna_documento].map(
+                normalizar_documento
+            )
 
-            com_documento = resultado[resultado["__chave_documento__"] != ""].copy()
-            sem_documento = resultado[resultado["__chave_documento__"] == ""].copy()
+            com_documento = resultado[
+                resultado["__chave_documento__"] != ""
+            ].copy()
+            sem_documento = resultado[
+                resultado["__chave_documento__"] == ""
+            ].copy()
 
-            duplicados = com_documento.duplicated(
+            mascara_duplicados = com_documento.duplicated(
                 subset=["__chave_documento__"],
                 keep=False,
             )
 
             total_documentos_repetidos = com_documento.loc[
-                duplicados, "__chave_documento__"
+                mascara_duplicados,
+                "__chave_documento__",
             ].nunique()
 
-            keep = "first" if manter == "Manter a primeira ocorrência" else "last"
+            keep = (
+                "first"
+                if manter == "Manter a primeira ocorrência"
+                else "last"
+            )
+
             com_documento = com_documento.drop_duplicates(
                 subset=["__chave_documento__"],
                 keep=keep,
@@ -553,54 +645,86 @@ if ficheiros:
                     sort=False,
                 )
 
-            consolidado = consolidado.drop(columns=["__chave_documento__"], errors="ignore")
+            consolidado = consolidado.drop(
+                columns=["__chave_documento__"],
+                errors="ignore",
+            )
             linhas_removidas = len(total) - len(consolidado)
 
+        # ---------------------------------------------------------------------
+        # RESULTADO
+        # ---------------------------------------------------------------------
         st.divider()
         st.subheader("Resultado")
 
         if remover_duplicados:
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Excel processados", len(excels))
-            c2.metric("Linhas originais", f"{len(total):,}".replace(",", "."))
-            c3.metric("Linhas finais", f"{len(consolidado):,}".replace(",", "."))
-            c4.metric("Documentos repetidos", f"{total_documentos_repetidos:,}".replace(",", "."))
+            c2.metric(
+                "Linhas originais",
+                f"{len(total):,}".replace(",", "."),
+            )
+            c3.metric(
+                "Linhas finais",
+                f"{len(consolidado):,}".replace(",", "."),
+            )
+            c4.metric(
+                "Documentos repetidos",
+                f"{total_documentos_repetidos:,}".replace(",", "."),
+            )
 
             if linhas_removidas > 0:
-                st.info(f"Foram retiradas {linhas_removidas} linha(s) do resultado final.")
+                st.info(
+                    f"Foram retiradas {linhas_removidas} linha(s) do resultado final."
+                )
             else:
                 st.info("Não foi necessário retirar linhas por duplicação.")
         else:
             c1, c2, c3 = st.columns(3)
             c1.metric("Excel processados", len(excels))
-            c2.metric("Linhas incluídas", f"{len(consolidado):,}".replace(",", "."))
+            c2.metric(
+                "Linhas incluídas",
+                f"{len(consolidado):,}".replace(",", "."),
+            )
             c3.metric("Duplicados removidos", "0")
-            st.info("Todas as linhas foram incluídas, incluindo números de documento repetidos.")
+            st.info(
+                "Todas as linhas foram incluídas, incluindo números de documento repetidos."
+            )
 
         if colunas_data:
             st.caption("Datas formatadas: " + ", ".join(map(str, colunas_data)))
+
         if colunas_monetarias:
-            st.caption("Valores em euros: " + ", ".join(map(str, colunas_monetarias)))
+            st.caption(
+                "Valores em euros: " + ", ".join(map(str, colunas_monetarias))
+            )
 
         with st.expander("Pré-visualizar resultado"):
-            st.dataframe(consolidado.head(200), use_container_width=True)
+            st.dataframe(
+                consolidado.head(200),
+                use_container_width=True,
+            )
 
-        excel = criar_excel(
-            consolidado,
-            colunas_data=colunas_data,
-            colunas_monetarias=colunas_monetarias,
-        )
+        try:
+            excel = criar_excel(
+                consolidado,
+                colunas_data=colunas_data,
+                colunas_monetarias=colunas_monetarias,
+            )
 
-        st.download_button(
-            "⬇️ Descarregar Excel consolidado",
-            data=excel,
-            file_name="Excel_Consolidado.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            use_container_width=True,
-        )
+            st.download_button(
+                "⬇️ Descarregar Excel consolidado",
+                data=excel,
+                file_name="Excel_Consolidado.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True,
+            )
+        except Exception as exc:
+            st.error(f"Não foi possível gerar o Excel final: {exc}")
 
         st.caption(
             "O ficheiro descarregado contém uma única folha chamada 'Consolidado'. "
-            "Por defeito, todas as linhas são mantidas. Datas e valores são gravados como tipos reais do Excel, não apenas como texto formatado."
+            "Por defeito, todas as linhas são mantidas. Datas e valores são gravados "
+            "como tipos reais do Excel, não apenas como texto formatado."
         )
