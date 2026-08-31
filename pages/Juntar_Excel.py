@@ -20,8 +20,8 @@ st.markdown(
 Carregue vários ficheiros Excel, ou um arquivo **ZIP/RAR** com vários Excel, para obter
 **um único ficheiro consolidado**.
 
-A aplicação permite escolher a coluna que identifica o **n.º de documento** e elimina automaticamente
-as ocorrências repetidas, mantendo apenas uma linha por documento.
+Por defeito, a aplicação **inclui todas as linhas**, mesmo quando existem números de documento repetidos.
+Se pretender, pode ativar a opção de remover duplicados.
 """
 )
 
@@ -54,16 +54,11 @@ def normalizar_nome_coluna(valor):
 
 
 def normalizar_documento(valor):
-    """Normaliza apenas para comparação, sem alterar o valor apresentado."""
     if pd.isna(valor):
         return ""
-
     texto = str(valor).strip()
-
-    # Evita que 12345 e 12345.0 sejam considerados documentos diferentes.
     if re.fullmatch(r"\d+\.0", texto):
         texto = texto[:-2]
-
     return texto.upper()
 
 
@@ -96,7 +91,6 @@ def sugerir_coluna_documento(colunas):
 
 
 def ler_excel_bytes(conteudo, nome_ficheiro, todas_as_folhas=False):
-    """Lê um Excel em memória preservando os valores como texto."""
     extensao = Path(nome_ficheiro).suffix.lower()
     if extensao not in EXTENSOES_EXCEL:
         return []
@@ -114,7 +108,7 @@ def ler_excel_bytes(conteudo, nome_ficheiro, todas_as_folhas=False):
 
     blocos = []
 
-    for indice, (nome_folha, df) in enumerate(folhas.items()):
+    for indice, (_, df) in enumerate(folhas.items()):
         if not todas_as_folhas and indice > 0:
             break
 
@@ -132,7 +126,6 @@ def ler_excel_bytes(conteudo, nome_ficheiro, todas_as_folhas=False):
 
 
 def extrair_excels_zip(conteudo):
-    """Devolve pares (nome, bytes) de todos os Excel existentes num ZIP."""
     encontrados = []
     with zipfile.ZipFile(io.BytesIO(conteudo)) as arquivo:
         for info in arquivo.infolist():
@@ -145,7 +138,6 @@ def extrair_excels_zip(conteudo):
 
 
 def extrair_excels_rar(conteudo):
-    """Devolve pares (nome, bytes) de todos os Excel existentes num RAR."""
     encontrados = []
     with rarfile.RarFile(io.BytesIO(conteudo)) as arquivo:
         for info in arquivo.infolist():
@@ -158,7 +150,6 @@ def extrair_excels_rar(conteudo):
 
 
 def recolher_excels(uploaded_files):
-    """Transforma uploads individuais, ZIP e RAR numa lista uniforme de ficheiros Excel em memória."""
     excels = []
     erros = []
 
@@ -181,7 +172,7 @@ def recolher_excels(uploaded_files):
                     erros.append(f"{nome}: o RAR não contém ficheiros Excel suportados.")
                 excels.extend([(f"{nome} → {interno}", dados) for interno, dados in internos])
         except rarfile.NeedFirstVolume:
-            erros.append(f"{nome}: RAR multipartes — carregue o primeiro volume e todos os volumes necessários.")
+            erros.append(f"{nome}: RAR multipartes — carregue o primeiro volume e os restantes volumes necessários.")
         except rarfile.PasswordRequired:
             erros.append(f"{nome}: o RAR está protegido por palavra-passe.")
         except Exception as exc:
@@ -191,7 +182,6 @@ def recolher_excels(uploaded_files):
 
 
 def nome_excel_real(nome_origem):
-    """Obtém o nome interno do Excel quando veio de ZIP/RAR."""
     return nome_origem.split(" → ", 1)[-1]
 
 
@@ -268,79 +258,95 @@ if ficheiros:
         st.caption(f"Foram encontrados {len(excels)} ficheiro(s) Excel para consolidação.")
 
     if blocos:
-        # Mantém a união de colunas caso exista alguma pequena diferença de estrutura.
         total = pd.concat(blocos, ignore_index=True, sort=False).fillna("")
-
-        colunas = list(total.columns)
-        sugestao = sugerir_coluna_documento(colunas)
-        indice_sugerido = colunas.index(sugestao) if sugestao in colunas else 0
 
         st.subheader("Configuração")
 
-        coluna_documento = st.selectbox(
-            "Coluna que identifica o n.º de documento",
-            options=colunas,
-            index=indice_sugerido,
-        )
-
-        manter = st.radio(
-            "Quando o mesmo documento aparece mais do que uma vez:",
-            options=["Manter a primeira ocorrência", "Manter a última ocorrência"],
-            horizontal=True,
-        )
-
-        remover_linhas_sem_documento = st.checkbox(
-            "Excluir linhas sem n.º de documento",
+        remover_duplicados = st.checkbox(
+            "Remover números de documento repetidos",
             value=False,
+            help="Desativado por defeito: todas as linhas são incluídas no ficheiro final.",
         )
 
-        resultado = total.copy()
-        resultado["__chave_documento__"] = resultado[coluna_documento].map(normalizar_documento)
+        consolidado = total.copy()
+        total_documentos_repetidos = 0
+        linhas_removidas = 0
 
-        com_documento = resultado[resultado["__chave_documento__"] != ""].copy()
-        sem_documento = resultado[resultado["__chave_documento__"] == ""].copy()
+        if remover_duplicados:
+            colunas = list(total.columns)
+            sugestao = sugerir_coluna_documento(colunas)
+            indice_sugerido = colunas.index(sugestao) if sugestao in colunas else 0
 
-        duplicados = com_documento.duplicated(
-            subset=["__chave_documento__"],
-            keep=False,
-        )
-
-        total_documentos_repetidos = com_documento.loc[
-            duplicados, "__chave_documento__"
-        ].nunique()
-
-        keep = "first" if manter == "Manter a primeira ocorrência" else "last"
-        com_documento = com_documento.drop_duplicates(
-            subset=["__chave_documento__"],
-            keep=keep,
-        )
-
-        if remover_linhas_sem_documento:
-            consolidado = com_documento
-        else:
-            consolidado = pd.concat(
-                [com_documento, sem_documento],
-                ignore_index=True,
-                sort=False,
+            coluna_documento = st.selectbox(
+                "Coluna que identifica o n.º de documento",
+                options=colunas,
+                index=indice_sugerido,
             )
 
-        consolidado = consolidado.drop(columns=["__chave_documento__"], errors="ignore")
+            manter = st.radio(
+                "Quando o mesmo documento aparece mais do que uma vez:",
+                options=["Manter a primeira ocorrência", "Manter a última ocorrência"],
+                horizontal=True,
+            )
 
-        linhas_removidas = len(total) - len(consolidado)
+            remover_linhas_sem_documento = st.checkbox(
+                "Excluir linhas sem n.º de documento",
+                value=False,
+            )
+
+            resultado = total.copy()
+            resultado["__chave_documento__"] = resultado[coluna_documento].map(normalizar_documento)
+
+            com_documento = resultado[resultado["__chave_documento__"] != ""].copy()
+            sem_documento = resultado[resultado["__chave_documento__"] == ""].copy()
+
+            duplicados = com_documento.duplicated(
+                subset=["__chave_documento__"],
+                keep=False,
+            )
+
+            total_documentos_repetidos = com_documento.loc[
+                duplicados, "__chave_documento__"
+            ].nunique()
+
+            keep = "first" if manter == "Manter a primeira ocorrência" else "last"
+            com_documento = com_documento.drop_duplicates(
+                subset=["__chave_documento__"],
+                keep=keep,
+            )
+
+            if remover_linhas_sem_documento:
+                consolidado = com_documento
+            else:
+                consolidado = pd.concat(
+                    [com_documento, sem_documento],
+                    ignore_index=True,
+                    sort=False,
+                )
+
+            consolidado = consolidado.drop(columns=["__chave_documento__"], errors="ignore")
+            linhas_removidas = len(total) - len(consolidado)
 
         st.divider()
         st.subheader("Resultado")
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Excel processados", len(excels))
-        c2.metric("Linhas originais", f"{len(total):,}".replace(",", "."))
-        c3.metric("Linhas finais", f"{len(consolidado):,}".replace(",", "."))
-        c4.metric("Documentos repetidos", f"{total_documentos_repetidos:,}".replace(",", "."))
+        if remover_duplicados:
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Excel processados", len(excels))
+            c2.metric("Linhas originais", f"{len(total):,}".replace(",", "."))
+            c3.metric("Linhas finais", f"{len(consolidado):,}".replace(",", "."))
+            c4.metric("Documentos repetidos", f"{total_documentos_repetidos:,}".replace(",", "."))
 
-        if linhas_removidas > 0:
-            st.info(f"Foram retiradas {linhas_removidas} linha(s) do resultado final.")
+            if linhas_removidas > 0:
+                st.info(f"Foram retiradas {linhas_removidas} linha(s) do resultado final.")
+            else:
+                st.info("Não foi necessário retirar linhas por duplicação.")
         else:
-            st.info("Não foi necessário retirar linhas por duplicação.")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Excel processados", len(excels))
+            c2.metric("Linhas incluídas", f"{len(consolidado):,}".replace(",", "."))
+            c3.metric("Duplicados removidos", "0")
+            st.info("Todas as linhas foram incluídas, incluindo números de documento repetidos.")
 
         with st.expander("Pré-visualizar resultado"):
             st.dataframe(consolidado.head(200), use_container_width=True)
@@ -358,5 +364,5 @@ if ficheiros:
 
         st.caption(
             "O ficheiro descarregado contém uma única folha chamada 'Consolidado'. "
-            "Os valores originais da coluna de documento são preservados; a normalização é utilizada apenas para detetar duplicados."
+            "Por defeito, todas as linhas são mantidas. A remoção de duplicados só é aplicada quando ativada manualmente."
         )
