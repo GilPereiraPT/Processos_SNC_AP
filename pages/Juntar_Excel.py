@@ -1,8 +1,10 @@
 import io
 import re
+import zipfile
 from pathlib import Path
 
 import pandas as pd
+import rarfile
 import streamlit as st
 
 
@@ -15,12 +17,15 @@ st.set_page_config(
 st.title("📚 Juntar ficheiros Excel")
 st.markdown(
     """
-Carregue vários ficheiros Excel com a mesma estrutura para obter **um único ficheiro consolidado**.
+Carregue vários ficheiros Excel, ou um arquivo **ZIP/RAR** com vários Excel, para obter
+**um único ficheiro consolidado**.
 
 A aplicação permite escolher a coluna que identifica o **n.º de documento** e elimina automaticamente
 as ocorrências repetidas, mantendo apenas uma linha por documento.
 """
 )
+
+EXTENSOES_EXCEL = {".xlsx", ".xlsm", ".xls"}
 
 
 def normalizar_nome_coluna(valor):
@@ -90,13 +95,21 @@ def sugerir_coluna_documento(colunas):
     return colunas[0] if colunas else None
 
 
-def ler_ficheiro_excel(ficheiro, todas_as_folhas=False):
-    """Lê o Excel como texto para preservar números de documento."""
+def ler_excel_bytes(conteudo, nome_ficheiro, todas_as_folhas=False):
+    """Lê um Excel em memória preservando os valores como texto."""
+    extensao = Path(nome_ficheiro).suffix.lower()
+    if extensao not in EXTENSOES_EXCEL:
+        return []
+
+    engine = "xlrd" if extensao == ".xls" else "openpyxl"
+    buffer = io.BytesIO(conteudo)
+
     folhas = pd.read_excel(
-        ficheiro,
+        buffer,
         sheet_name=None,
         dtype=str,
         keep_default_na=False,
+        engine=engine,
     )
 
     blocos = []
@@ -116,6 +129,70 @@ def ler_ficheiro_excel(ficheiro, todas_as_folhas=False):
         blocos.append(df)
 
     return blocos
+
+
+def extrair_excels_zip(conteudo):
+    """Devolve pares (nome, bytes) de todos os Excel existentes num ZIP."""
+    encontrados = []
+    with zipfile.ZipFile(io.BytesIO(conteudo)) as arquivo:
+        for info in arquivo.infolist():
+            if info.is_dir():
+                continue
+            nome = info.filename
+            if Path(nome).suffix.lower() in EXTENSOES_EXCEL and not Path(nome).name.startswith("~$"):
+                encontrados.append((nome, arquivo.read(info)))
+    return encontrados
+
+
+def extrair_excels_rar(conteudo):
+    """Devolve pares (nome, bytes) de todos os Excel existentes num RAR."""
+    encontrados = []
+    with rarfile.RarFile(io.BytesIO(conteudo)) as arquivo:
+        for info in arquivo.infolist():
+            if info.isdir():
+                continue
+            nome = info.filename
+            if Path(nome).suffix.lower() in EXTENSOES_EXCEL and not Path(nome).name.startswith("~$"):
+                encontrados.append((nome, arquivo.read(info)))
+    return encontrados
+
+
+def recolher_excels(uploaded_files):
+    """Transforma uploads individuais, ZIP e RAR numa lista uniforme de ficheiros Excel em memória."""
+    excels = []
+    erros = []
+
+    for ficheiro in uploaded_files:
+        nome = ficheiro.name
+        extensao = Path(nome).suffix.lower()
+        conteudo = ficheiro.getvalue()
+
+        try:
+            if extensao in EXTENSOES_EXCEL:
+                excels.append((nome, conteudo))
+            elif extensao == ".zip":
+                internos = extrair_excels_zip(conteudo)
+                if not internos:
+                    erros.append(f"{nome}: o ZIP não contém ficheiros Excel suportados.")
+                excels.extend([(f"{nome} → {interno}", dados) for interno, dados in internos])
+            elif extensao == ".rar":
+                internos = extrair_excels_rar(conteudo)
+                if not internos:
+                    erros.append(f"{nome}: o RAR não contém ficheiros Excel suportados.")
+                excels.extend([(f"{nome} → {interno}", dados) for interno, dados in internos])
+        except rarfile.NeedFirstVolume:
+            erros.append(f"{nome}: RAR multipartes — carregue o primeiro volume e todos os volumes necessários.")
+        except rarfile.PasswordRequired:
+            erros.append(f"{nome}: o RAR está protegido por palavra-passe.")
+        except Exception as exc:
+            erros.append(f"{nome}: {exc}")
+
+    return excels, erros
+
+
+def nome_excel_real(nome_origem):
+    """Obtém o nome interno do Excel quando veio de ZIP/RAR."""
+    return nome_origem.split(" → ", 1)[-1]
 
 
 def criar_excel(df):
@@ -157,33 +234,38 @@ def criar_excel(df):
 st.divider()
 
 ficheiros = st.file_uploader(
-    "Selecione os ficheiros Excel",
-    type=["xlsx", "xlsm", "xls"],
+    "Selecione Excel, ZIP ou RAR",
+    type=["xlsx", "xlsm", "xls", "zip", "rar"],
     accept_multiple_files=True,
+    help="Pode carregar vários Excel diretamente ou um ZIP/RAR contendo vários ficheiros Excel.",
 )
 
 if ficheiros:
-    st.success(f"{len(ficheiros)} ficheiro(s) selecionado(s).")
+    st.success(f"{len(ficheiros)} ficheiro(s)/arquivo(s) selecionado(s).")
 
     todas_as_folhas = st.checkbox(
-        "Juntar todas as folhas de cada ficheiro",
+        "Juntar todas as folhas de cada Excel",
         value=False,
-        help="Por defeito é utilizada apenas a primeira folha de cada ficheiro.",
+        help="Por defeito é utilizada apenas a primeira folha de cada ficheiro Excel.",
     )
 
+    excels, erros = recolher_excels(ficheiros)
     blocos = []
-    erros = []
 
-    for ficheiro in ficheiros:
+    for nome_origem, conteudo in excels:
         try:
-            blocos.extend(ler_ficheiro_excel(ficheiro, todas_as_folhas))
+            nome_real = nome_excel_real(nome_origem)
+            blocos.extend(ler_excel_bytes(conteudo, nome_real, todas_as_folhas))
         except Exception as exc:
-            erros.append(f"{ficheiro.name}: {exc}")
+            erros.append(f"{nome_origem}: {exc}")
 
     if erros:
-        st.warning("Alguns ficheiros não puderam ser lidos:")
+        st.warning("Alguns ficheiros não puderam ser processados:")
         for erro in erros:
             st.write(f"- {erro}")
+
+    if excels:
+        st.caption(f"Foram encontrados {len(excels)} ficheiro(s) Excel para consolidação.")
 
     if blocos:
         # Mantém a união de colunas caso exista alguma pequena diferença de estrutura.
@@ -250,7 +332,7 @@ if ficheiros:
         st.subheader("Resultado")
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Ficheiros", len(ficheiros))
+        c1.metric("Excel processados", len(excels))
         c2.metric("Linhas originais", f"{len(total):,}".replace(",", "."))
         c3.metric("Linhas finais", f"{len(consolidado):,}".replace(",", "."))
         c4.metric("Documentos repetidos", f"{total_documentos_repetidos:,}".replace(",", "."))
