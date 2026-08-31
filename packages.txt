@@ -2,3 +2,4 @@ ghostscript
 python3-tk
 libgl1
 poppler-utils
+unar
