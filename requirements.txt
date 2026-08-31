@@ -14,3 +14,4 @@ Pillow
 numpy
 xlrd
 pypdf
+rarfile>=4.2
