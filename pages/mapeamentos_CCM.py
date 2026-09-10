@@ -602,11 +602,24 @@ def processar_mcdt_bytes(
     ):
         output += default_eol
 
-    # Preservar encoding original sempre que possível
-    output_bytes = output.encode(
-        encoding,
-        errors="replace"
-    )
+    # IMPORTANTE:
+    # Nunca devolver BOM UTF-8 nos TXT finais.
+    # Alguns sistemas interpretam os bytes EF BB BF como "Ï»¿"
+    # no início da primeira referência e rejeitam o ficheiro.
+    if encoding == "utf-8-sig":
+        output_bytes = output.encode(
+            "utf-8",
+            errors="replace"
+        )
+    else:
+        output_bytes = output.encode(
+            encoding,
+            errors="replace"
+        )
+
+    # Segurança adicional: remover BOM caso ainda exista
+    if output_bytes.startswith(b"\xef\xbb\xbf"):
+        output_bytes = output_bytes[3:]
 
     return output_bytes, missing_found
 
@@ -758,7 +771,13 @@ def processar_centros_custo_bytes(data: bytes):
     ):
         out[-1] += b"\n"
 
-    return b"".join(out), stats
+    final_data = b"".join(out)
+
+    # Segurança: o ficheiro final nunca deve conter BOM UTF-8
+    if final_data.startswith(b"\xef\xbb\xbf"):
+        final_data = final_data[3:]
+
+    return final_data, stats
 
 
 # =========================================================
