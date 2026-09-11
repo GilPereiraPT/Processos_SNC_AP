@@ -10,8 +10,10 @@ Fluxo:
 """
 
 import io
+import os
 import re
 import zipfile
+from pathlib import Path
 from typing import Dict, Tuple, Optional, List
 
 import pandas as pd
@@ -257,6 +259,12 @@ if "processed_outputs" not in st.session_state:
 
 if "processing_report" not in st.session_state:
     st.session_state.processing_report = []
+
+if "local_zip_path" not in st.session_state:
+    st.session_state.local_zip_path = ""
+
+if "local_extracted_files" not in st.session_state:
+    st.session_state.local_extracted_files = []
 
 
 # =========================================================
@@ -856,6 +864,82 @@ def extrair_txts_de_zip_bytes(
 
 
 # =========================================================
+# 🖥️ Modo local Windows: selecionar e extrair ZIP exterior
+# =========================================================
+def selecionar_zip_local_windows() -> Optional[str]:
+    """
+    Abre a janela nativa do Windows e devolve o caminho completo do ZIP.
+    Só funciona quando o Streamlit está a correr localmente no mesmo PC.
+    """
+    if os.name != "nt":
+        raise RuntimeError(
+            "O seletor local só está disponível no Windows "
+            "quando o Streamlit corre neste computador."
+        )
+
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as e:
+        raise RuntimeError(
+            "Não foi possível iniciar o seletor de ficheiros do Windows."
+        ) from e
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    try:
+        path = filedialog.askopenfilename(
+            title="Selecionar ZIP recebido",
+            filetypes=[("Ficheiros ZIP", "*.zip"), ("Todos os ficheiros", "*.*")],
+        )
+    finally:
+        root.destroy()
+
+    return path or None
+
+
+def extrair_zip_exterior_para_mesma_pasta(
+    zip_path: str,
+    password: Optional[bytes] = None
+) -> List[str]:
+    """
+    Extrai TODOS os ficheiros do ZIP exterior para a pasta onde está o ZIP.
+
+    - Não cria subpastas.
+    - Se o ZIP contiver caminhos internos, usa apenas o nome do ficheiro.
+    - Se já existir um ficheiro com o mesmo nome, é substituído.
+    - ZIPs interiores são extraídos como ficheiros .zip; o processamento
+      recursivo dos respetivos TXT continua a ser feito em memória como antes.
+    """
+    origem = Path(zip_path)
+    destino_dir = origem.parent
+    extraidos = []
+
+    with zipfile.ZipFile(origem, "r") as zf:
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+
+            basename = Path(info.filename.replace("\\", "/")).name
+            if not basename:
+                continue
+
+            data = read_zip_member(
+                zf,
+                info,
+                password
+            )
+
+            destino = destino_dir / basename
+            destino.write_bytes(data)
+            extraidos.append(str(destino))
+
+    return extraidos
+
+
+# =========================================================
 # 📤 Construir CSV atualizado
 # =========================================================
 def build_updated_mapping_dataframe() -> pd.DataFrame:
@@ -925,15 +1009,14 @@ def build_mapping_csv_bytes() -> bytes:
 # =========================================================
 # 🚀 Processar ZIP principal
 # =========================================================
-def processar_zip_principal(
-    uploaded_zip,
+def processar_zip_bytes(
+    outer_bytes: bytes,
+    origem_nome: str,
     mapping_dict
 ):
-    outer_bytes = uploaded_zip.read()
-
     txts = extrair_txts_de_zip_bytes(
         outer_bytes,
-        origem=uploaded_zip.name,
+        origem=origem_nome,
         password=ZIP_PASSWORD,
     )
 
@@ -997,6 +1080,29 @@ def processar_zip_principal(
     progress.progress(1.0)
 
     return outputs, report
+
+
+def processar_zip_principal(
+    uploaded_zip,
+    mapping_dict
+):
+    return processar_zip_bytes(
+        uploaded_zip.read(),
+        uploaded_zip.name,
+        mapping_dict
+    )
+
+
+def processar_zip_local(
+    zip_path: str,
+    mapping_dict
+):
+    path = Path(zip_path)
+    return processar_zip_bytes(
+        path.read_bytes(),
+        path.name,
+        mapping_dict
+    )
 
 
 # =========================================================
@@ -1081,19 +1187,79 @@ with col_b:
 
 
 # ---------------------------------------------------------
-# Upload único
+# Origem do ZIP: local Windows ou upload Cloud
 # ---------------------------------------------------------
-uploaded_zip = st.file_uploader(
-    "📦 Selecionar ZIP recebido",
-    type=["zip"],
-    accept_multiple_files=False,
+st.subheader("📦 Selecionar ZIP")
+
+modo_local = st.toggle(
+    "🖥️ Modo local Windows",
+    value=False,
+    help=(
+        "Use este modo quando executar o Streamlit no seu PC. "
+        "Permite selecionar o ZIP em qualquer pasta e extrair os "
+        "ficheiros diretamente para essa mesma pasta."
+    ),
 )
+
+uploaded_zip = None
+
+if modo_local:
+    st.info(
+        "Neste modo, ao selecionar o ZIP, todos os ficheiros do ZIP exterior "
+        "são extraídos automaticamente para a mesma pasta do ZIP."
+    )
+
+    if st.button("📂 Escolher ZIP no Windows"):
+        try:
+            selected_path = selecionar_zip_local_windows()
+
+            if selected_path:
+                st.session_state.local_zip_path = selected_path
+                st.session_state.local_extracted_files = (
+                    extrair_zip_exterior_para_mesma_pasta(
+                        selected_path,
+                        ZIP_PASSWORD
+                    )
+                )
+            else:
+                st.info("Seleção cancelada.")
+
+        except Exception as e:
+            st.error(f"❌ Não foi possível selecionar/extrair o ZIP: {e}")
+
+    if st.session_state.local_zip_path:
+        st.success(
+            f"✅ ZIP selecionado: {st.session_state.local_zip_path}"
+        )
+
+        if st.session_state.local_extracted_files:
+            st.success(
+                f"✅ {len(st.session_state.local_extracted_files)} ficheiro(s) "
+                f"extraído(s) para a mesma pasta do ZIP."
+            )
+
+            with st.expander("Ver ficheiros extraídos"):
+                for extracted_file in st.session_state.local_extracted_files:
+                    st.write(extracted_file)
+
+else:
+    uploaded_zip = st.file_uploader(
+        "📦 Selecionar ZIP recebido",
+        type=["zip"],
+        accept_multiple_files=False,
+    )
 
 
 # ---------------------------------------------------------
 # Processamento
 # ---------------------------------------------------------
-if uploaded_zip:
+zip_disponivel = (
+    bool(st.session_state.local_zip_path)
+    if modo_local
+    else uploaded_zip is not None
+)
+
+if zip_disponivel:
     if st.button(
         "🚀 Converter ficheiros",
         type="primary"
@@ -1103,20 +1269,23 @@ if uploaded_zip:
         st.session_state.missing_codes = {}
 
         try:
-            outputs, report = (
-                processar_zip_principal(
-                    uploaded_zip,
-                    st.session_state.mapping_dict
+            if modo_local:
+                outputs, report = (
+                    processar_zip_local(
+                        st.session_state.local_zip_path,
+                        st.session_state.mapping_dict
+                    )
                 )
-            )
+            else:
+                outputs, report = (
+                    processar_zip_principal(
+                        uploaded_zip,
+                        st.session_state.mapping_dict
+                    )
+                )
 
-            st.session_state.processed_outputs = (
-                outputs
-            )
-
-            st.session_state.processing_report = (
-                report
-            )
+            st.session_state.processed_outputs = outputs
+            st.session_state.processing_report = report
 
             if not outputs:
                 st.warning(
