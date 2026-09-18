@@ -155,7 +155,7 @@ section(
     [
         ("pages/criadorRA.py", "💶", "Receita Alheia", "Gera ficheiros de Receita Alheia com validação das entidades."),
         ("pages/Juntar_Excel.py", "📚", "Juntar Excel", "Consolida vários ficheiros Excel e remove documentos duplicados."),
-        ("pages/mapeamentos_CCM.py", "🏥", "MCDT / Termas", "Processa ZIPs e aplica mapeamentos e conversão de centros de custo."),
+        ("pages/mapeamentos_CCM.py", "🏥", "CCF / CCMSNS", "Processa ZIPs MCDT/Termas e, em Windows local, automatiza emails CCMSNS, reclamações e arquivo."),
     ],
 )
 
