@@ -15,3 +15,4 @@ numpy
 xlrd
 pypdf
 rarfile>=4.2
+pywin32; platform_system=="Windows"
