@@ -43,7 +43,7 @@ Se a pasta tiver sido clonada com Git, executar **ATUALIZAR_LOCAL.bat** para faz
 ### Dados e Apoio
 - Gerador de Receita Alheia
 - Juntar Excel
-- Conversor MCDT / Termas e mapeamentos CCM
+- Conversor CCF / MCDT / Termas, mapeamentos CCM e automatização CCMSNS (Outlook local)
 
 ## Registos locais
 
