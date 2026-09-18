@@ -19,6 +19,8 @@ from typing import Dict, Tuple, Optional, List
 import pandas as pd
 import streamlit as st
 
+from ccmsns_automation import render_ccmsns_section
+
 
 # =========================================================
 # ⚙️ Configuração
@@ -1113,10 +1115,9 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🏥 Conversor MCDT / Termas")
+st.title("🏥 Conversor CCF + Automatização CCMSNS")
 st.caption(
-    "Carregar 1 ZIP protegido → converter TXT automaticamente → "
-    "descarregar ficheiro a ficheiro. "
+    "Processamento manual de ZIP + automatização local dos emails CCMSNS. "
     "Os ficheiros INF_ passam também pela correção de Centros de Custo."
 )
 
@@ -1184,6 +1185,16 @@ with col_b:
     ):
         st.session_state.missing_codes = {}
         st.rerun()
+
+
+# ---------------------------------------------------------
+# Automatização CCMSNS / Outlook
+# ---------------------------------------------------------
+render_ccmsns_section(
+    process_zip_callback=processar_zip_bytes,
+    mapping_dict=st.session_state.mapping_dict,
+    zip_password=ZIP_PASSWORD,
+)
 
 
 # ---------------------------------------------------------
