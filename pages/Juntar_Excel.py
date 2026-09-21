@@ -335,6 +335,20 @@ def alinhar_colunas(blocos):
     return resultado
 
 
+def adicionar_coluna_ficheiro_origem(tabelas, nomes_ficheiros):
+    """Acrescenta a origem como primeira coluna, sem substituir dados existentes."""
+    if len(tabelas) != len(nomes_ficheiros):
+        raise ValueError("O número de ficheiros não corresponde às tabelas lidas.")
+    coluna_origem = "Ficheiro de origem"
+    if any(coluna_origem in df.columns for df in tabelas):
+        coluna_origem = "Ficheiro de origem (importação)"
+    while any(coluna_origem in df.columns for df in tabelas):
+        coluna_origem += " (novo)"
+    for df, nome_ficheiro in zip(tabelas, nomes_ficheiros):
+        df.insert(0, coluna_origem, nome_ficheiro)
+    return tabelas
+
+
 def criar_excel(df, colunas_data=None, colunas_monetarias=None, colunas_numericas=None):
     datas = colunas_data or []
     moedas = colunas_monetarias or []
@@ -385,10 +399,15 @@ def main():
     if not ficheiros:
         return
     todas_folhas = st.checkbox("Juntar todas as folhas de cada Excel", value=False)
+    incluir_origem = st.checkbox(
+        "Adicionar nome do ficheiro de origem na primeira coluna",
+        value=False,
+        help="Acrescenta o nome do ficheiro Excel ou CSV em cada linha, mesmo quando vem de um ZIP/RAR.",
+    )
     modo = st.selectbox("Separador dos CSV", list(SEPARADORES), index=0, help="Automático (Portugal) dá prioridade ao ;, mas reconhece outros separadores quando necessário.")
     separador = SEPARADORES[modo] or "Automático"
     entradas, erros = recolher_ficheiros(ficheiros)
-    blocos, controlo = [], []
+    blocos, controlo, origens_blocos = [], [], []
     for origem, dados in entradas:
         nome = nome_ficheiro_real(origem)
         try:
@@ -397,6 +416,7 @@ def main():
                 erros.append(f"{origem}: sem linhas para consolidar.")
                 continue
             blocos.extend(partes)
+            origens_blocos.extend([Path(nome.replace("\\", "/")).name] * len(partes))
             for df in partes:
                 controlo.append({"Ficheiro": origem, "Separador CSV": repr(df.attrs.get("separador", "—")), "Codificação": df.attrs.get("codificacao", "—"), "Colunas": len(df.columns), "Linhas": len(df)})
         except Exception as exc:
@@ -410,7 +430,10 @@ def main():
         for i, df in enumerate(blocos):
             st.caption(f"{i+1}. {controlo[i]['Ficheiro']} — {len(df.columns)} colunas")
             st.dataframe(df.head(3), use_container_width=True, hide_index=True)
-    total = pd.concat(alinhar_colunas(blocos), ignore_index=True, sort=False).fillna("")
+    tabelas = alinhar_colunas(blocos)
+    if incluir_origem:
+        tabelas = adicionar_coluna_ficheiro_origem(tabelas, origens_blocos)
+    total = pd.concat(tabelas, ignore_index=True, sort=False).fillna("")
     st.subheader("Tipos de dados — Portugal")
     datas_sugeridas = detetar_colunas_data(total)
     moedas_sugeridas = [c for c in detetar_colunas_monetarias(total) if c not in datas_sugeridas]
