@@ -1584,6 +1584,21 @@ if st.session_state.missing_codes:
                         ]
                     )
 
+            # Persistir novos mapeamentos para a sincronizacao CCM.
+            # O ficheiro original e salvaguardado antes da substituicao.
+            import shutil
+            from datetime import datetime
+            mapping_file = Path(MAPPING_PATH)
+            if mapping_file.exists():
+                backup = mapping_file.with_name(
+                    f"mapeamentos.backup_{datetime.now():%Y%m%d_%H%M%S_%f}.csv"
+                )
+                shutil.copy2(mapping_file, backup)
+            updated = build_updated_mapping_dataframe()
+            mapping_file.write_bytes(build_mapping_csv_bytes())
+            st.session_state.mapping_df = updated
+            load_default_mapping.clear()
+
             # Forçar novo processamento do ZIP
             st.session_state.processed_outputs = []
             st.session_state.processing_report = []
