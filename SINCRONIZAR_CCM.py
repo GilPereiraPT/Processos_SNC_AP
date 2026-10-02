@@ -123,9 +123,30 @@ def main():
 
     if needs_push:
         if not token:
-            print("ERRO: falta GITHUB_TOKEN para publicar novos mapeamentos.")
-            print("Nenhum ficheiro foi alterado.")
-            return 3
+            print("Existem novos mapeamentos locais para publicar no GitHub.")
+            # A janela evita qualquer necessidade de PowerShell ou linha de comandos.
+            try:
+                import tkinter as tk
+                from tkinter import simpledialog
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes("-topmost", True)
+                try:
+                    token = simpledialog.askstring(
+                        "Sincronizacao CCM - GitHub",
+                        "Cole o token GitHub (Contents: Read and write).\n"
+                        "O token nao sera guardado neste computador:",
+                        show="*", parent=root
+                    ) or ""
+                finally:
+                    root.destroy()
+            except Exception as exc:
+                print(f"Nao foi possivel abrir a janela de credenciais: {exc}")
+                return 3
+            token = token.strip()
+            if not token:
+                print("Sincronizacao cancelada: o GitHub nao foi alterado.")
+                return 3
         request_json("PUT", {
             "message": "Sincronizar convencoes CCM locais",
             "content": base64.b64encode(merged_raw).decode("ascii"),
