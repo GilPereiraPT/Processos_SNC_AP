@@ -1,0 +1,48 @@
+{
+  "titulo": "ULSLA | Plataforma Financeira",
+  "subtitulo": "Análise financeira, importação, contabilidade analítica e reporte institucional.",
+  "modulos": [
+    {
+      "nome": "Dashboard Financeiro",
+      "icone": "📊",
+      "descricao": "Indicadores, balanço, DR, DFC, dívida, PMP e visão executiva.",
+      "script": "app.py",
+      "porta": 8501
+    },
+    {
+      "nome": "Contabilidade Analítica",
+      "icone": "📈",
+      "descricao": "Grupos e centros de custo, custos diretos, evolução e reconciliação.",
+      "script": "analitica_app.py",
+      "porta": 8502
+    },
+    {
+      "nome": "Importação de Dados",
+      "icone": "📥",
+      "descricao": "Carga histórica e importação de XML SNC-AP; a importação corrente continua disponível no Dashboard.",
+      "script": "importador_historico_ulsla.py",
+      "porta": 8503
+    },
+    {
+      "nome": "Produção de Mapas",
+      "icone": "🧾",
+      "descricao": "Reportes SISEE, ACSS e futuros organismos.",
+      "script": "sisee_app.py",
+      "porta": 8505
+    },
+    {
+      "nome": "Acompanhamento da Contratualização",
+      "icone": "📋",
+      "descricao": "Execução face ao contratualizado ACSS: DR, balanço e fluxos de caixa.",
+      "script": "acompanhamento_acss_app.py",
+      "porta": 8506
+    },
+    {
+      "nome": "Verificação de Dados",
+      "icone": "📋",
+      "descricao": "Faltas mensais, extratos da classe 4, analítica, XML e ficheiros de apoio de todos os módulos.",
+      "script": "verificacao_dados_app.py",
+      "porta": 8507
+    }
+  ]
+}

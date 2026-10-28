@@ -1,0 +1,2355 @@
+Conta	Designação	Tipo	Pool 1	Pool 2
+1	Meios financeiros líquidos	A		
+11	Caixa	A		
+111	Caixa A	M		
+117	Valores a entregar a terceiros	M		
+118	Fundo fixo	M		
+12	Depósitos à ordem	A		
+121	Depósitos à ordem do Tesouro	A		
+1211	IGCP - HLA EPE 8015	M		
+1212	IGCP - RECEITAS CSP	M		
+1213	IGCP - Taxas Moderadoras	M		
+1214	IGCP - Aumento de Capital	M		
+122	Depósitos bancários à Ordem	A		
+1221	SPC - Millenium BCP - 45449384824	M		
+13	Outros depósitos	A		
+131	Depósitos a prazo	A		
+1311	Depósitos a prazo no Tesouro	M		
+1312	Depósitos bancários a prazo	M		
+132	Depósitos consignados	A		
+1321	Depósitos no Tesouro	M		
+1322	Depósitos bancários	M		
+133	Depósitos de garantias e cauções	A		
+1331	Depósitos no Tesouro	M		
+1332	Depósitos bancários	M		
+14	Outros instrumentos financeiros a curto prazo	A		
+141	Derivados	A		
+1411	Potencialmente favoráveis	M		
+1412	Potencialmente desfavoráveis	M		
+142	Instrumentos financeiros detidos para negociação (ativos e passivos)	A		
+1421	Títulos de dívida pública negociáveis	M		
+1422	Fundos	M		
+1423	Ações e unidades de participação	M		
+1429	Outros	A		
+14291	Natureza ativa	M		
+14292	Natureza passiva	M		
+143	Outros ativos e passivos financeiros	A		
+1431	Outros ativos financeiros	A		
+14311	Certificados Especiais de Dívida de Curto Prazo	M		
+14319	Outros	M		
+1432	Outros passivos financeiros	M		
+149	Perdas por imparidade acumuladas	M		
+2	Contas a receber e a pagar	A		
+20	Devedores e credores por transferências, subsídios e empréstimos bonificados	A		
+201	Devedores por transferências e subsídios não reembolsáveis obtidos	M		
+202	Credores por transferências e subsídios não reembolsáveis concedidos	M		
+203	Devedores por empréstimos bonificados e subsídios reembolsáveis	A		
+2031	De curto prazo	M		
+2032	De médio e longo prazo	A		
+20321	Realizável a curto prazo	M		
+20322	Realizável a médio e longo prazo	M		
+204	Credores por empréstimos bonificados e subsídios reembolsáveis	A		
+2041	De curto prazo	M		
+2042	De médio e longo prazo	A		
+20421	Exigível a curto prazo	M		
+20422	Exigível a médio e longo prazo	M		
+205	Devedores por devolução de transferências e subsídios	M		
+206	Credores por devoluções de transferências e subsídios	M		
+208	Outros devedores e credores por transferências e subsídios	A		
+2081	Outros devedores 	M		
+2082	Outros credores	M		
+209	Perdas por imparidade acumuladas	A		
+2091	De curto prazo	M		
+2092	De médio e longo prazo	A		
+20921	Realizável a curto prazo	M		
+20922	Realizável a médio e longo prazo	M		
+21	Clientes, contribuintes e utentes	A		
+211	Clientes c/c	A		
+2111	Realizável até 12 meses	A		
+21111	Subsistemas	A		
+211116	Serviços Socias	M		
+211119	Outros Subsistemas	M		
+21113	Companhia de Seguros	M		
+21115	Instituições do Estado	A		
+211151	Instituições Ministério da Saúde	A		
+2111511	ACSS, IP	M		
+2111512	Instituições do SPA/SNS	M		
+2111513	Instituições do SEE	M		
+2111514	ARS, IP	M		
+211152	Instituições de Regiões Autonomas	A		
+2111521	Região aotonoma dos Açores	M		
+2111522	Região autonoma da Madeira	M		
+211159	Outras Instituições	M		
+21119	Outros Clientes	M		
+2112	Realizável a mais de 12 meses	M		
+212	Clientes títulos a receber	M		
+213	Contribuintes	A		
+2131	Impostos diretos	A		
+21311	Realizável até 12 meses	M		
+21312	Realizável a mais de 12 meses	M		
+2132	Impostos indiretos	A		
+21321	Realizável até 12 meses	M		
+21322	Realizável a mais de 12 meses	M		
+2133	Contribuições para sistemas de proteção social e subsistemas de saúde	A		
+21331	Realizável até 12 meses	M		
+21332	Realizável a mais de 12 meses	M		
+2134	Juros, multas e outras penalidades	A		
+21341	Realizável até 12 meses	M		
+21342	Realizável a mais de 12 meses	M		
+2139	Outros	A		
+21391	Realizável até 12 meses	M		
+21392	Realizável a mais de 12 meses	M		
+214	Utentes	A		
+2141	Taxas	A		
+21411	Realizável até 12 meses	M		
+21412	Realizável a mais de 12 meses	M		
+2142	Multas e outras penalidades	A		
+21421	Realizável até 12 meses	M		
+21422	Realizável a mais de 12 meses	M		
+2149	Outros	A		
+21491	Realizável até 12 meses	M		
+21492	Realizável a mais de 12 meses	M		
+215	Clientes, contribuintes e utentes de cobrança duvidosa	A		
+2151	Clientes	A		
+21511	Subsistemas	A		
+215111	ADSE	M		
+215112	Forças armadas	M		
+215113	Forças militarizadas	M		
+215114	SAMS	M		
+215115	IOS CTT - ACS PT	M		
+215116	Serviços Socias	M		
+215119	Outros Subsistemas	M		
+21513	Companhia de seguros	M		
+21515	Instituições do Estado	A		
+215152	Instituições de Regiões Autonomas	A		
+2151521	Região Autonoma dos Açores	M		
+2151522	Região Autonoma da Madeira	M		
+21519	Outros clientes	M		
+2152	Contribuintes	M		
+2153	Utentes	M		
+216	Clientes, contribuintes e utentes em factoring	A		
+2161	Clientes	A		
+21611	Realizável até 12 meses	M		
+21612	Realizável a mais de 12 meses	M		
+2162	Contribuintes	A		
+21621	Realizável até 12 meses	M		
+21622	Realizável a mais de 12 meses	M		
+2163	Utentes	A		
+21631	Realizável até 12 meses	M		
+21632	Realizável a mais de 12 meses	M		
+218	Adiantamentos de clientes, contribuintes e utentes	A		
+2181	Clientes	A		
+21811	Clientes	A		
+218111	Clientes	M		
+21815	Adiantamentos do Contrato Programa - ACSS/EPE	A		
+218151	Contrato Programa 2020	M		
+218152	Contrato Programa 2012	M		
+218153	Contrato Programa 2013	M		
+218154	Contratos Programa até 2014	M		
+218155	Contrato Programa 2015	M		
+218156	Contrato Programa 2016	M		
+218157	Contrato Programa 2017	M		
+218158	Contrato Programa 2018	M		
+218159	Contrato Programa 2019	M		
+21816	Adiantamentos de outras instituições do Estado	M		
+21819	Adiantamentos de outras instituições	M		
+2182	Contribuintes	M		
+2183	Utentes	M		
+219	Perdas por imparidade acumuladas	A		
+2191	Clientes	A		
+21911	Realizável até 12 meses	M		
+21912	Realizável a mais de 12 meses	M		
+2192	Contribuintes	A		
+21921	Realizável até 12 meses	M		
+21922	Realizável a mais de 12 meses	M		
+2193	Utentes	A		
+21931	Realizável até 12 meses	M		
+21932	Realizável a mais de 12 meses	M		
+22	Fornecedores	A		
+221	Fornecedores c/c	A		
+2211	Exigível até 12 meses	A		
+22111	Fornecedores cc - Compras	A		
+221111	Produtos Farmacêuticos	M		
+221112	Material Consumo Clínico	M		
+221113	Material Consumo Hoteleiro	M		
+221114	Material Consumo Administrativo	M		
+221115	Material Manutenção Conservação	M		
+221116	Produtos Alimentares	M		
+221119	Outro Material de consumo	M		
+22112	Fornecedores c/c - Classe 6	A		
+221121	Fornecedores subcontratos	M		
+221122	Fornecedores FSE	M		
+2212	Exigível a mais de 12 meses	M		
+222	Fornecedores - títulos a pagar	M		
+225	Fornecedores - faturas em receção e conferência	A		
+2251	Fornecedores c/c - Compras	A		
+22511	Produtos Farmacêuticos	M		
+22512	Material Consumo Clínico	M		
+22513	Material Consumo Hoteleiro	M		
+22514	Material Consumo Administrativo	M		
+22515	Material Manutenção Conservação	M		
+22516	Produtos Alimentares	M		
+22519	Outro Material de Consumo	M		
+2252	Fornecedores c/c - Classe 6	A		
+22521	Fornecedores subcontratos	M		
+22522	Fornecedores FSE	M		
+226	Fornecedores - sociedades de factoring	A		
+2261	Exigível até 12 meses	M		
+2262	Exigível a mais de 12 meses	M		
+228	Adiantamentos a fornecedores	M		
+229	Perdas por imparidade acumuladas	M		
+23	Pessoal	A		
+231	Remunerações a pagar	A		
+2310	Aos titulares dos órgãos de soberania e membros dos órgãos regionais e autárquicos	M		
+2311	Aos órgãos sociais e de gestão	M		
+2312	Ao pessoal	M		
+232	Adiantamentos	A		
+2320	Aos titulares dos órgãos de soberania e membros dos órgãos regionais e autárquicos	M		
+2321	Aos órgãos sociais e de gestão	M		
+2322	Ao pessoal	M		
+237	Cauções	A		
+2370	Dos titulares dos órgãos de soberania e membros dos órgãos regionais e autárquicos	M		
+2371	Dos órgãos sociais e de gestão	M		
+2372	Do pessoal	M		
+238	Outras operações	A		
+2380	Com os titulares dos órgãos de soberania e membros dos órgãos regionais e autárquicos	A		
+23801	Natureza credora 	M		
+23802	Natureza devedora	M		
+2381	Com os órgãos sociais e de gestão	A		
+23811	Natureza credora	M		
+23812	Natureza devedora	M		
+2382	Com o pessoal	A		
+23821	Natureza credora	M		
+23822	Natureza devedora	M		
+239	Perdas por imparidade acumuladas	M		
+24	Estado e outros entes públicos	A		
+241	Imposto sobre o rendimento	A		
+2411	Pagamentos por conta 	M		
+2412	Pagamento especial por conta	M		
+2413	Retenções na fonte efetuadas por terceiros	M		
+2414	Imposto estimado	M		
+2415	Imposto liquidado	M		
+2416	Apuramento	M		
+2417	Imposto a pagar	M		
+2418	Imposto a recuperar	M		
+2419	Apuramento - Encerramento do período	A		
+24191	Imposto a pagar	M		
+24192	Imposto a recuperar	M		
+242	Retenção de impostos sobre rendimentos	A		
+2421	De trabalho dependente	M		
+2422	De trabalho independente	M		
+2423	De capitais	M		
+2424	Prediais	M		
+2429	Outras retenções	M		
+243	Imposto sobre o valor acrescentado (IVA)	A		
+2431	IVA Suportado	M		
+2432	IVA Dedutível	M		
+2433	IVA Liquidado	M		
+2434	IVA Regularizações	A		
+24341	A favor da entidade	M		
+24342	A favor da Entidade Contabilística Estado	M		
+24349	Outras 	A		
+243491	Natureza devedora	M		
+243492	Natureza credora 	M		
+2435	IVA Apuramento	M		
+2436	IVA A pagar	M		
+2437	IVA A recuperar	M		
+2438	IVA Reembolsos pedidos	M		
+2439	IVA Liquidações oficiosas	M		
+244	Outros impostos	M		
+245	Contribuições para sistemas de proteção social e subsistemas de saúde	A		
+2451	Sistemas de proteção social	A		
+24511	Parte do trabalhador	A		
+245111	Caixa Geral de Aposentações	M		
+245112	Segurança Social	M		
+24512	Parte patronal	A		
+245121	Caixa Geral Aposentações	M		
+245122	Segurança Social	M		
+2452	Subsistemas de saúde	A		
+24521	Parte do trabalhador	M		
+24522	Parte patronal	M		
+2459	Outros	A		
+24591	Cofres previdência	A		
+245911	Cofre Prev. Funcionários e agentes do Estado	M		
+245912	Do Ministério da Educação	M		
+24592	Prestações desemprego	A		
+245921	FCT - Fundo compensação trabalho	M		
+245922	FGCT - Fundo garantia compensação trabalho	M		
+24599	Outras	A		
+245991	Forças armadas	M		
+245992	Forças militarizadas	A		
+2459921	SAD PSP	M		
+2459922	SAD GNR	M		
+245993	Outras	M		
+246	Tributos das autarquias locais	M		
+249	Outras tributações	M		
+25	Financiamentos obtidos	A		
+251	Instituições de crédito e sociedades financeiras	A		
+2511	Empréstimos bancários	A		
+25111	De curto prazo	M		
+25112	De médio e longo prazo	A		
+251121	Exigível a curto prazo	M		
+251122	Exigível a médio e longo prazo	M		
+2512	Descobertos bancários	M		
+2513	Locações financeiras	A		
+25131	Terrenos	A		
+251311	De curto prazo	M		
+251312	De médio e longo prazo	A		
+2513121	Exigível a curto prazo	M		
+2513122	Exigível a médio e longo prazo	M		
+25132	Habitações	A		
+251321	De curto prazo	M		
+251322	De médio e longo prazo	A		
+2513221	   Exigível a curto prazo	M		
+2513222	   Exigível a médio e longo prazo	M		
+25133	Edifícios	A		
+251331	De curto prazo	M		
+251332	De médio e longo prazo	A		
+2513321	   Exigível a curto prazo	M		
+2513322	   Exigível a médio e longo prazo	M		
+25134	Construções diversas	A		
+251341	De curto prazo	M		
+251342	De médio e longo prazo	A		
+2513421	   Exigível a curto prazo	M		
+2513422	   Exigível a médio e longo prazo	M		
+25135	Viaturas e outro material de transporte	A		
+251351	De curto prazo	M		
+251352	De médio e longo prazo	A		
+2513521	   Exigível a curto prazo	M		
+2513522	   Exigível a médio e longo prazo	M		
+25136	Material de informática	A		
+251361	De curto prazo	M		
+251362	De médio e longo prazo	A		
+2513621	   Exigível a curto prazo	M		
+2513622	   Exigível a médio e longo prazo	M		
+25137	Maquinaria e equipamento	A		
+251371	De curto prazo	M		
+251372	De médio e longo prazo	A		
+2513721	   Exigível a curto prazo	M		
+2513722	   Exigível a médio e longo prazo	M		
+25138	Recursos militares	A		
+251381	De curto prazo	M		
+251382	De médio e longo prazo	A		
+2513821	   Exigível a curto prazo	M		
+2513822	   Exigível a médio e longo prazo	M		
+25139	Outros investimentos	A		
+251391	De curto prazo	M		
+251392	De médio e longo prazo	A		
+2513921	   Exigível a curto prazo	M		
+2513922	   Exigível a médio e longo prazo	M		
+252	Empréstimos por obrigações	A		
+2521	De curto prazo	M		
+2522	De médio e longo prazo	A		
+25221	Exigível a curto prazo	M		
+25222	Exigível a médio e longo prazo	M		
+253	Participantes de capital	A		
+2531	Entidade que controla-Suprimentos e outros mútuos	A		
+25311	De curto prazo	M		
+25312	De médio e longo prazo	A		
+253121	Exigível a curto prazo	M		
+253122	Exigível a médio e longo prazo	M		
+2532	Outros participantes - Suprimentos e outros mútuos	A		
+25321	De curto prazo	M		
+25322	De médio e longo prazo	A		
+253221	Exigível a curto prazo	M		
+253222	Exigível a médio e longo prazo	M		
+254	Entidades controladas, associadas e empreendimentos conjuntos	A		
+2541	De curto prazo	M		
+2542	De médio e longo prazo	A		
+25421	Exigível a curto prazo	M		
+25422	Exigível a médio e longo prazo	M		
+255	Particulares	A		
+2551	Depósitos, certificados de depósitos e poupança	A		
+25511	De curto prazo	M		
+25512	De médio e longo prazo	A		
+255121	Exigível a curto prazo	M		
+255122	Exigível a médio e longo prazo	M		
+2559	Outros	A		
+25591	De curto prazo	M		
+25592	De médio e longo prazo	A		
+255921	Exigível a curto prazo	M		
+255922	Exigível a médio e longo prazo	M		
+256	Acordos de concessão de serviços	A		
+2561	De curto prazo	M		
+2562	De médio e longo prazo	A		
+25621	Exigível a curto prazo	M		
+25622	Exigível a médio e longo prazo	M		
+259	Outros financiadores	A		
+2591	De curto prazo	M		
+2592	De médio e longo prazo	A		
+25921	Exigível a curto prazo	M		
+25922	Exigível a médio e longo prazo	M		
+26	Acionistas/sócios/associados	A		
+261	Acionistas c/subscrição	M		
+262	Sócios/Associados quotas não liberadas	M		
+263	Adiantamentos por conta de lucros	M		
+264	Resultados atribuídos	A		
+2641	Natureza credora 	M		
+2642	Natureza devedora 	M		
+265	Lucros disponíveis	M		
+266	Empréstimos concedidos à entidade que controla	A		
+2661	De curto prazo	M		
+2662	De médio e longo prazo	A		
+26621	Realizável a curto prazo	M		
+26622	Realizável a médio e longo prazo	M		
+268	Outras operações	A		
+2681	Natureza ativa	A		
+26811	     De curto prazo	M		
+26812	De médio e longo prazo	A		
+268121	Realizável a curto prazo	M		
+268122	Realizável a médio e longo prazo	M		
+2682	Natureza passiva	M		
+269	Perdas por imparidade acumuladas	A		
+2691	Acionistas c/subscrição	M		
+2692	Sócios/Associados quotas não liberadas	M		
+2693	Adiantamentos por conta de lucros	M		
+2694	Empréstimos concedidos à entidade que controla	A		
+26941	De curto prazo	M		
+26942	De médio e longo prazo	A		
+269421	Realizável a curto prazo	M		
+269422	Realizável a médio e longo prazo	M		
+2699	Outras operações	A		
+26991	De curto prazo	M		
+26992	De médio e longo prazo	A		
+269921	Realizável a curto prazo	M		
+269922	Realizável a médio e longo prazo	M		
+27	Outras contas a receber e a pagar	A		
+270	Devedores e credores por contratos de cedência	A		
+2701	Devedores por contratos de cedência	A		
+27011	Realizável até 12 meses	M		
+27012	Realizável a mais de 12 meses	M		
+2702	Credores por contratos de cedência	A		
+27021	Exígivel até 12 meses	M		
+27022	Exígivel a mais de 12 meses	M		
+271	Fornecedores de investimentos	A		
+2711	Fornecedores de investimentos-c/c	A		
+27111	Exigível até 12 meses	M		
+27112	Exigível a mais de 12 meses	M		
+2712	Faturas em receção e conferência	M		
+2713	Adiantamentos a fornecedores de investimentos	M		
+2716	Sociedades de factoring	A		
+27161	Exigível até 12 meses	M		
+27162	Exigível a mais de 12 meses	M		
+272	Devedores e credores por acréscimos (periodização económica)	A		
+2720	Impostos e taxas imputados ao período	A		
+27201	Impostos e taxas imputados ao período - IRS	M		
+27202	Impostos e taxas imputados ao período - IRC	M		
+27203	Impostos e taxas imputados ao período - IVA	M		
+27204	Impostos e taxas imputados ao período - IMI	M		
+27209	Impostos e taxas imputados ao período - Outros	M		
+2721	Devedores por acréscimos de rendimentos	A		
+27211	Juros a receber e outros rendimentos financeiros	M		
+27219	Outros acréscimos de rendimentos	A		
+272191	Instituições do MS	A		
+2721911	ACSS, IP	A		
+27219111	Contrato Programa 2012	M		
+27219112	Contrato Programa 2013 e 2014	M		
+27219113	Contrato Programa 2015	M		
+27219114	Contrato Programa 2016	M		
+27219115	Contrato Programa 2017	M		
+27219116	Contrato Programa 2018	M		
+27219117	Contrato Programa 2019	M		
+27219118	Contrato Programa 2020	M		
+2721912	ARS	M		
+2721919	Outras Instituições do MS	M		
+272199	Outras Instituições	A		
+2721991	Taxas Moderadoras	A		
+27219911	Taxas Moderadoras 2014	M		
+27219912	Taxas Moderadoras 2015	M		
+27219913	Taxas Moderadoras - De 2012 a 2016	M		
+27219914	Taxas Moderadoras 2017	M		
+27219915	Taxas Moderadoras 2018	M		
+27219916	Taxas Moderadoras 2019	M		
+2721999	Outras Instituições	M		
+2722	Credores por acréscimos de gastos	A		
+27221	Remunerações a Liquidar	A		
+272211	RL - vencimentos	A		
+2722111	RL - Remunerações dos orgãos sociais e de gestão	M		
+2722112	RL - Pessoal em regime de nomeação e contrato de trabalho em funções públicas por tempo indeterminad	M		
+2722113	RL - Pessoal em regime de nom. transitória e contrato de trab. em funções públicas a termo resolutiv	M		
+2722114	RL - Pessoal em regime de contrato individual de trabalho a termo resolutivo incerto/certo	M		
+2722115	RL - Pessoal em regime de contrato individual de trabalho sem termo	M		
+2722116	RL - Pessoal em cedência de interesse público e em comissão de serviço	M		
+2722117	RL - Pessoal em comissão de serviço - Dirigentes	M		
+2722119	RL - Pessoal em qualquer outra situação	M		
+272212	RL - Horas Extraordinárias	M		
+272213	RL - Noites e suplementos	M		
+272214	RL - Subsídio de Férias	M		
+272215	RL - Encargos sobre remunerações	A		
+2722151	RL - Encargos sobre as remunerações - CGA	M		
+2722152	RL - Encargos sobre as remunerações - SS	M		
+272219	RL - Outras	M		
+27222	Juros a liquidar e outros gastos financeiros	M		
+27229	Outros acréscimos de gastos	M		
+273	Benefícios pós-emprego	M		
+274	Impostos diferidos	A		
+2741	Ativos por impostos diferidos	A		
+27411	Realizável até 12 meses	M		
+27412	Realizável a mais de 12 meses	M		
+2742	Passivos por impostos diferidos	A		
+27421	Exigível até 12 meses	M		
+27422	Exigível a mais de 12 meses	M		
+275	Credores por subscrições não liberadas	M		
+276	Adiantamentos por conta de vendas	M		
+277	Cauções	A		
+2771	Recebidas de terceiros	A		
+27711	  Exigível até 12 meses	M		
+27712	  Exígível a mais de 12 meses	M		
+2772	Entregues a terceiros	M		
+278	Outros devedores e credores 	A		
+2781	Devedores por alienação de ativos fixos	A		
+27811	Realizável até 12 meses	M		
+27812	Realizável a mais de 12 meses	M		
+2782	Devedores por prestações sociais a repor	A		
+27821	Realizável até 12 meses	M		
+27822	Realizável a mais de 12 meses	M		
+2783	Credores por prestações sociais a pagar	A		
+27831	Exigível até 12 meses	M		
+27832	Exigível a mais de 12 meses	M		
+2784	Credores por prestações sociais em prescrição	M		
+2785	Sindicatos	M		
+2786	Devedores por empréstimos não bonificados	A		
+27861	De curto prazo	M		
+27862	De médio e longo prazo	A		
+278621	Realizável a curto prazo	M		
+278622	Realizável a médio e longo prazo	M		
+2789	Outros	A		
+27891	Outros devedores 	A		
+278911	Outros devedores-Entidade Contabilística Estado	A		
+2789111	   Realizável até 12 meses	A		
+27891111	Instituições do MS	A		
+278911111	ACSS IP	M		
+278911112	Instituições do SPA/SNS	M		
+278911113	Instituições do SEE	M		
+278911114	ARS IP	M		
+278911115	IPS IP	M		
+278911119	Outras Instituições do MS	M		
+27891119	Outras Instituições do Estado	M		
+2789112	   Realizável a mais de 12 meses	M		
+278919	Outros devedores-Outros	A		
+2789191	   Realizável até 12 meses	A		
+27891911	Conta corrente	M		
+27891912	Cobrança duvidosa	M		
+2789192	   Realizável a mais de 12 meses	A		
+27891921	Conta corrente	M		
+27891922	Cobrança duvidosa	M		
+27892	Outros credores	A		
+278921	Outros credores-Entidade Contabilística Estado	A		
+2789211	   Exigível até 12 meses	A		
+27892111	Instituições do MS	A		
+278921111	ACSS IP	M		
+278921112	Instituições SPA/SNS	M		
+278921113	Instituições SEE	M		
+278921114	ARS IP	M		
+278921115	IPS IP	M		
+278921119	Outras Instituições do MS	M		
+27892119	Outras Instituições do Estado	M		
+2789212	   Exigível a mais de 12 meses	M		
+278929	Outros credores-Outros	A		
+2789291	          Exigível até 12 meses	A		
+27892911	Outros credores-Outros	M		
+27892913	Prestadores de subcontratos - convencionados	A		
+278929131	MCDT	M		
+278929132	Hemodialise e CRD	M		
+278929133	Medicamentos	M		
+278929135	Cuidados Continuados	M		
+27892919	Descontos em vencimentos	M		
+2789292	          Exigível a mais de 12 meses	M		
+279	Perdas por imparidade acumuladas	A		
+2791	Devedores por contratos de cedência	A		
+27911	Realizável até 12 meses	M		
+27912	Realizável a mais de 12 meses	M		
+2792	Fornecedores de investimentos	M		
+2793	Devedores por alienação de ativos fixos	A		
+27931	Realizável até 12 meses	M		
+27932	Realizável a mais de 12 meses	M		
+2794	Devedores por prestações sociais a repor	A		
+27941	Realizável até 12 meses	M		
+27942	Realizável a mais de 12 meses	M		
+2795	Devedores por empréstimo não bonificados	A		
+27951	De curto prazo	M		
+27952	De médio e longo prazo - realizável a curto prazo	M		
+27953	De médio e longo prazo - realizável a médio e longo prazo	M		
+2799	Outros devedores	A		
+27991	Realizável até 12 meses	M		
+27992	Realizável a mais de 12 meses	M		
+28	Diferimentos	A		
+281	Gastos a reconhecer	A		
+2811	Transferências e subsídios concedidos com condições	A		
+28111	A reconhecer até 12 meses	M		
+28112	A reconhecer a mais de 12 meses	M		
+2819	Outros	A		
+28191	A reconhecer até 12 meses	M		
+28192	A reconhecer a mais de 12 meses	M		
+282	Rendimentos a reconhecer	A		
+2821	Transferências e subsídios correntes obtidos com condições	M		
+2822	Transferências e subsídios de capital obtidos com condições	A		
+28221	A reconhecer até 12 meses	M		
+28222	A reconhecer a mais de 12 meses	M		
+2823	Rendimentos da área da educação	A		
+28231	Propinas	M		
+28232	Seguro escolar	M		
+28239	Outros	A		
+282391	A reconhecer até 12 meses	M		
+282392	A reconhecer a mais de 12 meses	M		
+2824	Acordos de concessão de serviços	A		
+282401	Serviços de saúde	A		
+2824011	A reconhecer até 12 meses	M		
+2824012	A reconhecer a mais de 12 meses	M		
+282402	Infraestruturas de transportes e parques de estacionamento	A		
+2824021	A reconhecer até 12 meses	M		
+2824022	A reconhecer a mais de 12 meses	M		
+282403	Serviços de transporte	A		
+2824031	A reconhecer até 12 meses	M		
+2824032	A reconhecer a mais de 12 meses	M		
+282404	Serviços de alojamento e de restauração	A		
+2824041	A reconhecer até 12 meses	M		
+2824042	A reconhecer a mais de 12 meses	M		
+282405	Espaços de desporto, cultura e lazer	A		
+2824051	A reconhecer até 12 meses	M		
+2824052	A reconhecer a mais de 12 meses	M		
+282406	Serviço de fornecimento de água	A		
+2824061	A reconhecer até 12 meses	M		
+2824062	A reconhecer a mais de 12 meses	M		
+282407	Serviço de recolha e tratamento de resíduos sólidos e urbanos	A		
+2824071	A reconhecer até 12 meses	M		
+2824072	A reconhecer a mais de 12 meses	M		
+282408	Tecnologias de informação e comunicação	A		
+2824081	A reconhecer até 12 meses	M		
+2824082	A reconhecer a mais de 12 meses	M		
+282409	Ativos no subsolo	A		
+2824091	A reconhecer até 12 meses	M		
+2824092	A reconhecer a mais de 12 meses	M		
+282499	Outros subcontratos ou concessões	A		
+2824991	A reconhecer até 12 meses	M		
+2824992	A reconhecer a mais de 12 meses	M		
+2829	Outros	A		
+28291	A reconhecer até 12 meses	M		
+28292	A reconhecer a mais de 12 meses	M		
+29	Provisões	A		
+291	Impostos, contribuições e juros de mora	A		
+2911	Impostos	M		
+2912	Contribuições	M		
+2913	Juros de mora	M		
+292	Garantias a clientes	M		
+293	Processos judiciais em curso	M		
+294	Acidentes de trabalho e doenças profissionais	M		
+295	Matérias ambientais	M		
+296	Contratos onerosos	M		
+297	Reestruturação e reorganização	M		
+299	Outras provisões	M		
+3	Inventários e ativos biológicos	A		
+31	Compras	A		
+310	Inventários estratégicos	M		
+311	Mercadorias	A		
+3111	Restauração	M		
+3112	Livraria, papelaria e artigos institucionais para venda	M		
+3113	Medicamentos e outros produtos de higiene e saúde para venda	M		
+3114	Terrenos e propriedades	M		
+3117	Água	M		
+3119	Outras mercadorias	M		
+312	Matérias-primas, subsidiárias e de consumo	A		
+3121	Matérias-primas	M		
+3122	Matérias subsidiárias	M		
+3123	Embalagens	M		
+3124	Peças e outros materiais de manutenção	M		
+3125	Alimentação - géneros para confecionar	M	Material de consumo hoteleiro	
+3126	Matérias de consumo específico dos serviços de saúde	A		
+31261	Produtos farmacêuticos	A		
+312611	Medicamentos	A		
+3126111	Medicamentos - Código Hospitalar Nacional Medicamento	M	Medicamentos	
+3126112	Vacinas (CHNM))	M	Vacinas	
+3126119	Medicamentos - sem Código Hospitalar Nacional Medicamento	M	Medicamentos	
+312612	Reagentes e produtos de diagnóstico rápido	M	Reagentes	
+312619	Outros produtos farmacêuticos	M	Medicamentos	
+31262	Material de consumo clínico	A		
+312621	De Penso	M	De Penso	
+312622	Artigos Cirúrgicos	M	Artigos Cirúrgicos	
+312623	De Tratamento	M	De Tratamento	
+312624	De Electromedicina	M	De Electromedicina	
+312625	De Laboratório	M	De Laboratório	
+312626	Próteses	M	Próteses	
+312627	Osteossíntese	M	Osteossíntese	
+312629	Outro Material Consumo Clínico	M	Outro Material Consumo Clínico	
+31263	Material de consumo hoteleiro	M	Material de consumo hoteleiro	
+31264	Material de consumo administrativo	A		
+312641	Papel	M	Administrativo	
+312642	Consumíveis de impressão	M	Administrativo	
+312649	Outros	M	Administrativo	
+31265	Material de Manutenção e Conservação	M	Material de Manutenção e Conservação	
+31269	Outro material de consumo	M	Material de consumo hoteleiro	
+3129	Outros materiais diversos de consumo	M		
+313	Ativos biológicos	A		
+3131	Animais consumíveis	M		
+3132	Plantas consumíveis	M		
+3133	Animais de produção	M		
+3134	Plantas de produção	M		
+317	Devoluções de compras	A		
+3171	Mercadorias	M		
+3172	Matérias-primas, subsidiárias e de consumo	A		
+31725	Alimentação - géneros para confecionar	M	Material de consumo hoteleiro	
+31726	Matérias de consumo específico dos serviços de saúde	A		
+317261	Produtos farmacêuticos	A		
+3172611	Medicamentos	A		
+31726111	Medicamentos - Código Hospitalar Nacional Medicamento	M	Medicamentos	
+31726112	Vacinas (CHNM))	M	Vacinas	
+31726119	Medicamentos - sem Código Hospitalar Nacional Medicamento	M	Medicamentos	
+3172612	Reagentes e produtos de diagnóstico rápido	M	Reagentes	
+3172619	Outros produtos farmacêuticos	M	Medicamentos	
+317262	Material de consumo clínico	A	De Penso	
+3172621	De Penso	M	De Penso	
+3172622	Artigos Cirúrgicos	M	Artigos Cirúrgicos	
+3172623	De Tratamento	M	De Tratamento	
+3172624	De Electromedicina	M	De Electromedicina	
+3172625	De Laboratório	M	De Laboratório	
+3172626	Próteses	M	Próteses	
+3172627	Osteossíntese	M	Osteossíntese	
+3172629	Outro Material Consumo Clínico	M	Outro Material Consumo Clínico	
+317263	Material de consumo hoteleiro	M	Material de consumo hoteleiro	
+317264	Material de consumo administrativo	A	Administrativo	
+3172641	Papel	M	Administrativo	
+3172642	Consumíveis de impressão	M	Administrativo	
+3172649	Outros	M	Administrativo	
+317265	Material de Manutenção e Conservação	M	Material de Manutenção e Conservação	
+317269	Outro material de consumo	M	Material de consumo hoteleiro	
+31729	Outros materiais diversos de consumo	M		
+3173	Ativos biológicos 	M		
+318	Descontos e abatimentos em compras	A		
+3181	Mercadorias	M		
+3182	Matérias-primas, subsidiárias e de consumo	A		
+31825	Alimentação - géneros para confecionar	M	Material de consumo hoteleiro	
+31826	Matérias de consumo específico dos serviços de saúde	A	Medicamentos	
+318261	Produtos farmacêuticos	A	Vacinas	
+3182611	Medicamentos	A	Medicamentos	
+31826111	Medicamentos - Código Hospitalar Nacional Medicamento	M	Medicamentos	
+31826112	Vacinas (CHNM))	M	Vacinas	
+31826119	Medicamentos - sem Código Hospitalar Nacional Medicamento	M	Medicamentos	
+3182612	Reagentes e produtos de diagnóstico rápido	M	Reagentes	
+3182619	Outros produtos farmacêuticos	M	Medicamentos	
+318262	Material de consumo clínico	A	De Electromedicina	
+3182621	De Penso	M	De Penso	
+3182622	Artigos Cirúrgicos	M	Artigos Cirúrgicos	
+3182623	De Tratamento	M	De Tratamento	
+3182624	De Electromedicina	M	De Electromedicina	
+3182625	De Laboratório	M	De Laboratório	
+3182626	Próteses	M	Próteses	
+3182627	Osteossíntese	M	Osteossíntese	
+3182629	Outro Material Consumo Clínico	M	Outro Material Consumo Clínico	
+318263	Material de consumo hoteleiro	M	Material de consumo hoteleiro	
+318264	Material de consumo administrativo	A	Administrativo	
+3182641	Papel	M	Administrativo	
+3182642	Consumíveis de impressão	M	Administrativo	
+3182649	Outros	M	Administrativo	
+318265	Material de Manutenção e Conservação	M	Material de Manutenção e Conservação	
+318269	Outro material de consumo	M	Material de consumo hoteleiro	
+31829	Outros materiais diversos de consumo	M		
+3183	Ativos biológicos 	M		
+32	Mercadorias	A		
+321	Restauração	M		
+322	Livraria, papelaria e artigos institucionais para venda	M		
+323	Medicamentos e outros produtos de higiene e saúde para venda	M		
+324	Terrenos e propriedades	M		
+325	Mercadorias em trânsito	M		
+326	Mercadorias em poder de terceiros	M		
+327	Água	M		
+328	Outras mercadorias	M		
+329	Perdas por imparidade acumuladas	M		
+33	Matérias-primas, subsidiárias e de consumo	A		
+331	Matérias-primas	M		
+332	Matérias subsidiárias	M		
+333	Embalagens	M		
+334	Peças e outros materiais de manutenção	M		
+335	Alimentação - géneros para confecionar	M		
+336	Matérias em trânsito	M		
+337	Matérias de consumo específico dos serviços de saúde	A		
+3371	Produtos farmacêuticos	A		
+33711	Medicamentos	A		
+337111	Medicamentos - Código Hospitalar Nacional Medicamento	M		
+337112	Vacinas (CHNM))	M		
+337119	Medicamentos - sem Código Hospitalar Nacional Medicamento	M		
+33712	Reagentes e produtos de diagnóstico rápido	M		
+33719	Outros produtos farmacêuticos	M		
+3372	Material de consumo clínico	A		
+33721	De Penso	M		
+33722	Artigos Cirúrgicos	M		
+33723	De Tratamento	M		
+33724	De Electromedicina	M		
+33725	De Laboratório	M		
+33726	Próteses	M		
+33727	Osteossíntese	M		
+33729	Outro Material Consumo Clínico	M		
+3373	Material de consumo hoteleiro	M		
+3374	Material de consumo administrativo	A		
+33741	Papel	M		
+33742	Consumíveis de impressão	M		
+33749	Outros	M		
+3375	Material de Manutenção e Conservação	M		
+3379	Outro material de consumo	M		
+338	Outros materiais diversos de consumo	M		
+339	Perdas por imparidade acumuladas	A		
+3391	Matérias-primas	M		
+3392	Matérias subsidiárias	M		
+3393	Embalagens	M		
+3394	Peças e outros materiais de manutenção	M		
+3395	Alimentação - géneros para confecionar	M		
+3396	Matérias em trânsito	M		
+3397	Matérias de consumo específico dos serviços de saúde	A		
+33971	Produtos farmacêuticos	A		
+339711	Medicamentos	A		
+3397111	Medicamentos - Código Hospitalar Nacional Medicamento	M		
+3397112	Vacinas (CHNM))	M		
+3397119	Medicamentos - sem Código Hospitalar Nacional Medicamento	M		
+339712	Reagentes e produtos de diagnóstico rápido	M		
+339719	Outros produtos farmacêuticos	M		
+33972	Material de consumo clínico	A		
+339721	De Penso	M		
+339722	Artigos Cirúrgicos	M		
+339723	De Tratamento	M		
+339724	De Electromedicina	M		
+339725	De Laboratório	M		
+339726	Próteses	M		
+339727	Osteossíntese	M		
+339729	Outro Material Consumo Clínico	M		
+33973	Material de consumo hoteleiro	M		
+33974	Material de consumo administrativo	A		
+339741	Papel	M		
+339742	Consumíveis de impressão	M		
+339749	Outros	M		
+33975	Material de Manutenção e Conservação	M		
+33979	Outro material de consumo	M		
+3398	Outros materiais diversos de consumo	M		
+34	Produtos acabados e intermédios	A		
+340	Inventários estratégicos	M		
+341	Produtos acabados	M		
+342	Produtos intermédios	M		
+343	Propriedades construídas para venda	M		
+344	Publicações para venda	M		
+346	Produtos em poder de terceiros	M		
+348	Outros produtos acabados e intermédios	M		
+349	Perdas por imparidade acumuladas	A		
+3490	Inventários estratégicos	M		
+3491	Produtos acabados	M		
+3492	Produtos intermédios	M		
+3493	Propriedades construídas para venda	M		
+3494	Publicações para venda	M		
+3496	Produtos em poder de terceiros	M		
+3498	Outros produtos acabados e intermédios	M		
+35	Subprodutos, desperdícios, resíduos e refugos	A		
+351	Subprodutos	M		
+352	Desperdícios, resíduos e refugos	M		
+359	Perdas por imparidade acumuladas	A		
+3591	Subprodutos	M		
+3592	Desperdícios, resíduos e refugos	M		
+36	Produtos e trabalhos em curso	A		
+360	Inventários estratégicos	M		
+363	Propriedades construídas para venda	M		
+364	Publicações para venda	M		
+366	Produtos em poder de terceiros	M		
+368	Outros produtos e trabalhos em curso	M		
+37	Ativos biológicos	A		
+371	Consumíveis	A		
+3711	Animais	M		
+3712	Plantas	M		
+372	De produção	A		
+3721	Animais	M		
+3722	Plantas	M		
+378	Depreciações acumuladas	M		
+379	Perdas por imparidade acumuladas	A		
+3791	Consumíveis	A		
+37911	Animais	M		
+37912	Plantas	M		
+3792	De produção	A		
+37921	Animais	M		
+37922	Plantas	M		
+38	Reclassificação e regularização de inventários e ativos biológicos	A		
+382	Mercadorias	M		
+383	Matérias-primas, subsidiárias e de consumo	A		
+3835	Alimentação - géneros para confecionar	M		
+3837	  Matérias de consumo específico dos serviços de saúde	A		
+38371	Produtos farmacêuticos	A		
+383711	Medicamentos	A		
+3837111	Medicamentos - Código Hospitalar Nacional Medicamento	M		
+3837112	Vacinas (CHNM))	M		
+3837119	Medicamentos - sem Código Hospitalar Nacional Medicamento	M		
+383712	Reagentes e produtos de diagnóstico rápido	M		
+383719	Outros produtos farmacêuticos	M		
+38372	Material de consumo clínico	A		
+383721	De Penso	M		
+383722	Artigos Cirúrgicos	M		
+383723	De Tratamento	M		
+383724	De Electromedicina	M		
+383725	De Laboratório	M		
+383726	Próteses	M		
+383727	Osteossíntese	M		
+383729	Outro Material Consumo Clínico	M		
+38373	Material de consumo hoteleiro	M		
+38374	Material de consumo administrativo	M		
+38375	Material de Manutenção e Conservação	M		
+38379	Outro material de consumo	M		
+384	Produtos acabados e intermédios	M		
+385	Subprodutos, desperdícios, resíduos e refugos	M		
+386	Produtos e trabalhos em curso	M		
+387	Ativos biológicos	M		
+39	Adiantamentos por conta de compras	A		
+391	Inventários	M		
+392	Ativos biológicos	A		
+3921	Consumíveis	M		
+3922	De produção	M		
+4	Investimentos	A		
+41	Investimentos financeiros	A		
+411	Investimentos em entidades controladas	A		
+4111	Participações de capital - método da equivalência patrimonial	A		
+41111	Justo valor líquido dos ativos e passivos identificáveis	M	Investimento	
+41112	Goodwill	M	Investimento	
+4112	Participações de capital - outros métodos	M	Investimento	
+4113	Empréstimos concedidos	M	Investimento	
+412	Investimentos em associadas	A		
+4121	Participações de capital - método da equivalência patrimonial	A		
+41211	Justo valor líquido dos ativos e passivos identificáveis	M	Investimento	
+41212	Goodwill	M	Investimento	
+4122	Participações de capital - outros métodos	M	Investimento	
+4123	Empréstimos concedidos	M	Investimento	
+413	Investimentos em empreendimentos conjuntos	A		
+4131	Participações de capital - método da equivalência patrimonial	A		
+41311	Justo valor líquido dos ativos e passivos identificáveis	M	Investimento	
+41312	Goodwill	M	Investimento	
+4132	Participações de capital - outros métodos	M	Investimento	
+4133	Empréstimos concedidos	M	Investimento	
+414	Investimentos noutras entidades	A		
+4141	Participações de capital	M	Investimento	
+4142	Empréstimos concedidos	M	Investimento	
+415	Outros investimentos financeiros	A		
+4151	Detidos até à maturidade	A		
+41511	Títulos da dívida pública a médio e longo prazo	M	Investimento	
+41512	Fundos	A		
+415121	Fundo comp. Trab. Ou Equiv. FCT ou ME	M	Investimento	
+41519	Outros títulos a médio e longo prazo	M	Investimento	
+4159	Outros investimentos financeiros	A		
+41591	Artigos e objetos de valor	M	Investimento	
+41592	Depósitos a prazo	M	Investimento	
+41599	Outros	M	Investimento	
+419	Perdas por imparidade acumuladas	A		
+4191	Participações de capital	A		
+41911	    Em entidades controladas	A		
+419111	       Ao método da equivalência patrimonial	M	Investimento	
+419112	       Outros métodos	M	Investimento	
+4192	Empréstimos concedidos	A		
+41921	    Em entidades controladas	M	Investimento	
+41922	    Em entidades associadas	M	Investimento	
+41923	    Em empreendimentos conjuntos	M	Investimento	
+4193	Outros investimentos financeiros	M	Investimento	
+42	Propriedades de investimento	A		
+420	Bens de domínio público	A		
+4201	Terrenos e recursos naturais	M	Investimento	
+4202	Edifícios e outras construções	M	Investimento	
+4209	Outros	M	Investimento	
+421	Terrenos e recursos naturais	M	Investimento	
+422	Edifícios e outras construções	M	Investimento	
+426	Outras propriedades de investimento	M	Investimento	
+428	Depreciações acumuladas	A		
+4281	Bens de domínio público	M	Investimento	
+4282	Terrenos e recursos naturais	M	Investimento	
+4283	Edifícios e outras construções	M	Investimento	
+4284	Outras propriedades de investimento	M	Investimento	
+429	Perdas por imparidade acumuladas	A		
+4291	Bens de domínio público	M	Investimento	
+4292	Terrenos e recursos naturais	M	Investimento	
+4293	Edifícios e outras construções	M	Investimento	
+4294	Outras propriedades de investimento	M	Investimento	
+43	Ativos fixos tangíveis	A		
+430	Bens de domínio público, património histórico, artístico e cultural	A		
+4301	Terrenos e recursos naturais	A		
+43011	Terrenos incluídos em planos de urbanização com capacidade construtiva	M	Investimento	
+43012	Terrenos não incluídos em plano de urbanização solo rural	M	Investimento	
+43013	Outros terrenos situados dentro do perímetro urbano	M	Investimento	
+43014	Recursos naturais	M	Investimento	
+43018	Terrenos militares	M	Investimento	
+43019	Outros terrenos e outros recursos naturais	M	Investimento	
+4302	Edifícios e outras construções	A		
+43021	Habitações e edificações para serviços	M	Investimento	
+43022	Edifícios para fins industriais	M	Investimento	
+43023	Edifícios e construções com finalidade sociocultural	M	Investimento	
+43024	Parques de estacionamento	M	Investimento	
+43025	Piscinas e complexos desportivos	M	Investimento	
+43026	Cemitérios	M	Investimento	
+43027	Barragens	M	Investimento	
+43028	Edifícios e outras construções militares	M	Investimento	
+43029	Outros	M	Investimento	
+4303	Infraestruturas	A		
+43031	Rodoviárias	M	Investimento	
+43032	Ferroviárias	M	Investimento	
+43033	Portuárias	M	Investimento	
+43034	Aeroportuárias	M	Investimento	
+43035	Sistemas de esgotos	M	Investimento	
+43036	Sistemas de abastecimento de água	M	Investimento	
+43037	Redes de comunicações	M	Investimento	
+43038	Infraestruturas militares	M	Investimento	
+43039	Outras infraestruturas	M	Investimento	
+4304	Património histórico, artístico e cultural	A		
+43041	Espaços arqueológicos	M	Investimento	
+43042	Obras de arte, coleções e antiguidades	M	Investimento	
+43043	Livros, arquivos e outras publicações de bibliotecas	M	Investimento	
+43044	Mobiliário e tapeçarias	M	Investimento	
+43045	Joalharia e artigos religiosos	M	Investimento	
+43049	Outros	M	Investimento	
+4305	Equipamento militar, de segurança e defesa	M	Investimento	
+4309	Outros bens de domínio público	M	Investimento	
+431	Terrenos e recursos naturais	A		
+4311	Terrenos incluídos em planos de urbanização com capacidade construtiva	M	Investimento	
+4312	Terrenos não incluídos em planos de urbanização - solo rural	M	Investimento	
+4313	Outros terrenos situados dentro do perímetro urbano	M	Investimento	
+4314	Recursos naturais	M	Investimento	
+4319	Outros terrenos e outros recursos naturais	M	Investimento	
+432	Edifícios e outras construções	A		
+4321	Habitações e edificações para serviços	M	Investimento	
+4322	Edificações para fins industriais	M	Investimento	
+4323	Edifícios e construções com finalidade sociocultural	M	Investimento	
+4324	Parques de estacionamento	M	Investimento	
+4325	Piscinas e complexos desportivos	M	Investimento	
+4329	Outros	M	Investimento	
+433	Equipamento básico	A		
+4331	Equipamento informático e de telecomunicações	M	Investimento	
+4332	Equipamento para investigação e formação, de medida e de utilização técnica especial	M	Investimento	
+4333	Equipamento e material específico dos serviços de saúde	A		
+43331	Equipamentos e aparelhos Médico-cirúrgico	M	Investimento	
+43332	Equipamento de imagiologia	M	Investimento	
+43333	Equipamento de laboratório	M	Investimento	
+43334	Mobiliário hospitalar	M	Investimento	
+43335	Equipamento de desinfecção, esterilização e incineração	M	Investimento	
+43336	Equipamento específico de farmácia	M	Investimento	
+43337	Equipamento de instrução Médica	M	Investimento	
+43338	Vestuário e calçado	M	Investimento	
+43339	Outro	M	Investimento	
+4334	Equipamento e material recreativo, desportivo, de educação e de cultura	M	Investimento	
+4335	Equipamento e material para serviços de alimentação, rouparia e lavandaria	M	Investimento	
+4336	Equipamento para agricultura, pesca e jardinagem	M	Investimento	
+4337	Equipamento e material de apoio à produção	M	Investimento	
+4338	Equipamento militar, de segurança e defesa	M	Investimento	
+4339	Outro equipamento básico	M	Investimento	
+434	Equipamento de transporte	A		
+4341	Transportes ferroviários	M	Investimento	
+4342	Transportes rodoviários	M	Investimento	
+4343	Transportes marítimos e fluviais	M	Investimento	
+4344	Transportes aéreos	M	Investimento	
+4348	Viaturas militares	M	Investimento	
+4349	Outros	M	Investimento	
+435	Equipamento administrativo	A		
+4351	Equipamento informático e de telecomunicações	A		
+43511	Hardware	M	Investimento	
+43512	 Equipamento informático outros	M	Investimento	
+4352	Equipamento de escritório e de reprografia	M	Investimento	
+4353	Mobiliário de escritório e de arquivo	M	Investimento	
+4359	Outros	M	Investimento	
+436	Equipamentos biológicos	A		
+4361	Animais de trabalho	M	Investimento	
+4362	Animais de atividades desportivas	M	Investimento	
+4363	Plantas	M	Investimento	
+4369	Outros equipamentos biológicos	M	Investimento	
+437	Outros ativos fixos tangíveis	A		
+4371	Equipamento de oficina e reparações	M	Investimento	
+4372	Equipamento de decoração e conforto, de utilização comum	M	Investimento	
+4373	Equipamento individual para fins especiais	M	Investimento	
+4374	Equipamento para acondicionamento de embalagens	M	Investimento	
+4379	Outros	M	Investimento	
+438	Depreciações acumuladas	A		
+4380	Bens de domínio público, património histórico, artístico e cultural	M	Investimento	
+4381	Terrenos e recursos naturais	M	Investimento	
+4382	Edifícios e outras construções	M	Investimento	
+4383	Equipamento básico	A		
+43831	Equipamento informático e de telecomunicações	M	Investimento	
+43832	Equipamento para investigação e formação, de medida e de utilização técnica especial	M	Investimento	
+43833	Equipamento e material específico dos serviços de saúde	A		
+438331	Equipamentos e aparelhos Médico-cirúrgico	M	Investimento	
+438332	Equipamento de imagiologia	M	Investimento	
+438333	Equipamento de laboratório	M	Investimento	
+438334	Mobiliário hospitalar	M	Investimento	
+438335	Equipamento de desinfecção, esterilização e incineração	M	Investimento	
+438336	Equipamento específico de farmácia	M	Investimento	
+438337	Equipamento de instrução Médica	M	Investimento	
+438338	Vestuário e calçado	M	Investimento	
+438339	Outro	M	Investimento	
+43834	Equipamento e material recreativo, desportivo, de educação e de cultura	M	Investimento	
+43835	Equipamento e material para serviços de alimentação, rouparia e lavandaria	M	Investimento	
+43836	Equipamento para agricultura, pesca e jardinagem	M	Investimento	
+43837	Equipamento e material de apoio à produção	M	Investimento	
+43838	Equipamento militar, de segurança e defesa	M	Investimento	
+43839	Outro equipamento básico	M	Investimento	
+4384	Equipamento de transporte	M	Investimento	
+4385	Equipamento administrativo	A		
+43851	Equipamento informático e de telecomunicações	A		
+438511	Hardware	M	Investimento	
+438512	 Equipamento informático outros	M	Investimento	
+43852	Equipamento de escritório e de reprografia	M	Investimento	
+43859	Outros	M	Investimento	
+4386	Equipamentos biológicos	M	Investimento	
+4387	Outros ativos fixos tangíveis	M	Investimento	
+439	Perdas por imparidade acumuladas	A		
+4390	Bens de domínio público, património histórico, artístico e cultural	M	Investimento	
+4391	Terrenos e recursos naturais	M	Investimento	
+4392	Edifícios e outras construções	M	Investimento	
+4393	Equipamento básico	A		
+43931	Equipamento informático e de telecomunicações	M	Investimento	
+43932	Equipamento para investigação e formação, de medida e de utilização técnica especial	M	Investimento	
+43933	Equipamento e material específico dos serviços de saúde	A		
+439331	Equipamentos e aparelhos Médico-cirúrgico	M	Investimento	
+439332	Equipamento de imagiologia	M	Investimento	
+439333	Equipamento de laboratório	M	Investimento	
+439334	Mobiliário hospitalar	M	Investimento	
+439335	Equipamento de desinfecção, esterilização e incineração	M	Investimento	
+439336	Equipamento específico de farmácia	M	Investimento	
+439337	Equipamento de instrução Médica	M	Investimento	
+439338	Vestuário e calçado	M	Investimento	
+439339	Outro	M	Investimento	
+43934	Equipamento e material recreativo, desportivo, de educação e de cultura	M	Investimento	
+43935	Equipamento e material para serviços de alimentação, rouparia e lavandaria	M	Investimento	
+43936	Equipamento para agricultura, pesca e jardinagem	M	Investimento	
+43937	Equipamento e material de apoio à produção	M	Investimento	
+43938	Equipamento militar, de segurança e defesa	M	Investimento	
+43939	Outro equipamento básico	M	Investimento	
+4394	Equipamento de transporte	M	Investimento	
+4395	Equipamento administrativo	M	Investimento	
+4396	Equipamentos biológicos	M	Investimento	
+4397	Outros ativos fixos tangíveis	M	Investimento	
+44	Ativos intangíveis	A		
+440	Ativos intangíveis de domínio público, património histórico, artístico e cultural	M	Investimento	
+441	Goodwill	M	Investimento	
+442	Projetos de desenvolvimento	M	Investimento	
+443	Programas de computador e sistemas de informação	M	Investimento	
+444	Propriedade industrial e intelectual	M	Investimento	
+446	Outros ativos intangíveis	M	Investimento	
+448	Amortizações acumuladas	A		
+4480	Ativos intangíveis de domínio público, património histórico, artístico e cultural	M	Investimento	
+4481	Goodwill	M	Investimento	
+4482	Projetos de desenvolvimento	M	Investimento	
+4483	Programas de computador e sistemas de informação	M	Investimento	
+4484	Propriedade industrial e intelectual	M	Investimento	
+4486	Outros ativos intangíveis	M	Investimento	
+449	Perdas por imparidade acumuladas	A		
+4490	Ativos intangíveis de domínio público, património histórico, artístico e cultural	M	Investimento	
+4491	Goodwill	M	Investimento	
+4492	Projetos de desenvolvimento	M	Investimento	
+4493	Programas de computador e sistemas de informação	M	Investimento	
+4494	Propriedade industrial e intelectual	M	Investimento	
+4496	Outros ativos intangíveis	M	Investimento	
+45	Investimentos em curso	A		
+451	Investimentos financeiros em curso	A		
+4511	Participações financeiras	M	Investimento	
+4512	Outros ativos financeiros	M	Investimento	
+452	Propriedades de investimento em curso	M	Investimento	
+453	Ativos fixos tangíveis em curso	A		
+4531	Obra Urgência	M	Investimento	
+4532	Obra do Heliporto	M	Investimento	
+4533	Equipamento informático	M	Investimento	
+4534	Equipamento hospitalar	M	Investimento	
+4535	Remodelação da Farmácia	M	Investimento	
+4536	Obra UCI	M	Investimento	
+4537	Obra no armazem	M	Investimento	
+454	Ativos intangíveis em curso	M	Investimento	
+455	Adiantamentos por conta de investimentos	A		
+4551	Investimentos financeiros	A		
+45511	Participações financeiras	M	Investimento	
+45512	Outros ativos financeiros	M	Investimento	
+4552	Propriedades de investimento	M	Investimento	
+4553	Ativos fixos tangíveis	M	Investimento	
+4554	Ativos intangíveis	M	Investimento	
+459	Perdas por imparidade acumuladas	A		
+4591	Investimentos financeiros em curso	A		
+45911	Participações financeiras	M	Investimento	
+45912	Outros ativos financeiros	M	Investimento	
+4592	Propriedades de investimento em curso	M	Investimento	
+4593	Ativos fixos tangíveis em curso	M	Investimento	
+4594	Ativos intangíveis em curso	M	Investimento	
+4595	Adiantamentos por conta de investimentos	A		
+45951	Investimentos financeiros	A		
+459511	Participações financeiras	M	Investimento	
+459512	Outros ativos financeiros	M	Investimento	
+45952	Propriedades de investimento	M	Investimento	
+45953	Ativos fixos tangíveis	M	Investimento	
+45954	Ativos intangíveis	M	Investimento	
+46	Ativos não correntes detidos para venda	A		
+461	Ativos Fixos Tangíveis	M	Investimento	
+468	Outros	M	Investimento	
+469	Perdas por imparidade acumuladas	A		
+4691	Ativos Fixos Tangíveis	M	Investimento	
+4698	Outros	M	Investimento	
+5	Património, reservas e resultados transitados	A		
+51	Património/capital	A		
+511	Balanço inicial	M		
+512	Retificações ao balanço inicial	M		
+513	Capital subscrito	M		
+514	Reforços de capital	M		
+52	Ações (quotas) próprias	A		
+521	Valor nominal	M		
+522	Descontos e prémios	M		
+53	Outros instrumentos de capital próprio	A		
+531	Subsídios para cobertura de prejuízos	M		
+532	Subsídios para reforço de liquidez	M		
+533	Subsídios para amortização de dívida	M		
+539	Outros	M		
+54	Prémios de emissão	A		
+541	Emissão de ações 	M		
+542	Emissão de quotas	M		
+549	Outras	M		
+55	Reservas	A		
+551	Reservas legais	M		
+552	Outras reservas	M		
+56	Resultados transitados	A		
+561	De períodos anteriores	A		
+5611	De periodos anteriores -realização exercicio	M		
+5612	De periodos anteriores - RT	M		
+562	Regularizações	M		
+563	Resultados atribuídos	M		
+564	Ajustamentos de transição para o SNC-AP	M		
+565	Ajustamentos de reorganização de operações 	M		
+57	Ajustamentos em ativos financeiros	A		
+571	Relacionados com o método da equivalência patrimonial	A		
+5711	Ajustamentos de transição	M		
+5712	Lucros não atribuídos	M		
+5713	Decorrentes de outras variações nos capitais próprios das participadas	M		
+579	Outros	M		
+58	Excedentes de revalorização de ativos fixos tangíveis e intangíves	A		
+581	Revalorizações decorrentes de diplomas legais	A		
+5811	Antes de imposto sobre o rendimento	M		
+5812	Impostos diferidos	M		
+589	Outros excedentes	A		
+5891	Antes de imposto sobre o rendimento	M		
+5892	Impostos diferidos	M		
+59	Outras variações no património líquido	A		
+591	Diferenças de conversão de demonstrações financeiras	M		
+592	Ajustamentos por impostos diferidos	M		
+593	Transferências e subsídios de capital	A		
+5931	Transferências e subsídios para aquisição de ativos depreciáveis	A		
+593101	Programa EDP Solitária	M		
+593102	Aquisição da VMER	M		
+593103	Projecto - SAMA (candidatura 37724 - antiga 12632)	M		
+593104	Projecto - SAMA (candidatura 37718 - antiga 7747)	M		
+593105	Poseur - projectos de eficiência energética	M		
+593106	Portugal 2020 - Infraestruturas e Equipamentos	M		
+593107	SAMA 4.0	M		
+593108	Projeto SAMA - POCI-05-5762-FSE-000247	M		
+5932	Transferências e subsídios para aquisição de ativos não depreciáveis	M		
+5939	Outras transferências e subsídios de capital	M		
+594	Doações obtidas	A		
+5941	Em numerário	M		
+5942	Em outros ativos	M		
+595	Cauções e depósitos de garantias executadas	A		
+5951	Em numerário	M		
+5952	Em outros ativos	M		
+596	Valores apreendidos a favor do Estado	A		
+5961	Em numerário	M		
+5962	Em outros ativos	M		
+597	Transferências de ativos	A		
+5971	Obtidas	M		
+5972	Concedidas	M		
+598	Saldos de gerência	M		
+599	Outras variações do património líquido	M		
+6	Gastos	A		
+60	Transferências e subsídios concedidos	A		
+601	Transferências correntes concedidas	M		
+602	Subsídios correntes concedidos	M		
+603	Prestações sociais concedidas	M		
+604	Transferências de capital concedidas	M		
+605	Subsídios de capital concedidos	M		
+606	Transferências para cobertura de prejuízos	M		
+607	Transferências e subsídios para reforço de liquidez	M		
+608	Transferências e subsídios para amortização de dívida	M		
+609	Outros subsídios e transferências de capital	M		
+61	Custo das mercadorias vendidas e das matérias consumidas	A		
+611	Mercadorias	A		
+6111	Restauração	M		
+6112	Livraria, papelaria e artigos institucionais para venda	M		
+6113	Medicamentos e outros produtos de higiene e saúde para venda	M		
+6114	Terrenos e propriedades	M		
+6117	Água	M		
+6119	Outras mercadorias	M		
+612	Matérias-primas, subsidiárias e de consumo	A		
+6121	Matérias-primas	M		
+6122	Matérias subsidiárias	M		
+6123	Embalagens	M		
+6124	  Matérias de consumo específico dos serviços de saúde	A		
+61241	Produtos farmacêuticos	A		
+612411	Medicamentos	A		
+6124111	Medicamentos - Código Hospitalar Nacional Medicamento (CN3/2012)	M	Medicamentos	
+6124112	Vacinas (CHNM))	M	Vacinas	
+6124119	Medicamentos - sem Código Hospitalar Nacional Medicamento	M	Medicamentos	
+612412	Reagentes e produtos de diagnóstico rápido	M	Reagentes	
+612419	Outros produtos farmacêuticos	M	Medicamentos	
+61242	Material de consumo clínico	A	De Penso	
+612421	De Penso	M	De Penso	
+612422	Artigos Cirúrgicos	M	Artigos Cirúrgicos	
+612423	De Tratamento	M	De Tratamento	
+612424	De Electromedicina	M	De Electromedicina	
+612425	De Laboratório	M	De Laboratório	
+612426	Próteses	M	Próteses	
+612427	Osteossíntese	M	Osteossíntese	
+612429	Outro Material Consumo Clínico	M	Outro Material Consumo Clínico	
+61243	Material de consumo hoteleiro	M	Material de consumo hoteleiro	
+61244	Material de consumo administrativo	A	Administrativo	
+612441	Papel	M	Administrativo	
+612442	Consumíveis de impressão	M	Administrativo	
+612449	Outros	M	Administrativo	
+61245	Material de Manutenção e Conservação	M	Material de Manutenção e Conservação	
+61249	Outro material de consumo	M	Material de consumo hoteleiro	
+6125	Peças e outros materiais de manutenção	M		
+6126	Alimentação - géneros para confecionar	M	Material de consumo hoteleiro	
+6129	Outros materiais diversos de consumo	M		
+613	Ativos biológicos	M		
+62	Fornecimentos e serviços externos	A		
+621	Subcontratos e concessões de serviços	A		
+6211	Serviços de saúde	A		
+62111	Meios complementares de diagnóstico	A	Meios complementares de diagnóstico	
+621111	Patologia clínica	M	Meios complementares de diagnóstico	
+621112	Anatomia patológica	M	Meios complementares de diagnóstico	
+621113	Imagiologia	A	Meios complementares de diagnóstico	
+6211131	Radiologia convencional	M	Meios complementares de diagnóstico	
+6211132	Tomografias axiais computorizadas	M	Meios complementares de diagnóstico	
+6211133	Ecografias	M	Meios complementares de diagnóstico	
+6211134	Ressonâncias magnéticas	M	Meios complementares de diagnóstico	
+6211139	Outros	M	Meios complementares de diagnóstico	
+621114	Cardiologia	M	Meios complementares de diagnóstico	
+621115	Eletroencefalografia	M	Meios complementares de diagnóstico	
+621116	Medicina nuclear	M	Meios complementares de diagnóstico	
+621117	Gastroenterologia	M	Meios complementares de diagnóstico	
+621118	Pneumologia / Imunoalergologia	M	Meios complementares de diagnóstico	
+621119	Outros Meios de Diagnóstico	A	Meios complementares de diagnóstico	
+6211191	Otorrinolaringologia	M	Meios complementares de diagnóstico	
+6211192	Neurofisiologia	M	Meios complementares de diagnóstico	
+6211193	Urologia	M	Meios complementares de diagnóstico	
+6211194	Psicologia	M	Meios complementares de diagnóstico	
+6211199	Outros	M	Meios complementares de diagnóstico	
+62112	Meios complementares de terapêutica	A	Meios complementares de terapêutica	
+621121	Hemodiálise	M	Meios complementares de terapêutica	
+621122	Medicina física e de reabilitação	M	Meios complementares de terapêutica	
+621123	Litotrícia	M	Meios complementares de terapêutica	
+621124	Cuidados Respiratórios Domiciliários	A	Meios complementares de terapêutica	
+6211241	Oxigenoterapia	M	Meios complementares de terapêutica	
+6211242	Aerossolterapia	M	Meios complementares de terapêutica	
+6211243	Ventiloterapia	M	Meios complementares de terapêutica	
+6211249	Outros tratamentos	M	Meios complementares de terapêutica	
+621125	Unidades terapêuticas de sangue	M	Meios complementares de terapêutica	
+621126	Radioterapia	M	Meios complementares de terapêutica	
+621127	Saúde oral	M	Meios complementares de terapêutica	
+621128	Tratamentos Termais	M	Meios complementares de terapêutica	
+621129	Outros Meios Comp. de terapêutica	M	Meios complementares de terapêutica	
+62113	Produtos vendidos por farmácias	A	Produtos vendidos por farmácias	
+621131	Medicamentos	M	Produtos vendidos por farmácias	
+621132	Cuidados Farmacêuticos	M	Produtos vendidos por farmácias	
+621133	Diabetes	M	Produtos vendidos por farmácias	
+621134	Incentivos às Farmácias (Portaria 18-A/2015)	M	Produtos vendidos por farmácias	
+621135	Remunerações às Farmácias (DL 62/2016)	M	Produtos vendidos por farmácias	
+621136	Aparelhos complementares de terapêutica	M	Produtos vendidos por farmácias	
+62114	Produtos Fornecidos por Farmácias Hospitalares	M	Produtos Fornecidos por Farmácias Hospitalares	
+62115	Internamentos	A	Internamentos 	
+621151	Psiquiatria	M	Internamentos 	
+621152	Cuidados continuados	M	Internamentos 	
+621153	SIGIC	M	Internamentos 	
+621154	Comunidades terapêuticas - IPSS	M	Internamentos 	
+621159	Outros internamentos	M	Internamentos 	
+62116	Contratos e Acordos	A	Contratos e Acordos	
+621161	Contrato Programa ACSS/EPE	M	Contratos e Acordos	
+621162	ACSS/EPE - Prestações de Saúde de Financiamento Vertical	M	Contratos e Acordos	
+621163	Contrato Programa ACSS/SPMS	M	Contratos e Acordos	
+621164	Contrato Parceria Publico-Privado	A	Contratos e Acordos	
+6211641	Entidade Gestora Estabelecimento	M	Contratos e Acordos	
+6211642	Entidade Gestora Edifício	M	Contratos e Acordos	
+621165	Acordos	M	Contratos e Acordos	
+62119	Outros subcontratos	A	Outros subcontratos	
+621191	Assistência ambulatória	A	Outros subcontratos	
+6211911	Consultas/Especialidades Médico/Cirurgic.	M	Outros subcontratos	
+6211919	Outras	M	Outros subcontratos	
+621192	Aparelhos complementares de terapêutica	M	Outros subcontratos	
+621193	Assistência no estrangeiro	M	Outros subcontratos	
+621194	Convenções internacionais	M	Outros subcontratos	
+621199	Outros	M	Outros subcontratos	
+6212	Infraestruturas de transportes e parques de estacionamento	M		
+6213	Serviços de transporte	M		
+6214	Serviços de alojamento e de restauração	M		
+6215	Espaços de desporto, cultura e lazer	M		
+6216	Serviços de fornecimento de água	M		
+6217	Serviços de recolha e tratamento de resíduos sólidos e urbanos	M		
+6218	Tecnologias de informação e comunicação	M		
+6219	Outros subcontratos ou concessões	M		
+622	Serviços especializados	A		
+6221	Trabalhos especializados	A	Trabalhos especializados	
+62211	Estudos, pareceres e consultoria jurídica	M	Trabalhos especializados	
+62212	Projetos e serviços de informática	M	Trabalhos especializados	
+62213	Estudos e projetos de arquitetura e fiscalização de obras	M	Trabalhos especializados	
+62214	Estudos de organização, económico-financeiros e de auditoria	M	Trabalhos especializados	
+62215	Qualidade e segurança no trabalho	M	Trabalhos especializados	
+62216	Organização de eventos	M	Trabalhos especializados	
+62217	Formação ao pessoal	M	Trabalhos especializados	
+62219	Outros trabalhos especializados	A	Trabalhos especializados	
+622191	Serviços técnicos de recursos humanos	A		
+6221911	Serviços Médicos prestados por empresas serviços médicos	M	Prestação Serviços Médicos	
+6221919	Outros serviços técnicos de RH	M	Trabalhos especializados	
+622192	Serviços de Alimentação	M	Hoteleiros	
+622193	Serviços de Lavandaria	M	Hoteleiros	
+622199	Outros	M	Trabalhos especializados	
+6222	Publicidade, comunicação e imagem	M	Outras	
+6223	Vigilância e segurança	M	Hoteleiros	
+6224	Honorários	A		
+62241	Contratos individuais de tarefa	M	Honorários	
+62242	Contratos individuais por avença	M	Honorários	
+62243	Apoio judiciário	M	Honorários	
+62249	Outros honorários	A		
+622491	Serviços Médicos	M	Prestação Serviços Médicos	
+622499	Outros	M	Honorários	
+6225	Comissões	A		
+62251	De cobrança de impostos e taxas	M	Outras	
+62252	De outras cobranças	M	Outras	
+62253	De serviços financeiros	M	Outras	
+62259	Outras comissões	M	Outras	
+6226	Conservação e reparação	A		
+62261	Conservação e reparação de ativos fixos	A		
+622611	Conservação e reparação de viaturas	M	Conservação e reparação	
+622612	Conservação e reparação de Edificios	M	Conservação e reparação	
+622613	Conservação e reparação de Equipamento	M	Conservação e reparação	
+62262	Assistência técnica	A	Conservação e reparação	
+622621	Equipamento Informático (Hardware)	M	Conservação e reparação	
+622622	Software informático	M	Conservação e reparação	
+622623	Outros	M	Conservação e reparação	
+62269	Outros gastos de conservação e reparação	M	Conservação e reparação	
+6229	Outros serviços especializados	M	Conservação e reparação	
+623	Materiais de consumo	A		
+6231	Peças, ferramentas e utensílios de desgaste rápido	M	Outras	
+6232	Livros e documentação técnica	M	Outras	
+6233	Material de escritório	M	Outras	
+6234	Artigos para oferta e de publicidade e divulgação	M	Outras	
+6235	Material de educação, cultura e recreio	M	Outras	
+6236	Artigos de higiene e limpeza, vestuário e artigos pessoais	M		
+6237	Medicamentos e artigos para a saúde	M	Outras	
+6238	Produtos químicos e de laboratórios	M	Outras	
+6239	Outros materiais diversos de consumo	M	Outras	
+624	Energia e fluidos	A		
+6241	Eletricidade	M	Gastos com Instalações	
+6242	Combustíveis e lubrificantes	M	Gastos com Instalações	
+6243	Água	M	Gastos com Instalações	
+6249	Outros	M	Gastos com Instalações	
+625	Deslocações, estadas e transportes	A		
+6251	Deslocações e estadas	M	Transportes de pessoal	
+6252	Transportes de pessoal	M	Transportes de pessoal	
+6253	Transportes de mercadorias e outros bens vendidos	M	Outras	
+6254	Transporte escolar	M	Outras	
+6255	Transporte de doentes	A	Transporte de doentes	
+62551	Transporte de doentes não urgentes	A	Transporte de doentes	
+625511	Bombeiros	M	Transporte de doentes	
+625512	Empresas transportes doentes	M	Transporte de doentes	
+625513	Transportes públicos -Táxis	M	Transporte de doentes	
+625519	Outros transportes	M	Transporte de doentes	
+6259	Outros	M	Outras	
+626	Serviços diversos	A	Rendas e alugueres	
+6261	Rendas e alugueres	A	Rendas e alugueres	
+62611	Rendas e alugueres	A	Rendas e alugueres	
+626111	Rendas e Alugueres - Edifícios	A	Rendas e alugueres	
+6261111	do Estado	M	Rendas e alugueres	
+6261112	Outros	M	Rendas e alugueres	
+626112	Rendas e Alugueres - Viaturas	M	Rendas e alugueres	
+626113	Rendas e Alugueres - Outros	M	Rendas e alugueres	
+62612	Locação de Material de Informática	A	Rendas e alugueres	
+626121	Hardware Informático	M	Rendas e alugueres	
+626122	Software Informático	M	Rendas e alugueres	
+626123	Outros	M	Rendas e alugueres	
+6262	Comunicação	A	Comunicação	
+62621	Serviços de Telecomunicações	A	Comunicação	
+626211	Acessos à Internet	M	Comunicação	
+626212	Comunicações fixas de dados	M	Comunicação	
+626213	Comunicações fixas de voz	M	Comunicação	
+626214	Comunicações Móveis	M	Comunicação	
+626215	Outros serv. conexos de comunicações	M	Comunicação	
+62629	Outros serviços de comunicações	M	Comunicação	
+6263	Seguros	A	Seguros	
+62631	Seguros Viaturas	M	Seguros	
+62632	Seguros M.Risco	M	Seguros	
+62633	Seguros Resp. Civil	M	Seguros	
+62634	Seguros - outros	M	Seguros	
+6264	Royalties	M	Outras	
+6265	Contencioso e notariado	M	Outras	
+6266	Despesas de representação dos serviços	M	Outras	
+6267	Limpeza, higiene e conforto	M	Hoteleiros	
+6269	Outros serviços	M	Outras	
+63	Gastos com o pessoal	A		
+630	Remunerações dos titulares de orgãos de soberania e membros de orgãos autárquicos	A		
+6301	Remunerações certas e permanentes	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+63011	Remuneração base	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+63012	Subsídio de férias	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+63013	Subsídio de Natal	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+63014	Despesas de representação	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+63015	Subsídio de refeição	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+63016	Gratificações e senhas de presença	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+63019	Outras	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+6302	Abonos variáveis ou eventuais	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+63021	Subsídio e abono de fixação, residência e alojamento	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+63022	Alimentação e alojamento	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+63023	Ajudas de custo	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+63028	Formação	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+63029	Outros	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+631	Remunerações dos orgãos sociais e de gestão	A		Gastos pessoal - gerais
+6311	Remunerações certas e permanentes	A	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+63111	Remuneração base	M	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+63112	Subsídio de férias	M	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+63113	Subsídio de Natal	M	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+63114	Despesas de representação	M	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+63115	Subsídio de refeição	M	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+63116	Gratificações	M	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+63117	Suplementos e prémios	M	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+63119	Outras	A	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+631191	Remuneração do Fiscal Único	M	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+631192	Remuneração do Conselho Fiscal	M	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+631199	Outras	M	Remunerações certas e permanentes	Remunerações dos orgãos sociais e de gestão
+6312	Abonos variáveis ou eventuais	A	Abonos variáveis ou eventuais	Remunerações dos orgãos sociais e de gestão
+63121	Subsídio e abono de fixação, residência e alojamento	M	Abonos variáveis ou eventuais	Remunerações dos orgãos sociais e de gestão
+63122	Alimentação e alojamento	M	Abonos variáveis ou eventuais	Remunerações dos orgãos sociais e de gestão
+63123	Ajudas de custo	M	Abonos variáveis ou eventuais	Remunerações dos orgãos sociais e de gestão
+63124	Trabalho extraordinário ao fim de semana e feriados	M	Abonos variáveis ou eventuais	Remunerações dos orgãos sociais e de gestão
+63128	Formação	M	Abonos variáveis ou eventuais	Remunerações dos orgãos sociais e de gestão
+63129	Outros	M	Abonos variáveis ou eventuais	Remunerações dos orgãos sociais e de gestão
+632	Remunerações do pessoal	A		Gastos pessoal - gerais
+6321	Remunerações certas e permanentes	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+63211	Remuneração base	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+632111	Pessoal em regime de nomeação definitiva e contrato de trabalho em funções públicas por tempo indete	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+6321111	Pessoal Dirigente	M	Remunerações certas e permanentes	Pessoal Dirigente
+6321112	Pessoal Médico	M	Remunerações certas e permanentes	Pessoal Médico
+6321113	Pessoal de Enfermagem	M	Remunerações certas e permanentes	Pessoal de Enfermagem
+6321114	Pessoal Técnico Diagn. e Terapêutica	M	Remunerações certas e permanentes	Pessoal Técnico Diagn. e Terapêutica
+6321115	Pessoal Técnico Superior	M	Remunerações certas e permanentes	Pessoal Técnico Superior
+6321116	Pessoal Assistente Técnico	M	Remunerações certas e permanentes	Pessoal Assistente Técnico
+6321117	Pessoal Assistente Operacional	M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+6321118	Pessoal de Informática	M	Remunerações certas e permanentes	Pessoal de Informática
+6321119	Outro pessoal	A	Remunerações certas e permanentes	Outro pessoal
+63211191	Pessoal Docente	M	Remunerações certas e permanentes	Pessoal Docente
+63211192	Pessoal de Investigação	M	Remunerações certas e permanentes	Pessoal de Investigação
+63211199	Outro pessoal	M	Remunerações certas e permanentes	Outro pessoal
+632112	Pessoal em regime de nomeação transitória e contrato de trabalho em funções públicas a termo resolut	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+6321121	Pessoal Dirigente	M	Remunerações certas e permanentes	Pessoal Dirigente
+6321122	Pessoal Médico	M	Remunerações certas e permanentes	Pessoal Médico
+6321123	Pessoal de Enfermagem	M	Remunerações certas e permanentes	Pessoal de Enfermagem
+6321124	Pessoal Técnico Diagn. e Terapêutica	M	Remunerações certas e permanentes	Pessoal Técnico Diagn. e Terapêutica
+6321125	Pessoal Técnico Superior	M	Remunerações certas e permanentes	Pessoal Técnico Superior
+6321126	Pessoal Assistente Técnico	M	Remunerações certas e permanentes	Pessoal Assistente Técnico
+6321127	Pessoal Assistente Operacional	M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+6321128	Pessoal de Informática	M	Remunerações certas e permanentes	Pessoal de Informática
+6321129	Outro pessoal	A	Remunerações certas e permanentes	Outro pessoal
+63211291	Pessoal Docente	M	Remunerações certas e permanentes	Pessoal Docente
+63211292	Pessoal de Investigação	M	Remunerações certas e permanentes	Pessoal de Investigação
+63211299	Outro pessoal	M	Remunerações certas e permanentes	Outro pessoal
+632113	Pessoal em regime de contrato individual de trabalho a termo resolutivo incerto	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+6321131	Pessoal Dirigente	M	Remunerações certas e permanentes	Pessoal Dirigente
+6321132	Pessoal Médico	M	Remunerações certas e permanentes	Pessoal Médico
+6321133	Pessoal de Enfermagem	M	Remunerações certas e permanentes	Pessoal de Enfermagem
+6321134	Pessoal Técnico Diagn. e Terapêutica	M	Remunerações certas e permanentes	Pessoal Técnico Diagn. e Terapêutica
+6321135	Pessoal Técnico Superior	M	Remunerações certas e permanentes	Pessoal Técnico Superior
+6321136	Pessoal Assistente Técnico	M	Remunerações certas e permanentes	Pessoal Assistente Técnico
+6321137	Pessoal Assistente Operacional	M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+6321138	Pessoal de Informática	M	Remunerações certas e permanentes	Pessoal de Informática
+6321139	Outro pessoal	A	Remunerações certas e permanentes	Outro pessoal
+63211391	Pessoal Docente	M	Remunerações certas e permanentes	Pessoal Docente
+63211392	Pessoal de Investigação	M	Remunerações certas e permanentes	Pessoal de Investigação
+63211399	Outro pessoal	M	Remunerações certas e permanentes	Outro pessoal
+632114	Pessoal em regime de contrato individual de trabalho a termo resolutivo certo	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+6321141	Pessoal Dirigente	M	Remunerações certas e permanentes	Pessoal Dirigente
+6321142	Pessoal Médico	M	Remunerações certas e permanentes	Pessoal Médico
+6321143	Pessoal de Enfermagem	M	Remunerações certas e permanentes	Pessoal de Enfermagem
+6321144	Pessoal Técnico Diagn. e Terapêutica	M	Remunerações certas e permanentes	Pessoal Técnico Diagn. e Terapêutica
+6321145	Pessoal Técnico Superior	M	Remunerações certas e permanentes	Pessoal Técnico Superior
+6321146	Pessoal Assistente Técnico	M	Remunerações certas e permanentes	Pessoal Assistente Técnico
+6321147	Pessoal Assistente Operacional	M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+6321148	Pessoal de Informática	M	Remunerações certas e permanentes	Pessoal de Informática
+6321149	Outro pessoal	A	Remunerações certas e permanentes	Outro pessoal
+63211491	Pessoal Docente	M	Remunerações certas e permanentes	Pessoal Docente
+63211492	Pessoal de Investigação	M	Remunerações certas e permanentes	Pessoal de Investigação
+63211499	Outro pessoal	M	Remunerações certas e permanentes	Outro pessoal
+632115	Pessoal em regime de contrato individual de trabalho sem termo	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+6321151	Pessoal Dirigente	M	Remunerações certas e permanentes	Pessoal Dirigente
+6321152	Pessoal Médico	M	Remunerações certas e permanentes	Pessoal Médico
+6321153	Pessoal de Enfermagem	M	Remunerações certas e permanentes	Pessoal de Enfermagem
+6321154	Pessoal Técnico Diagn. e Terapêutica	M	Remunerações certas e permanentes	Pessoal Técnico Diagn. e Terapêutica
+6321155	Pessoal Técnico Superior	M	Remunerações certas e permanentes	Pessoal Técnico Superior
+6321156	Pessoal Assistente Técnico	M	Remunerações certas e permanentes	Pessoal Assistente Técnico
+6321157	Pessoal Assistente Operacional	M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+6321158	Pessoal de Informática	M	Remunerações certas e permanentes	Pessoal de Informática
+6321159	Outro pessoal	A	Remunerações certas e permanentes	Outro pessoal
+63211591	Pessoal Docente	M	Remunerações certas e permanentes	Pessoal Docente
+63211592	Pessoal de Investigação	M	Remunerações certas e permanentes	Pessoal de Investigação
+63211599	Outro pessoal	M	Remunerações certas e permanentes	Outro pessoal
+632116	Pessoal em cedência de interesse público e em comissão de serviço	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+6321161	Pessoal Dirigente	M	Remunerações certas e permanentes	Pessoal Dirigente
+6321162	Pessoal Médico	M	Remunerações certas e permanentes	Pessoal Médico
+6321163	Pessoal de Enfermagem	M	Remunerações certas e permanentes	Pessoal de Enfermagem
+6321164	Pessoal Técnico Diagn. e Terapêutica	M	Remunerações certas e permanentes	Pessoal Técnico Diagn. e Terapêutica
+6321165	Pessoal Técnico Superior	M	Remunerações certas e permanentes	Pessoal Técnico Superior
+6321166	Pessoal Assistente Técnico	M	Remunerações certas e permanentes	Pessoal Assistente Técnico
+6321167	Pessoal Assistente Operacional	M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+6321168	Pessoal de Informática	M	Remunerações certas e permanentes	Pessoal de Informática
+6321169	Outro pessoal	A	Remunerações certas e permanentes	Outro pessoal
+63211691	Pessoal Docente	M	Remunerações certas e permanentes	Pessoal Docente
+63211692	Pessoal de Investigação	M	Remunerações certas e permanentes	Pessoal de Investigação
+63211699	Outro pessoal	M	Remunerações certas e permanentes	Outro pessoal
+632117	Pessoal em comissão de Serviço Dirigentes	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+632118	Pessoal em mobilidade especial	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+632119	Pessoal em qualquer outra situação	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+6321191	Pessoal Dirigente	M	Remunerações certas e permanentes	Pessoal Dirigente
+6321192	Pessoal Médico	M	Remunerações certas e permanentes	Pessoal Médico
+6321193	Pessoal de Enfermagem	M	Remunerações certas e permanentes	Pessoal de Enfermagem
+6321194	Pessoal Técnico Diagn. e Terapêutica	M	Remunerações certas e permanentes	Pessoal Técnico Diagn. e Terapêutica
+6321195	Pessoal Técnico Superior	M	Remunerações certas e permanentes	Pessoal Técnico Superior
+6321196	Pessoal Assistente Técnico	M	Remunerações certas e permanentes	Pessoal Assistente Técnico
+6321197	Pessoal Assistente Operacional	M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+6321198	Pessoal de Informática	M	Remunerações certas e permanentes	Pessoal de Informática
+6321199	Outro pessoal	A	Remunerações certas e permanentes	Outro pessoal
+63211991	Pessoal Docente	M	Remunerações certas e permanentes	Pessoal Docente
+63211992	Pessoal de Investigação	M	Remunerações certas e permanentes	Pessoal de Investigação
+63211999	Outro pessoal	M	Remunerações certas e permanentes	Outro pessoal
+63212	Subsídio de férias	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+632121	Pessoal Dirigente	M	Remunerações certas e permanentes	Pessoal Dirigente
+632122	Pessoal Médico	M	Remunerações certas e permanentes	Pessoal Médico
+632123	Pessoal de Enfermagem	M	Remunerações certas e permanentes	Pessoal de Enfermagem
+632124	Pessoal Técnico Diagn. e Terapêutica	M	Remunerações certas e permanentes	Pessoal Técnico Diagn. e Terapêutica
+632125	Pessoal Técnico Superior	M	Remunerações certas e permanentes	Pessoal Técnico Superior
+632126	Pessoal Assistente Técnico	M	Remunerações certas e permanentes	Pessoal Assistente Técnico
+632127	Pessoal Assistente Operacional	M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+632128	Pessoal de Informática	M	Remunerações certas e permanentes	Pessoal de Informática
+632129	Outro pessoal	A	Remunerações certas e permanentes	Outro pessoal
+6321291	Pessoal Docente	M	Remunerações certas e permanentes	Pessoal Docente
+6321292	Pessoal de Investigação	M	Remunerações certas e permanentes	Pessoal de Investigação
+6321299	Outro pessoal	M	Remunerações certas e permanentes	Outro pessoal
+63213	Subsídio de Natal	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+632131	Pessoal Dirigente	M	Remunerações certas e permanentes	Pessoal Dirigente
+632132	Pessoal Médico	M	Remunerações certas e permanentes	Pessoal Médico
+632133	Pessoal de Enfermagem	M	Remunerações certas e permanentes	Pessoal de Enfermagem
+632134	Pessoal Técnico Diagn. e Terapêutica	M	Remunerações certas e permanentes	Pessoal Técnico Diagn. e Terapêutica
+632135	Pessoal Técnico Superior	M	Remunerações certas e permanentes	Pessoal Técnico Superior
+632136	Pessoal Assistente Técnico	M	Remunerações certas e permanentes	Pessoal Assistente Técnico
+632137	Pessoal Assistente Operacional	M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+632138	Pessoal de Informática	M	Remunerações certas e permanentes	Pessoal de Informática
+632139	Outro pessoal	A	Remunerações certas e permanentes	Outro pessoal
+6321391	Pessoal Docente	M	Remunerações certas e permanentes	Pessoal Docente
+6321392	Pessoal de Investigação	M	Remunerações certas e permanentes	Pessoal de Investigação
+6321399	Outro pessoal	M	Remunerações certas e permanentes	Outro pessoal
+63214	Despesas de Representação	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+632141	Pessoal em regime de nomeação definitiva e contrato de trabalho em funções públicas por tempo indete	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+632142	Pessoal em regime de nomeação transitória e contrato de trabalho em funções públicas a termo resolut	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+632143	Pessoal em regime de contrato individual de trabalho a termo resolutivo incerto	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+632144	Pessoal em regime de contrato individual de trabalho a termo resolutivo certo	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+632145	Pessoal em regime de contrato individual de trabalho sem termo	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+632146	Pessoal em cedência de interesse público e em comissão de serviço	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+632147	Pessoal em comissão de Serviço Dirigentes	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+632149	Pessoal em qualquer outra situação	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+63215	Subsídio de refeição	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+63216	Gratificações	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+63217	Suplementos e prémios	A	Remunerações certas e permanentes	Gastos pessoal - gerais
+632171	Orgãos de Direção	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+6321710	Pessoal Docente	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+6321711	Pessoal de Investigação	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+6321712	Outro pessoal	M	Remunerações certas e permanentes	Gastos pessoal - gerais
+632172	Pessoal Dirigente	M	Remunerações certas e permanentes	Pessoal Dirigente
+632173	Pessoal Médico	M	Remunerações certas e permanentes	Pessoal Médico
+632174	Pessoal de Enfermagem	M	Remunerações certas e permanentes	Pessoal de Enfermagem
+632175	Pessoal Técnico Diagn. e Terapêutica	M	Remunerações certas e permanentes	Pessoal Técnico Diagn. e Terapêutica
+632176	Pessoal Técnico Superior	M	Remunerações certas e permanentes	Pessoal Técnico Superior
+632177	Pessoal Assistente Técnico	M	Remunerações certas e permanentes	Pessoal Assistente Técnico
+632178	Pessoal Assistente Operacional	M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+632179	Pessoal de Informática	M	Remunerações certas e permanentes	Pessoal de Informática
+63219	Outras	M	Remunerações certas e permanentes	Outro pessoal
+6322	Abonos variáveis ou eventuais	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+632201	Subsídio e abono de fixação, residência e alojamento	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+632202	Alimentação e alojamento	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+632203	Ajudas de custo	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+632204	Trabalho extraordinário	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+6322041	Horas Extraordinárias	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+63220411	Pessoal Médico	M	Abonos variáveis ou eventuais	Pessoal Médico
+63220412	Pessoal de Enfermagem	M	Abonos variáveis ou eventuais	Pessoal de Enfermagem
+63220413	Pessoal Técnico Diagn. e Terapêutica	M	Abonos variáveis ou eventuais	Pessoal Técnico Diagn. e Terapêutica
+63220414	Pessoal Técnico Superior	M	Abonos variáveis ou eventuais	Pessoal Técnico Superior
+63220415	Pessoal Assistente Técnico	M	Abonos variáveis ou eventuais	Pessoal Assistente Técnico
+63220416	Pessoal Assistente Operacional	M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+63220417	Pessoal de Informática	M	Abonos variáveis ou eventuais	Pessoal de Informática
+63220419	Outro pessoal	A	Abonos variáveis ou eventuais	Outro pessoal
+632204191	Pessoal Docente	M	Abonos variáveis ou eventuais	Pessoal Docente
+632204192	Pessoal de Investigação	M	Abonos variáveis ou eventuais	Pessoal de Investigação
+632204199	Outro pessoal	M	Abonos variáveis ou eventuais	Outro pessoal
+6322042	Prevenções	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+63220421	Pessoal Médico	M	Abonos variáveis ou eventuais	Pessoal Médico
+63220422	Pessoal de Enfermagem	M	Abonos variáveis ou eventuais	Pessoal de Enfermagem
+63220423	Pessoal Técnico Diagn. e Terapêutica	M	Abonos variáveis ou eventuais	Pessoal Técnico Diagn. e Terapêutica
+63220424	Pessoal Técnico Superior	M	Abonos variáveis ou eventuais	Pessoal Técnico Superior
+63220425	Pessoal Assistente Técnico	M	Abonos variáveis ou eventuais	Pessoal Assistente Técnico
+63220426	Pessoal Assistente Operacional	M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+63220427	Pessoal de Informática	M	Abonos variáveis ou eventuais	Pessoal de Informática
+63220429	Outro pessoal	A	Abonos variáveis ou eventuais	Outro pessoal
+632204291	Pessoal Docente	M	Abonos variáveis ou eventuais	Pessoal Docente
+632204292	Pessoal de Investigação	M	Abonos variáveis ou eventuais	Pessoal de Investigação
+632204299	Outro pessoal	M	Abonos variáveis ou eventuais	Outro pessoal
+632205	Gratificações variáveis ou eventuais	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+6322051	Prémios de desempenho	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+6322059	Outras	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+632206	Abono para falhas	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+632207	Subsídio de prevenção, trabalho noturno e de turno	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+6322071	Noites e Suplementos	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+63220711	Pessoal Médico	M	Abonos variáveis ou eventuais	Pessoal Médico
+63220712	Pessoal de Enfermagem	M	Abonos variáveis ou eventuais	Pessoal de Enfermagem
+63220713	Pessoal Técnico Diagn. e Terapêutica	M	Abonos variáveis ou eventuais	Pessoal Técnico Diagn. e Terapêutica
+63220714	Pessoal Técnico Superior	M	Abonos variáveis ou eventuais	Pessoal Técnico Superior
+63220715	Pessoal Assistente Técnico	M	Abonos variáveis ou eventuais	Pessoal Assistente Técnico
+63220716	Pessoal Assistente Operacional	M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+63220717	Pessoal de Informática	M	Abonos variáveis ou eventuais	Pessoal de Informática
+63220719	Outro pessoal	A	Abonos variáveis ou eventuais	Outro pessoal
+632207191	Pessoal Docente	M	Abonos variáveis ou eventuais	Pessoal Docente
+632207192	Pessoal de Investigação	M	Abonos variáveis ou eventuais	Pessoal de Investigação
+632207199	Outro pessoal	M	Abonos variáveis ou eventuais	Outro pessoal
+6322072	Subsídio de turno	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+632208	Formação	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+6322081	Tecnologias da Inform. e Comunic. (TIC)	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+6322082	Seminários, exposições e similares	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+6322089	Outras não especificadas	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+632209	Colaboração técnica e especializada	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+632299	Outros abonos variáveis	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+6322991	SIGIC	A	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+63229911	Pessoal Médico	M	Abonos variáveis ou eventuais	Pessoal Médico
+63229912	Pessoal de Enfermagem	M	Abonos variáveis ou eventuais	Pessoal de Enfermagem
+63229913	Pessoal Técnico Diagn. e Terapêutica	M	Abonos variáveis ou eventuais	Pessoal Técnico Diagn. e Terapêutica
+63229914	Pessoal Técnico Superior	M	Abonos variáveis ou eventuais	Pessoal Técnico Superior
+63229915	Pessoal Assistente Técnico	M	Abonos variáveis ou eventuais	Pessoal Assistente Técnico
+63229916	Pessoal Assistente Operacional	M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+63229919	Outros	M	Abonos variáveis ou eventuais	Outro pessoal
+6322999	Outros	M	Abonos variáveis ou eventuais	Gastos pessoal - gerais
+633	Benefícios pós-emprego	A	Outras	Gastos pessoal - gerais
+6331	Prémios para pensões	M	Outras	Gastos pessoal - gerais
+6339	Outros benefícios	M	Outras	Gastos pessoal - gerais
+634	Indeminizações	A	Outras	Gastos pessoal - gerais
+6340	Titulares de orgãos de soberania e membros de orgãos autárquicos	M	Outras	Gastos pessoal - gerais
+6341	Orgãos sociais e de gestão	M	Outras	Gastos pessoal - gerais
+6342	Pessoal	A	Outras	Gastos pessoal - gerais
+63421	Abonos devidos pela cessação da relação jurídica	M	Outras	Gastos pessoal - gerais
+63422	Rescisões por mútuo acordo	M	Outras	Gastos pessoal - gerais
+63429	Outras indemnizações	A	Outras	Gastos pessoal - gerais
+634291	FGCT	M	Outras	Gastos pessoal - gerais
+634292	Subsídio e Subsídio Social Desemprego	M	Outras	Gastos pessoal - gerais
+635	Encargos sobre remunerações	A	Encargos sobre remunerações	Gastos pessoal - gerais
+6351	Sistemas de proteção social	A	Encargos sobre remunerações	Gastos pessoal - gerais
+63511	Segurança Social dos Funcionários Publicos-CGA	A	Encargos sobre remunerações	Gastos pessoal - gerais
+635111	Subsídio de férias	M	Encargos sobre remunerações	Gastos pessoal - gerais
+635112	Subsídio de natal	M	Encargos sobre remunerações	Gastos pessoal - gerais
+635119	Outros encargos	M	Encargos sobre remunerações	Gastos pessoal - gerais
+63512	Segurança Social	A	Encargos sobre remunerações	Gastos pessoal - gerais
+635121	Segurança Social - Regime Geral	A	Encargos sobre remunerações	Gastos pessoal - gerais
+6351211	Subsídio de férias	M	Encargos sobre remunerações	Gastos pessoal - gerais
+6351212	Subsídio de natal	M	Encargos sobre remunerações	Gastos pessoal - gerais
+6351213	Outros encargos	M	Encargos sobre remunerações	Gastos pessoal - gerais
+635122	Segurança Social - Prestações Sociais Diretas	M	Encargos sobre remunerações	Gastos pessoal - gerais
+635129	Outros encargos	M	Encargos sobre remunerações	Gastos pessoal - gerais
+6352	Subsistemas de saúde	M	Encargos sobre remunerações	Gastos pessoal - gerais
+6359	Outros	M	Encargos sobre remunerações	Gastos pessoal - gerais
+636	Acidentes no trabalho e doenças profissionais	A	Outras	Gastos pessoal - gerais
+6361	Acidentes no trabalho	M	Outras	Gastos pessoal - gerais
+6362	Doenças profissionais	M	Outras	Gastos pessoal - gerais
+6363	Seguro de acidentes no trabalho	M	Outras	Gastos pessoal - gerais
+6369	Outros	M	Outras	Gastos pessoal - gerais
+637	Gastos de ação social	A	Outras	Gastos pessoal - gerais
+6371	Serviços sociais da administração pública	M	Outras	Gastos pessoal - gerais
+6372	Encargos sociais voluntários	A	Outras	Gastos pessoal - gerais
+63721	Subsídio social de desemprego	M	Outras	Gastos pessoal - gerais
+63729	Outros não especificados	M	Outras	Gastos pessoal - gerais
+6379	Outros	M	Outras	Gastos pessoal - gerais
+638	Outros gastos com o pessoal	A	Outras	Gastos pessoal - gerais
+6381	Vestuário e artigos pessoais	M	Outras	Gastos pessoal - gerais
+6382	Transporte de pessoal	M	Outras	Gastos pessoal - gerais
+6383	Serviço médico, de enfermagem e assistência social	M	Outras	Gastos pessoal - gerais
+6384	Subsídio por doença	M	Outras	Gastos pessoal - gerais
+6389	Outros	A	Outras	Gastos pessoal - gerais
+63891	Estágios Profissionais	M	Outras	Gastos pessoal - gerais
+63892	Seguros -Estagios Profissionais	M	Outras	Gastos pessoal - gerais
+63899	Outros não especificados	M	Outras	Gastos pessoal - gerais
+639	Outros encargos sociais	A	Outras	Gastos pessoal - gerais
+6391	Remunerações por doença	M	Outras	Gastos pessoal - gerais
+6392	Subsídios de parentalidade	M	Outras	Gastos pessoal - gerais
+6393	Pessoal em reserva ou a aguardar aposentação	A	Outras	Gastos pessoal - gerais
+63931	Pessoal a aguardar aposentação	M	Outras	Gastos pessoal - gerais
+63932	Pensões de reserva	M	Outras	Gastos pessoal - gerais
+6394	Outras pensões	M	Outras	Gastos pessoal - gerais
+6395	Encargos com a saúde	M	Outras	Gastos pessoal - gerais
+6396	Subsídio familiar a crianças e jovens	M	Outras	Gastos pessoal - gerais
+6397	Outras prestações familiares	M	Outras	Gastos pessoal - gerais
+6398	Seguros com o pessoal	M	Outras	Gastos pessoal - gerais
+6399	Outras despesas de segurança social	A	Outras	Gastos pessoal - gerais
+63991	Subsídio mensal vitalício	M	Outras	Gastos pessoal - gerais
+63992	Subsídio de funeral	M	Outras	Gastos pessoal - gerais
+63993	Serviços sociais	M	Outras	Gastos pessoal - gerais
+63999	Outras prestações sociais	M	Outras	Gastos pessoal - gerais
+64	Gastos de depreciação e de amortização	A	Gastos de depreciação e de amortização	
+641	Propriedades de investimento	A	Gastos de depreciação e de amortização	
+6411	Bens de domínio público	M	Gastos de depreciação e de amortização	
+6412	Terrenos e recursos naturais	M	Gastos de depreciação e de amortização	
+6413	Edifícios e outras construções	M	Gastos de depreciação e de amortização	
+6414	Outras propriedades de investimento	M	Gastos de depreciação e de amortização	
+642	Ativos fixos tangíveis	A	Gastos de depreciação e de amortização	
+6420	Bens de domínio público, património histórico, artístico e cultural	M	Gastos de depreciação e de amortização	
+6421	Terrenos e recursos naturais	M	Gastos de depreciação e de amortização	
+6422	Edifícios e outras construções	M	Gastos de depreciação e de amortização	
+6423	Equipamento básico	A	Gastos de depreciação e de amortização	
+64231	Equipamento informático e de telecomunicações	M	Gastos de depreciação e de amortização	
+64232	Equipamento para investigação e formação, de medida e de utilização técnica especial	M	Gastos de depreciação e de amortização	
+64233	Equipamento e material específico dos serviços de saúde	A	Gastos de depreciação e de amortização	
+642331	Equipamentos e aparelhos Médico-cirúrgico	M	Gastos de depreciação e de amortização	
+642332	Equipamento de imagiologia	M	Gastos de depreciação e de amortização	
+642333	Equipamento de laboratório	M	Gastos de depreciação e de amortização	
+642334	Mobiliário hospitalar	M	Gastos de depreciação e de amortização	
+642335	Equipamento de desinfecção, esterilização e incineração	M	Gastos de depreciação e de amortização	
+642336	Equipamento específico de farmácia	M	Gastos de depreciação e de amortização	
+642337	Equipamento de instrução Médica	M	Gastos de depreciação e de amortização	
+642338	Vestuário e calçado	M	Gastos de depreciação e de amortização	
+642339	Outro	M	Gastos de depreciação e de amortização	
+64234	Equipamento e material recreativo, desportivo, de educação e de cultura	M	Gastos de depreciação e de amortização	
+64235	Equipamento e material para serviços de alimentação, rouparia e lavandaria	M	Gastos de depreciação e de amortização	
+64236	Equipamento para agricultura, pesca e jardinagem	M	Gastos de depreciação e de amortização	
+64237	Equipamento e material de apoio à produção	M	Gastos de depreciação e de amortização	
+64238	Equipamento militar, de segurança e defesa	M	Gastos de depreciação e de amortização	
+64239	Outro equipamento básico	M	Gastos de depreciação e de amortização	
+6424	Equipamento de transporte	M	Gastos de depreciação e de amortização	
+6425	Equipamento administrativo	A	Gastos de depreciação e de amortização	
+64251	Equipamento informático e de telecomunicações	A	Gastos de depreciação e de amortização	
+642511	Hardware	M	Gastos de depreciação e de amortização	
+642512	Equipamento informático outros	M	Gastos de depreciação e de amortização	
+64259	Outros	M	Gastos de depreciação e de amortização	
+6426	Equipamentos biológicos	M	Gastos de depreciação e de amortização	
+6427	Outros ativos fixos tangíveis	M	Gastos de depreciação e de amortização	
+643	Ativos intangíveis	A	Gastos de depreciação e de amortização	
+6430	Ativos intangíveis de domínio público, património histórico, artístico e cultural	M	Gastos de depreciação e de amortização	
+6431	Goodwill	M	Gastos de depreciação e de amortização	
+6432	Projetos de desenvolvimento	M	Gastos de depreciação e de amortização	
+6433	Programas de computador e sistemas de informação	M	Gastos de depreciação e de amortização	
+6434	Propriedade industrial e intelectual	M	Gastos de depreciação e de amortização	
+6436	Outros ativos intangíveis	M	Gastos de depreciação e de amortização	
+644	Ativos biológicos	M	Gastos de depreciação e de amortização	
+65	Perdas por imparidade	A	Outros gastos	
+651	Em contas a receber	A	Outros gastos	
+6510	Devedores por transferências, subsídios e empréstimos bonificados	M	Outros gastos	
+6511	Clientes, contribuintes e utentes	M	Outros gastos	
+6519	Outros devedores	M	Outros gastos	
+652	Em inventários	M	Outros gastos	
+653	Em investimentos financeiros	A	Outros gastos	
+6531	Goodwill	M	Outros gastos	
+6532	Outros	M	Outros gastos	
+654	Em propriedades de investimento	M	Outros gastos	
+655	Em ativos fixos tangíveis	M	Outros gastos	
+656	Em ativos intangíveis	M	Outros gastos	
+657	Em investimentos em curso	M	Outros gastos	
+658	Em ativos não correntes detidos para venda	M	Outros gastos	
+659	Em outros ativos	A	Outros gastos	
+6591	Outros ativos financeiros	M	Outros gastos	
+6592	Ativos biológicos	M	Outros gastos	
+6599	Outros	M	Outros gastos	
+66	Perdas por reduções de justo valor	A	Outros gastos	
+661	Em instrumentos financeiros	M	Outros gastos	
+662	Em investimentos financeiros	M	Outros gastos	
+663	Em propriedades de investimento	M	Outros gastos	Gastos pessoal - gerais
+664	Em ativos biológicos	M	Outros gastos	
+67	Provisões do período	A	Outros gastos	
+671	Impostos, contribuições e juros de mora	A	Outros gastos	
+6711	Impostos	M	Outros gastos	
+6712	Contribuições	M	Outros gastos	
+6713	Juros de mora	M	Outros gastos	
+672	Garantias a clientes	M	Outros gastos	
+673	Processos judiciais em curso	M	Outros gastos	
+674	Acidentes de trabalho e doenças profissionais	M	Outros gastos	
+675	Matérias ambientais	M	Outros gastos	
+676	Contratos onerosos	M	Outros gastos	
+677	Reestruturação	M	Outros gastos	
+679	Outras provisões	M	Outros gastos	
+68	Outros gastos	A	Outros gastos	
+681	Impostos e taxas	A	Outros gastos	
+6811	Impostos diretos	A	Outros gastos	
+68111	Imposto municipal sobre imóveis	M	Outros gastos	
+68112	Imposto único de circulação	M	Outros gastos	
+68119	Outros	M	Outros gastos	
+6812	Impostos indiretos	A	Outros gastos	
+68121	IVA Suportado não dedutível	M	Outros gastos	
+68122	IVA Liquidações oficiosas	M	Outros gastos	
+68129	Outros	M	Outros gastos	
+6813	Taxas	M	Outros gastos	
+682	Descontos de pronto pagamento concedidos	M	Outros gastos	
+683	Dívidas incobráveis	M	Outros gastos	
+684	Perdas em inventários	A	Outros gastos	
+6841	Sinistros	M	Outros gastos	
+6842	Quebras	M	Outros gastos	
+6849	Outras	M	Outros gastos	
+685	Gastos em entidades controladas, associadas e empreendimentos conjuntos	A	Outros gastos	
+6851	Cobertura de prejuízos	M	Outros gastos	
+6852	Aplicação do método da equivalência patrimonial	M	Outros gastos	
+6853	Alienações	M	Outros gastos	
+6859	Outros gastos 	M	Outros gastos	
+686	Gastos nos restantes investimentos financeiros	A	Outros gastos	
+6861	Cobertura de prejuízos	M	Outros gastos	
+6862	Alienações	M	Outros gastos	
+6863	Diferenças de câmbio desfavoráveis na atividade de investimento	M	Outros gastos	Gastos pessoal - gerais
+6869	Outros gastos 	M	Outros gastos	
+687	Gastos em investimentos não financeiros	A	Outros gastos	
+6871	Alienações	A	Outros gastos	
+68711	Propriedades de investimento	M	Outros gastos	
+68712	Ativos fixos tangíveis	M	Outros gastos	
+68713	Ativos intangíveis	M	Outros gastos	
+6872	Sinistros	M	Outros gastos	
+6873	Abates	M	Outros gastos	
+6874	Gastos em propriedades de investimento	M	Outros gastos	
+6879	Outros gastos	M	Outros gastos	
+688	Outros	A	Outros gastos	
+6881	Correções relativas a períodos anteriores	A	Outros gastos	
+68811	Correções de impostos diretos	A	Outros gastos	
+688111	Imposto sobre o rendimento das pessoas singulares	M	Outros gastos	
+688112	Imposto sobre o rendimento das pessoas coletivas	M	Outros gastos	
+688113	Derrama	M	Outros gastos	
+688114	Imposto do selo sobre sucessões e doações	M	Outros gastos	
+688115	Imposto municipal sobre imóveis	M	Outros gastos	
+688116	Imposto único de circulação	M	Outros gastos	
+688117	Imposto do uso, porte e detenção de armas	M	Outros gastos	
+688118	Impostos abolidos	M	Outros gastos	
+688119	Outros	M	Outros gastos	
+68812	Correções de impostos indiretos	A	Outros gastos	
+688121	Imposto sobre produtos petrolíferos	M	Outros gastos	
+688122	Imposto sobre valor acrescentado	M	Outros gastos	
+688123	Imposto sobre veículos	M	Outros gastos	
+688124	Imposto de consumo sobre o tabaco	M	Outros gastos	
+688125	Imposto sobre álcool e bebidas alcoólicas	M	Outros gastos	
+688126	Lotarias, apostas mútuas e imposto de jogo	M	Outros gastos	
+688127	Imposto do selo	M	Outros gastos	
+688129	Outros	M	Outros gastos	
+68813	Outras Correções	A	Outros gastos	
+688131	Taxas	M	Outros gastos	
+688139	Outras	M	Outros gastos	
+68814	Devolução de transferências e subsídios obtidos	M	Outros gastos	
+68815	Regularizações a contribuições declaradas	M	Outros gastos	
+68816	Regularizações a prestações sociais	M	Outros gastos	
+68819	Outras	M	Outros gastos	
+6882	Donativos	A	Outros gastos	
+68821	Em numerário	M	Outros gastos	
+68829	Em outros ativos	M	Outros gastos	
+6883	Quotizações	M	Outros gastos	
+6884	Ofertas e amostras de inventários	M	Outros gastos	
+6885	Insuficiência da estimativa para impostos	M	Outros gastos	
+6886	Perdas em instrumentos financeiros	M	Outros gastos	
+6887	Diferenças de câmbio desfavoráveis na atividade operacional	M	Outros gastos	
+6889	Outros não especificados	A	Outros gastos	
+68891	Correntes	M	Outros gastos	
+68892	De capital	M	Outros gastos	
+69	Gastos por juros e outros encargos	A	Outros gastos	
+691	Juros e encargos suportados	A	Outros gastos	
+6910	Juros e encargos correntes de dívida pública	A	Outros gastos	
+69101	Juros	M	Outros gastos	
+69102	Encargos correntes da dívida pública	M	Outros gastos	
+6911	Juros de financiamentos obtidos	M	Outros gastos	
+6912	Juros de locação financeira e concessões	A	Outros gastos	
+69121	Terrenos	M	Outros gastos	
+69122	Habitações	M	Outros gastos	
+69123	Edifícios	M	Outros gastos	
+69124	Construções diversas	M	Outros gastos	
+69125	Viaturas e outro material de transporte	M	Outros gastos	
+69126	Material de informática	M	Outros gastos	
+69127	Maquinaria e equipamento	M	Outros gastos	
+69128	Recursos militares	M	Outros gastos	
+69129	Outros investimentos	M	Outros gastos	
+6913	Juros tributários	A	Outros gastos	
+69131	Indemnizatórios	M	Outros gastos	
+69132	Juros de mora	M	Outros gastos	
+69139	Outros	M	Outros gastos	
+6918	Outros juros	A	Outros gastos	
+69181	Remuneração de depósitos no Tesouro	M	Outros gastos	
+69182	Valor temporal do dinheiro	M	Outros gastos	
+69189	Outros	M	Outros gastos	
+692	Diferenças de câmbio desfavoráveis na atividade de financiamento	A	Outros gastos	
+6921	Relativas a financiamentos obtidos	M	Outros gastos	
+6929	Outras	M	Outros gastos	
+698	Outros gastos de financiamento	A	Outros gastos	
+6981	Relativos a financiamentos obtidos	M	Outros gastos	
+6989	Outros	M	Outros gastos	
+7	Rendimentos	A		
+70	Impostos, contribuições e taxas	A		
+701	Impostos diretos	A		
+70101	Imposto sobre o rendimento das pessoas singulares	M		
+70102	Imposto sobre o rendimento das pessoas coletivas	M		
+70103	Derrama	M		
+70104	Imposto do selo sobre sucessões e doações	M		
+70105	Imposto municipal sobre imóveis	M		
+70106	Imposto único de circulação	A		
+701061	Empresas	M		
+701062	Famílias	M		
+70107	Imposto do uso, porte e detenção de armas	M		
+70199	Outros	M		
+702	Impostos indiretos	A		
+70201	Imposto sobre produtos petrolíferos	M		
+70202	Imposto sobre valor acrescentado	M		
+70203	Imposto sobre veículos	M		
+70204	Imposto de consumo sobre o tabaco	M		
+70205	Imposto sobre álcool e bebidas alcoólicas	M		
+70206	Lotarias, apostas mútuas e imposto do jogo	M		
+70207	Imposto do selo	M		
+70208	Impostos indiretos específicos das autarquias locais	M		
+70209	Impostos indiretos específicos das regiões autónomas	M		
+70210	Imposto municipal sobre as transmissões onerosas de imóveis	M		
+70211	Contribuição do serviço rodoviário	M		
+70212	Contribuição do audiovisual	M		
+70213	Contribuição sobre o setor bancário	M		
+70214	Contribuição sobre o setor energético	M		
+70299	Outros	M		
+703	Contribuições para sistemas de proteção social e subsistemas de saúde	A		
+7031	Sistemas de proteção social	A		
+70311	Quotizações dos trabalhadores	M		
+70312	Contribuições do empregador	M		
+70313	Contribuições de trabalhadores independentes	M		
+70314	Contribuições de inscrição facultativa	M		
+70319	Outras	M		
+7032	Subsistemas de saúde	A		
+70321	Quotizações dos trabalhadores	M		
+70322	Contribuições da entidade empregadora pública	M		
+7039	Outras contribuições	M		
+704	Taxas, multas e outras penalidades	A		
+7041	Taxas	A		
+704101	Taxas de justiça	M	Outras Taxas	
+704102	Taxas de registo de notariado	M	Outras Taxas	
+704103	Taxas de registo predial	M	Outras Taxas	
+704104	Taxas de registo civil	M	Outras Taxas	
+704105	Taxas de registo comercial	M	Outras Taxas	
+704106	Taxas florestais e ambientais	M	Outras Taxas	
+704107	Taxas vinícolas	M	Outras Taxas	
+704108	Taxas moderadoras	A	Taxas moderadoras	
+7041081	Consultas	M	Taxas moderadoras	
+7041082	Urgência/SAP	M	Taxas moderadoras	
+7041083	Meios complementares diagnóst. e terapêutica	M	Taxas moderadoras	
+7041089	Outros	M	Taxas moderadoras	
+704109	Taxas sobre espetáculos e divertimentos	M	Outras Taxas	
+704110	Taxas sobre energia	M	Outras Taxas	
+704111	Taxas sobre geologia e minas	M	Outras Taxas	
+704112	Taxas sobre comercialização e abate de gado	M	Outras Taxas	
+704113	Taxas de portos	M	Taxas de portos	
+704114	Taxas sobre operações de bolsa	M	Outras Taxas	
+704115	Taxas sobre controlo metrológico e de qualidade	M	Outras Taxas	
+704116	Taxas sobre fiscalização de atividades comerciais e industriais	M	Outras Taxas	
+704117	Taxas sobre licenciamentos diversos concedidos a empresas	M	Outras Taxas	
+704118	Taxas sobre o valor de adjudicação de obras públicas	M	Outras Taxas	
+704119	Adicionais	M	Outras Taxas	
+704120	Emolumentos	M	Outras Taxas	
+704121	Portagens	M	Outras Taxas	
+704122	Propinas	M	Outras Taxas	
+704123	Taxas de supervisão e regulação	M	Outras Taxas	
+704199	Outras	M	Outras Taxas	
+7042	Taxas específicas das regiões autónomas	M	Outras Taxas	
+7043	Taxas específicas das autarquias locais	A	Outras Taxas	
+704301	Mercados e feiras	M	Outras Taxas	
+704302	Loteamentos e obras	M	Outras Taxas	
+704303	Ocupação da via pública	M	Outras Taxas	
+704304	Animais	M	Outras Taxas	
+704305	Caça e pesca	M	Outras Taxas	
+704306	Saneamento	M	Outras Taxas	
+704307	Arrendamento urbano	M	Outras Taxas	
+704308	Taxa municipal de direitos de passagem	M	Outras Taxas	
+704309	Taxa sobre o ruído	M	Outras Taxas	
+704310	Licença sobre o ruído	M	Outras Taxas	
+704399	Outras	M	Outras Taxas	
+7044	Multas e outras penalidades	A	Outras Taxas	
+70441	Juros de mora	M	Outras Taxas	
+70442	Juros compensatórios	M	Outras Taxas	
+70443	Multas e coimas por infrações ao Código da Estrada e legislação afim	M	Outras Taxas	
+70444	Coimas e penalidades por contraordenações	M	Outras Taxas	
+70449	Outras multas e penalidades	M	Outras Taxas	
+71	Vendas	A	Vendas	
+711	Mercadorias	M	Vendas	
+712	Produtos acabados e intermédios	A	Vendas	
+71201	Produtos agrícolas e pecuários	M	Vendas	
+71202	Produtos alimentares e bebidas	M	Vendas	
+71203	Livros e documentação técnica	M	Vendas	
+71204	Publicações e impressos	M	Vendas	
+71205	Material de escritório	M	Vendas	
+71206	Fardamentos e artigos pessoais	M	Vendas	
+71207	Bens inutilizados	M	Vendas	
+71208	Matérias de consumo	M	Vendas	
+71299	Outros	M	Vendas	
+713	Subprodutos, desperdícios, resíduos e refugos	M	Vendas	
+714	Ativos biológicos	M	Vendas	
+717	Devoluções de vendas	M	Vendas	
+718	Descontos e abatimentos em vendas	M	Vendas	
+72	Prestações de serviços e concessões	A		
+7201	Serviços específicos do setor da saúde	A		
+72011	SNS - SERVIÇO NAC. SAÚDE (Contrato Programa EPE)	A	Serviços Saúde - Contrato Programa	
+720111	Internamento	A	Serviços Saúde - Contrato Programa	
+7201111	GDH Médicos	M	Serviços Saúde - Contrato Programa	
+7201112	GDH Cirúrgicos	M	Serviços Saúde - Contrato Programa	
+7201113	GDH Cirúrgicos Urgentes	M	Serviços Saúde - Contrato Programa	
+7201114	Dias Internamento Doentes Crónicos	M	Serviços Saúde - Contrato Programa	
+720112	Consulta	A	Serviços Saúde - Contrato Programa	
+7201121	Primeiras Consultas	M	Serviços Saúde - Contrato Programa	
+7201122	Consultas Subsequentes	M	Serviços Saúde - Contrato Programa	
+720113	URGÊNCIA	A	Serviços Saúde - Contrato Programa	
+7201131	Atendimentos (SU-Polivalente)	M	Serviços Saúde - Contrato Programa	
+7201132	Atendimentos (SU-Médico Cirúrgica)	M	Serviços Saúde - Contrato Programa	
+7201133	ECMO (Centros de Oxigenação por Membrana Extracorporal)	M	Serviços Saúde - Contrato Programa	
+7201134	Atendimentos (SU-Básica)	M	Serviços Saúde - Contrato Programa	
+720114	GDH AMBULATÓRIO	A	Serviços Saúde - Contrato Programa	
+7201141	GDH Cirúrgicos	M	Serviços Saúde - Contrato Programa	
+7201142	GDH Médicos	M	Serviços Saúde - Contrato Programa	
+720115	Hospital de dia	M	Serviços Saúde - Contrato Programa	
+720116	OUTRAS PRESTAÇÕES SERVIÇOS SAÚDE	A	Serviços Saúde - Contrato Programa	
+7201161	Serviço Domiciliário	A	Serviços Saúde - Contrato Programa	
+72011611	Visitas domiciliárias	M	Serviços Saúde - Contrato Programa	
+72011612	Hospitalização domiciliária	M	Serviços Saúde - Contrato Programa	
+7201162	Programas de gestão da doença crónica	A	Serviços Saúde - Contrato Programa	
+72011621	VIH/Sida	M	Serviços Saúde - Contrato Programa	
+72011622	Esclerose Multipla	M	Serviços Saúde - Contrato Programa	
+72011623	Hipertensao Pulmonar	M	Serviços Saúde - Contrato Programa	
+72011624	Cancro	A	Serviços Saúde - Contrato Programa	
+720116241	Cancro da Mama	M	Serviços Saúde - Contrato Programa	
+720116242	Cancro do Colo do Útero	M	Serviços Saúde - Contrato Programa	
+720116243	Cancro do Cólon e Reto	M	Serviços Saúde - Contrato Programa	
+720116249	Outros	M	Serviços Saúde - Contrato Programa	
+72011625	Telemonitorização	A	Serviços Saúde - Contrato Programa	
+720116251	Telemonitorização DPOC	M	Serviços Saúde - Contrato Programa	
+720116252	Telemonitorização EAM	M	Serviços Saúde - Contrato Programa	
+720116253	Telemonitorização ICC	M	Serviços Saúde - Contrato Programa	
+720116259	Outros	M	Serviços Saúde - Contrato Programa	
+72011626	PSCI 	M	Serviços Saúde - Contrato Programa	
+72011627	Doenças Lisossomais	M	Serviços Saúde - Contrato Programa	
+72011628	PAF1 - Paramiloidose	M	Serviços Saúde - Contrato Programa	
+72011629	Outros Programas de Gestão da Doença Crónica	M	Serviços Saúde - Contrato Programa	
+7201163	Saúde Sexual e Reprodutiva	A	Serviços Saúde - Contrato Programa	
+72011631	IVG até às 10 semanas	M	Serviços Saúde - Contrato Programa	
+72011632	PMA - Diagnóstico e Tratamento da Infertilidade	M	Serviços Saúde - Contrato Programa	
+72011633	Diagnóstico Pré-Natal	M	Serviços Saúde - Contrato Programa	
+72011634	Banco de Gâmetas	M	Serviços Saúde - Contrato Programa	
+7201164	Incentivos Institucionais  (CP)	M	Serviços Saúde - Contrato Programa	
+7201165	Valor capitacional (ULS)	M	Serviços Saúde - Contrato Programa	
+7201166	Sessões de Radioterapia	M	Serviços Saúde - Contrato Programa	
+7201167	Medicamentos de Cedência em Ambulatório	M	Serviços Saúde - Contrato Programa	
+7201168	Internos	M	Serviços Saúde - Contrato Programa	
+7201169	Outras prestações de serviços	M	Serviços Saúde - Contrato Programa	
+72012	Prestações de Saúde de Financiamento Vertical (ACSS)	A	Serviços Saúde - Contrato Programa	
+720121	convenções Internacionais	M	Serviços Saúde - Contrato Programa	
+720122	Ajudas Técnicas	M	Serviços Saúde - Contrato Programa	
+720123	Transplantes	M	Serviços Saúde - Contrato Programa	
+72013	Outras entidades responsáveis	A	Serviços Saúde - Outras Entidades Responsáveis	
+720131	Internamento	M	Serviços Saúde - Outras Entidades Responsáveis	
+720132	Consulta	M	Serviços Saúde - Outras Entidades Responsáveis	
+720133	URGÊNCIA/SAP	A	Serviços Saúde - Outras Entidades Responsáveis	
+7201331	Urgência	M	Serviços Saúde - Outras Entidades Responsáveis	
+7201332	Serviço de atendimento permanente	M	Serviços Saúde - Outras Entidades Responsáveis	
+7201339	Outros	M	Serviços Saúde - Outras Entidades Responsáveis	
+720134	Quartos particulares	M	Serviços Saúde - Outras Entidades Responsáveis	
+720135	Hospital de dia	M	Serviços Saúde - Outras Entidades Responsáveis	
+720136	Meio Complementares de Diagnóstico e Terapêutica	A	Serviços Saúde - Outras Entidades Responsáveis	
+7201361	Meios de Diagnóstico	A	Serviços Saúde - Outras Entidades Responsáveis	
+72013611	Patologia clínica	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013612	Anatomia patológica	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013613	Imagiologia	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013614	Cardiologia	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013615	Medicina nuclear	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013616	Gastrenterologia	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013619	Outros	M	Serviços Saúde - Outras Entidades Responsáveis	
+7201362	Meios de Terapêutica	A	Serviços Saúde - Outras Entidades Responsáveis	
+72013621	Hemodiálise	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013622	Medicina física e de reabilitação	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013623	Litotrícia	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013624	Quimioterapia	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013625	Radioterapia	M	Serviços Saúde - Outras Entidades Responsáveis	
+72013629	Outros	M	Serviços Saúde - Outras Entidades Responsáveis	
+720137	Serviços domiciliário	M	Serviços Saúde - Outras Entidades Responsáveis	
+720138	GDH AMBULATÓRIO	A	Serviços Saúde - Outras Entidades Responsáveis	
+7201381	GDH Cirúrgicos	M	Serviços Saúde - Outras Entidades Responsáveis	
+7201382	GDH Médicos	M	Serviços Saúde - Outras Entidades Responsáveis	
+720139	Outras prestações de serviços	A	Serviços Saúde - Outras Entidades Responsáveis	
+7201391	Análises sanitárias	M	Serviços Saúde - Outras Entidades Responsáveis	
+7201392	Convenções internacionais	M	Serviços Saúde - Outras Entidades Responsáveis	
+7201393	Unidades terapêuticas de Sangue	M	Serviços Saúde - Outras Entidades Responsáveis	
+7201399	Outras	M	Serviços Saúde - Outras Entidades Responsáveis	
+7202	Serviços específicos do setor da educação	M	Serviços Saúde - Outras Entidades Responsáveis	
+7203	Serviços específicos das autarquias locais	M	Serviços Saúde - Outras Entidades Responsáveis	
+7204	Serviços específicos de outros setores	M	Serviços Saúde - Outras Entidades Responsáveis	
+7205	Concessões	A	Serviços Saúde - Outras Entidades Responsáveis	
+720501	Serviços de saúde	M	Serviços Saúde - Outras Entidades Responsáveis	
+720502	Infraestruturas de transportes e parques de estacionamento	M	Serviços Saúde - Outras Entidades Responsáveis	
+720503	Serviços de transporte	M	Serviços Saúde - Outras Entidades Responsáveis	
+720504	Serviços de alojamento e de restauração	M	Serviços Saúde - Outras Entidades Responsáveis	
+720505	Espaços de desporto, cultura e lazer	M	Serviços Saúde - Outras Entidades Responsáveis	
+720506	Serviço de fornecimento de água	M	Serviços Saúde - Outras Entidades Responsáveis	
+720507	Serviço de recolha e tratamento de resíduos sólidos urbanos	M	Serviços Saúde - Outras Entidades Responsáveis	
+720508	Tecnologias de informação e comunicação	M	Serviços Saúde - Outras Entidades Responsáveis	
+720509	Ativos no subsolo	M	Serviços Saúde - Outras Entidades Responsáveis	
+720599	Outros subcontratos ou concessões	M	Serviços Saúde - Outras Entidades Responsáveis	
+7206	Vistorias e ensaios	M	Serviços Saúde - Outras Entidades Responsáveis	
+7207	Estudos, pareceres, projetos e consultadoria	M	Serviços Saúde - Outras Entidades Responsáveis	
+7208	Serviços sociais, recreativos, culturais e desporto	A	Serviços Saúde - Outras Entidades Responsáveis	
+72081	Alimentação e alojamento	M	Serviços Saúde - Outras Entidades Responsáveis	
+72082	Piscinas	M	Serviços Saúde - Outras Entidades Responsáveis	
+72083	Recintos desportivos	M	Serviços Saúde - Outras Entidades Responsáveis	
+72084	Museus e bibliotecas	M	Serviços Saúde - Outras Entidades Responsáveis	
+72089	Outros	M	Serviços Saúde - Outras Entidades Responsáveis	
+7209	Transporte de doentes	M	Serviços Saúde - Outras Entidades Responsáveis	
+7210	Serviços laboratoriais	M	Serviços Saúde - Outras Entidades Responsáveis	
+7211	Aluguer de equipamentos	M	Serviços Saúde - Outras Entidades Responsáveis	
+7212	Arrendamento	M	Serviços Saúde - Outras Entidades Responsáveis	
+7213	Reparações	M	Serviços Saúde - Outras Entidades Responsáveis	
+7214	Subsistemas de saúde facultativos	M	Serviços Saúde - Outras Entidades Responsáveis	
+7299	Outros serviços	M	Serviços Saúde - Outras Entidades Responsáveis	
+73	Variações nos inventários da produção	A		
+731	Produtos acabados e intermédios	M		
+732	Subprodutos, desperdícios, resíduos e refugos	M		
+733	Produtos e trabalhos em curso	M		
+734	Ativos biológicos	M		
+74	Trabalhos para a própria entidade	A		
+741	Ativos fixos tangíveis	M		
+742	Ativos intangíveis	M		
+743	Propriedades de investimento	M		
+744	Ativos por gastos diferidos	M		
+75	Transferências e subsídios correntes obtidos	A	Transferências e subsídios correntes obtidos	
+751	Transferências correntes 	M	Transferências e subsídios correntes obtidos	
+752	Subsídios correntes	A	Transferências e subsídios correntes obtidos	
+7521	Subsídio ao produto	M	Transferências e subsídios correntes obtidos	
+7522	Subsídio à produção	M	Transferências e subsídios correntes obtidos	
+76	Reversões	A	Outros Ganhos	
+761	De depreciações e de amortizações	A	Outros Ganhos	
+7611	Propriedades de investimento	M	Outros Ganhos	
+7612	Ativos fixos tangíveis	M	Outros Ganhos	
+7613	Ativos intangíveis	M	Outros Ganhos	
+7614	Ativos biológicos	M	Outros Ganhos	
+762	De perdas por imparidade	A	Outros Ganhos	
+7621	Em contas a receber	A	Outros Ganhos	
+76210	Devedores por transferências, subsídios e empréstimos bonificados	M	Outros Ganhos	
+76211	Clientes, contribuintes e utentes	M	Outros Ganhos	
+76219	Outros devedores	M	Outros Ganhos	
+7622	Em inventários	M	Outros Ganhos	
+7623	Em investimentos financeiros	M	Outros Ganhos	
+7624	Em propriedades de investimento	M	Outros Ganhos	
+7625	Em ativos fixos tangíveis	M	Outros Ganhos	
+7626	Em ativos intangíveis	M	Outros Ganhos	
+7627	Em investimentos em curso	M	Outros Ganhos	
+7628	Em ativos não correntes detidos para venda	M	Outros Ganhos	
+7629	Em outros ativos	A	Outros Ganhos	
+76291	Outros ativos financeiros	M	Outros Ganhos	
+76292	Ativos biológicos	M	Outros Ganhos	
+76299	Outros	M	Outros Ganhos	
+763	De provisões	A	Outros Ganhos	
+7631	Impostos, contribuições e juros de mora	A	Outros Ganhos	
+76311	Impostos	M	Outros Ganhos	
+76312	Contribuições	M	Outros Ganhos	
+76313	Juros de mora	M	Outros Ganhos	
+7632	Garantias a clientes	M	Outros Ganhos	
+7633	Processos judiciais em curso	M	Outros Ganhos	
+7634	Acidentes de trabalho e doenças profissionais	M	Outros Ganhos	
+7635	Matérias ambientais	M	Outros Ganhos	
+7636	Contratos onerosos	M	Outros Ganhos	
+7637	Reestruturação	M	Outros Ganhos	
+7639	Outras provisões	M	Outros Ganhos	
+77	Ganhos por aumentos de justo valor	A	Outros Ganhos	
+771	Em instrumentos financeiros	M	Outros Ganhos	
+772	Em investimentos financeiros	M	Outros Ganhos	
+773	Em propriedades de investimento	M	Outros Ganhos	
+774	Em ativos biológicos	M	Outros Ganhos	
+78	Outros rendimentos	A	Outros Ganhos	
+780	Outros rendimentos do Estado	M	Outros Ganhos	
+781	Rendimentos suplementares	A	Outros Ganhos	
+7811	Serviços sociais	M	Outros Ganhos	
+7812	Arrendamento de espaços e aluguer de equipamento	M	Outros Ganhos	
+7813	Estudos, projetos e assistência tecnológica	M	Outros Ganhos	
+7814	Royalties	M	Outros Ganhos	
+7815	Desempenho de atividades noutras entidades	M	Outros Ganhos	
+7819	Outros rendimentos suplementares	A	Outros Ganhos	
+78191	Específicos do setor da saúde	A	Outros Ganhos	
+781911	Reembolsos de alimentação	M	Reembolsos	
+781912	Reembolsos de vencimentos	M	Reembolsos	
+781913	Reembolsos de Produtos Farmacêuticos	M	Reembolsos	
+781914	Reembolsos de Meios Complementares de Diagnóstico e Terapêutica	M	Reembolsos	
+781919	Outros	M	Reembolsos	
+78199	Outros rendimentos	M	Reembolsos	
+782	Descontos de pronto pagamento obtidos	M	Descontos de pronto pagamento obtidos	
+783	Recuperação de contas a receber	M	Outros Ganhos	
+784	Ganhos em inventários	A	Outros Ganhos	
+7841	Sinistros 	M	Outros Ganhos	
+7842	Sobras	M	Outros Ganhos	
+7849	Outros ganhos	M	Outros Ganhos	
+785	Rendimentos em entidades controladas, associadas e empreendimentos conjuntos	A	Outros Ganhos	
+7851	Aplicação do método da equivalência patrimonial	M	Outros Ganhos	
+7852	Alienações	M	Outros Ganhos	
+7859	Outros rendimentos 	M	Outros Ganhos	
+786	Rendimentos nos restantes ativos financeiros	A	Outros Ganhos	
+7861	Diferenças de câmbio favoráveis na atividade de investimento	M	Outros Ganhos	
+7862	Alienações	M	Outros Ganhos	
+7869	Outros rendimentos 	M	Outros Ganhos	
+787	Rendimentos em investimentos não financeiros	A	Outros Ganhos	
+7871	Alienações	A	Outros Ganhos	
+78711	Propriedades de investimento	M	Outros Ganhos	
+78712	Ativos fixos tangíveis	M	Outros Ganhos	
+78713	Ativos intangíveis	M	Outros Ganhos	
+7872	Sinistros 	M	Outros Ganhos	
+7873	Rendas em propriedades de investimento	A	Outros Ganhos	
+78730	Bens de domínio público	M	Outros Ganhos	
+78731	Terrenos	M	Outros Ganhos	
+78732	Edifícios e outras construções	M	Outros Ganhos	
+7879	Outros rendimentos	M	Outros Ganhos	
+788	Outros	A	Outros Ganhos	
+7880	Outros rendimentos do Estado	A	Outros Ganhos	
+78801	Rendimentos correntes	A	Outros Ganhos	
+788011	Prémios, taxas por garantia de risco e diferenças de câmbio	M	Outros Ganhos	
+788012	Produto da venda de valores desamoedados	M	Outros Ganhos	
+788013	Lucros de amoedação	M	Outros Ganhos	
+788019	Outros rendimentos correntes	M	Outros Ganhos	
+78802	Rendimentos de capital	A	Outros Ganhos	
+788021	Indemnizações	M	Outros Ganhos	
+788029	Outros rendimentos de capital	M	Outros Ganhos	
+7881	Correções relativas a períodos anteriores	A	Outros Ganhos	
+78811	Correções de impostos diretos 	A	Outros Ganhos	
+788111	Imposto sobre o rendimento das pessoas singulares	M	Outros Ganhos	
+788112	Imposto sobre o rendimento das pessoas coletivas	M	Outros Ganhos	
+788113	Derrama	M	Outros Ganhos	
+788114	Imposto municipal sobre imóveis	M	Outros Ganhos	
+788115	Imposto único de circulação	M	Outros Ganhos	
+788116	Imposto do uso, porte e detenção de armas	M	Outros Ganhos	
+788117	Impostos abolidos	M	Outros Ganhos	
+788119	Outros	M	Outros Ganhos	
+78812	Correções de impostos indiretos	A	Outros Ganhos	
+7881201	Imposto sobre valor acrescentado	M	Outros Ganhos	
+7881202	Imposto sobre produtos petrolíferos	M	Outros Ganhos	
+7881203	Imposto sobre veículos	M	Outros Ganhos	
+7881204	Imposto de consumo sobre o tabaco	M	Outros Ganhos	
+7881205	Imposto sobre álcool e bebidas alcoólicas	M	Outros Ganhos	
+7881206	Jogos sociais e imposto de jogo	M	Outros Ganhos	
+7881207	Imposto de selo	M	Outros Ganhos	
+7881208	Contribuição do serviço rodoviário	M	Outros Ganhos	
+7881209	Contribuição do audiovisual	M	Outros Ganhos	
+7881299	Outros	M	Outros Ganhos	
+78813	Correção de taxas	M	Outros Ganhos	
+78814	Devolução de transferências concedidas por incumprimento	M	Outros Ganhos	
+78815	Regularizações a contribuições declaradas	M	Outros Ganhos	
+78819	Outras	M	Outros Ganhos	
+7882	Excesso de estimativa para impostos	M	Outros Ganhos	
+7883	Imputação de subsídios e transferências para investimentos	M	Outros Ganhos	
+7884	Ganhos em outros instrumentos financeiros	M	Outros Ganhos	
+7885	Restituição de impostos	M	Outros Ganhos	
+7886	Diferenças de câmbio favoráveis na atividade operacional	M	Outros Ganhos	
+7889	Outros não especificados	A	Outros Ganhos	
+78891	Correntes	M	Outros Ganhos	
+78892	De capital	M	Outros Ganhos	
+79	Juros, dividendos e outros rendimentos similares	A	Outros Ganhos	
+790	Gestão da tesouraria e da dívida direta do Estado	A	Outros Ganhos	
+7901	Emissão e gestão da dívida direta do Estado ou das Regiões Autónomas	M	Outros Ganhos	
+7902	Gestão da Tesouraria do Estado ou das Regiões Autónomas	M	Outros Ganhos	
+791	Juros obtidos	A	Outros Ganhos	
+7911	Residentes	M	Outros Ganhos	
+7912	Não residentes	M	Outros Ganhos	
+7918	Valor temporal do dinheiro	M	Outros Ganhos	
+792	Dividendos obtidos	A	Outros Ganhos	
+7921	Entidades controladas, associadas e empreendimentos conjuntos	M	Outros Ganhos	
+7922	Outras entidades	M	Outros Ganhos	
+793	Diferenças de câmbio favoráveis na atividade de financiamento	M	Outros Ganhos	
+799	Outros rendimentos similares	M	Outros Ganhos	
+632299162		M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+632299161		M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+632207162		M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+632207161		M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+632204262		M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+632204261		M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+632204162		M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+632204161		M	Abonos variáveis ou eventuais	Pessoal Assistente Operacional
+6321372		M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+6321371		M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+6321272		M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+6321271		M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+63211572		M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+63211571		M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+63211372		M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+63211172		M	Remunerações certas e permanentes	Pessoal Assistente Operacional
+63211171		M	Remunerações certas e permanentes	Pessoal Assistente Operacional

@@ -1,0 +1,554 @@
+cc_lancamento;designacao;cc_producao;criterio
+11001;Unidades De Convalescença;;Sem produção associada
+11002;Unidades De Cuidados Paliativos;;Sem produção associada
+1110101;Medicina A;11101;CC de acumulação do mapa oficial
+1110102;Medicina B;11101;CC de acumulação do mapa oficial
+11102;Cardiologia;;Sem produção associada
+11103;Dermato Venereologia;;Sem produção associada
+11104;Endocrinologia E Nutrição;;Sem produção associada
+11105;Gastrenterologia;;Sem produção associada
+11106;Doenças Infecciosas;;Sem produção associada
+11107;Medicina Física E De Reabilitação;;Sem produção associada
+11108;Nefrologia;;Sem produção associada
+11109;Neurologia;;Sem produção associada
+11110;Pneumologia;;Sem produção associada
+11112;Reumatologia;;Sem produção associada
+11113;Hematologia Clínica;;Sem produção associada
+11114;Oncologia Médica;;Sem produção associada
+11115;Neurorradiologia;;Sem produção associada
+11116;Imunoalergologia;;Sem produção associada
+11117;Medicina Nuclear;;Sem produção associada
+11118;Imuno- Hemoterapia;;Sem produção associada
+11119;Medicina Intensiva;;Sem produção associada
+11120;Radioncologia;;Sem produção associada
+11121;Medicina Paliativa;11121;Correspondência direta
+11198;Custos Comuns/Gerais;;Sem produção associada
+11199;Outras Especialidades;;Sem produção associada
+11201;Cirurgia Geral;11201;Correspondência direta
+11202;Cirurgia Maxilo - Facial;;Sem produção associada
+11203;Cirurgia Plástica Reconstrutiva E Estética;;Sem produção associada
+11204;Cirurgia Cárdio - Torácica;;Sem produção associada
+11205;Angiologia E Cirurgia Vascular;;Sem produção associada
+11206;Neurocirurgia;;Sem produção associada
+1120701;Oftalmologia;;Sem produção associada
+1120702;Cri - Oftalmologia;;Sem produção associada
+1120801;Ortopedia;11208;CC de acumulação do mapa oficial
+1120802;Cri - Ortopedia;11208;CC de acumulação do mapa oficial
+11209;Otorrinolaringologia;;Sem produção associada
+11210;Cirurgia Cardíaca;;Sem produção associada
+11211;Urologia;;Sem produção associada
+11212;Cirurgia Torácica;;Sem produção associada
+11218;Estomatologia;;Sem produção associada
+11219;Cirurgia De Cabeça E Pescoço;;Sem produção associada
+11298;Custos Comuns/Gerais;;Sem produção associada
+11299;Outras Especialidades;;Sem produção associada
+11301;Obstetrícia;;Sem produção associada
+11302;Ginecologia;;Sem produção associada
+11303;Ginecologia - Obstetrícia;;Sem produção associada
+11401;Pediatria;;Sem produção associada
+11402;Cirurgia Pediátrica;;Sem produção associada
+11403;Neonatologia;;Sem produção associada
+11404;Cardiologia Pediátrica;;Sem produção associada
+114051;Infância;;Sem produção associada
+114052;Adolescência;;Sem produção associada
+11498;INT Custos Comuns/Gerais da Medicina da Criança e do Adolescente;;Sem produção associada
+11501;Medicina Interna;11501;Correspondência direta
+11502;Cardiologia;;Sem produção associada
+11503;Dermato - Venereologia;;Sem produção associada
+11504;Endocrinologia E Nutrição;;Sem produção associada
+11505;Gastrenterologia;;Sem produção associada
+11506;Doenças Infecciosas;;Sem produção associada
+11507;Medicina Física E De Reabilitação;;Sem produção associada
+11508;Nefrologia;;Sem produção associada
+11509;Neurologia;;Sem produção associada
+11510;Pneumologia;;Sem produção associada
+11511;Reumatologia;;Sem produção associada
+11512;Hematologia Clínica;;Sem produção associada
+11513;Oncologia Médica;;Sem produção associada
+11514;Genética Médica;;Sem produção associada
+11515;Imunoalergologia;;Sem produção associada
+11516;Medicina Nuclear;;Sem produção associada
+11517;Imuno-Hemoterapia;;Sem produção associada
+11518;Radioncologia;;Sem produção associada
+11519;Cirurgia Geral;;Sem produção associada
+11520;Cirurgia Maxilo - Facial;;Sem produção associada
+11521;Cirurgia Plástica Reconstrutiva E Estética;;Sem produção associada
+11522;Cirurgia Cárdio - Torácica;;Sem produção associada
+11523;Angiologia E Cirurgia Vascular;;Sem produção associada
+11524;Neurocirurgia;;Sem produção associada
+11525;Oftalmologia;;Sem produção associada
+11526;Ortopedia;;Sem produção associada
+11527;Otorrinolaringologia;;Sem produção associada
+11528;Cirurgia Cardíaca;;Sem produção associada
+11529;Urologia;;Sem produção associada
+11530;Cirurgia Torácica;;Sem produção associada
+11531;Estomatologia;;Sem produção associada
+11532;Obstetrícia;;Sem produção associada
+11533;Ginecologia;;Sem produção associada
+11534;Ginecologia - Obstetrícia;;Sem produção associada
+11535;Pediatria;;Sem produção associada
+11536;Cirurgia Pediátrica;;Sem produção associada
+11537;Neonatologia;;Sem produção associada
+11538;Cardiologia Pediátrica;;Sem produção associada
+11539;Psiquiatria;;Sem produção associada
+11540;Psiquiatria Da Infância E Da Adolescência;;Sem produção associada
+11541;Transplantes;;Sem produção associada
+11598;Custos Comuns/Gerais;;Sem produção associada
+11599;Outras Especialidades;;Sem produção associada
+11601;Uci Polivalente;11601;Correspondência direta
+11602;Uci Cardiologia;;Sem produção associada
+11603;Uci Pediatria;;Sem produção associada
+11604;Uci Neurocirurgia;;Sem produção associada
+11605;Uci Gastrenterologia;;Sem produção associada
+11606;Uci Cirurgia Geral;;Sem produção associada
+11607;Uci Psiquiatria;;Sem produção associada
+11608;Uci Angiologia E Cirurgia Vascular;;Sem produção associada
+11609;Uci Cirurgia Cárdio - Torácica;;Sem produção associada
+11610;Uci Doenças Infecciosas;;Sem produção associada
+11611;Uci Ginecologia - Obstetrícia;;Sem produção associada
+11612;Uci Nefrologia;;Sem produção associada
+11613;Uci Neonatologia;;Sem produção associada
+11614;Uci Pneumologia;;Sem produção associada
+11615;Uci Transplantes;;Sem produção associada
+11616;Uci Urologia;;Sem produção associada
+11617;Unidade De Queimados;;Sem produção associada
+11618;Uci Hematologia Clínica;;Sem produção associada
+11619;Uci Cirurgia Cardíaca;;Sem produção associada
+11620;Uci Cirurgia Torácica;;Sem produção associada
+11699;Outras Especialidades;;Sem produção associada
+117;UNIDADE DE INTERNAMENTO MÉDICO-CIRURGICO;;Sem produção associada
+11801;Agudos;;Sem produção associada
+11802;Reabilitação Psicossocial;;Sem produção associada
+11803;Residentes;;Sem produção associada
+11804;Alcoologia;;Sem produção associada
+11805;Toxicodependência;;Sem produção associada
+11806;Psiquiatria Forense;;Sem produção associada
+11807;Curta Duração;;Sem produção associada
+11808;Reabilitação Psicossocial Na Comunidade;;Sem produção associada
+119;Unidades De Transplantes;;Sem produção associada
+12101;Polivalente;;Sem produção associada
+12102;Hematologia Clínica;;Sem produção associada
+12103;Nefrologia;;Sem produção associada
+121041;Hospital De Dia De Psiquiatria;;Sem produção associada
+121042;Unidades Sócio Ocupacionais;;Sem produção associada
+121043;Saúde Mental Na Comunidade;;Sem produção associada
+12105;Doenças Infecciosas;;Sem produção associada
+12106;Imuno - Hemoterapia;12106;Correspondência direta
+12107;Imunoalergologia;;Sem produção associada
+12108;Dermato - Venereologia;;Sem produção associada
+12109;Pneumologia;;Sem produção associada
+12110;Ginecologia - Obstetrícia;;Sem produção associada
+12111;Urologia;;Sem produção associada
+12112;Ortopedia;;Sem produção associada
+12113;Estomatologia;;Sem produção associada
+12114;Cirurgia Geral;;Sem produção associada
+12115;Pediatria;;Sem produção associada
+12116;Endocrinologia E Nutrição;;Sem produção associada
+12117;Cirurgia Maxilo - Facial;;Sem produção associada
+12118;Anestesiologia;;Sem produção associada
+12119;Cardiologia;;Sem produção associada
+12120;Neurologia;;Sem produção associada
+12121;Gastrenterologia;;Sem produção associada
+12122;Oftalmologia;;Sem produção associada
+12123;Oncologia Médica;12123;Correspondência direta
+12124;Otorrinolaringologia;;Sem produção associada
+121251;Infância;;Sem produção associada
+121252;Adolescência;;Sem produção associada
+121253;Saúde Mental Na Comunidade;;Sem produção associada
+12126;Radioncologia;;Sem produção associada
+12127;Reumatologia;;Sem produção associada
+12128;Medicina Interna;12128;Correspondência direta
+12129;Angiologia E Cirurgia Vascular;;Sem produção associada
+12130;Cardiologia Pediátrica;;Sem produção associada
+12131;Medicina Paliativa;12131;Correspondência direta
+12132;Cirurgia Pediátrica;;Sem produção associada
+12133;Medicina Nuclear;;Sem produção associada
+12134;Medicina Física E De Reabilitação;;Sem produção associada
+12135;Transplantes;;Sem produção associada
+12136;Cirurgia De Cabeça E Pescoço;;Sem produção associada
+12198;Hdi - Custos Gerais;;Sem produção associada
+1219901;UMA - Unidade de Medicina de Ambulatório;12199;CC de acumulação do mapa oficial
+1219909;Outras Especialidades;12199;CC de acumulação do mapa oficial
+12201101;Atendimento Geral - Hla;12201;Ascendente por código hierárquico do CC de acumulação
+12201102;Atendimento Pediatrico - Hla;12201;Ascendente por código hierárquico do CC de acumulação
+12201103;S.O.;12201;Ascendente por código hierárquico do CC de acumulação
+12201104;Vmer;12201;Ascendente por código hierárquico do CC de acumulação
+12201201;Sub-Alcácer Do Sal;12201;Ascendente por código hierárquico do CC de acumulação
+12201202;Siv - Alcacer;12201;Ascendente por código hierárquico do CC de acumulação
+12201203;Sub - Odemira;12201;Ascendente por código hierárquico do CC de acumulação
+12201204;Siv - Odemira;12201;Ascendente por código hierárquico do CC de acumulação
+122021;URGÊNCIA PEDIÁTRICA GERAL;122021;Correspondência direta
+122022;Psiquiatria Da Infância E Da Adolescência;;Sem produção associada
+12203;Urgência Ginecologia - Obstetrícia / So;;Sem produção associada
+12204;Urgência Psiquiátrica / So;;Sem produção associada
+12298;URG Custos Comuns/Gerais;;Sem produção associada
+12301;Angiologia E Cirurgia Vascular;;Sem produção associada
+12302;Anestesiologia;12302;Correspondência direta
+12303;Cardiologia;12303;Correspondência direta
+12304;Cardiologia Pediátrica;;Sem produção associada
+12305;Cirurgia Cárdio - Torácica;;Sem produção associada
+12306;Cirurgia Geral;12306;Correspondência direta
+12307;Cirurgia Maxilo - Facial;;Sem produção associada
+12308;Cirurgia Pediátrica;;Sem produção associada
+12309;Cirurgia Plástica Reconstrutiva E Estética;;Sem produção associada
+12310;Dermato - Venereologia;;Sem produção associada
+12311;Doenças Infecciosas;;Sem produção associada
+1231201;Endocrinologia;;Sem produção associada
+1231202;Nutrição;;Sem produção associada
+12313;Estomatologia;;Sem produção associada
+12314;Genética Médica;;Sem produção associada
+12315;Ginecologia - Obstetrícia;12315;Correspondência direta
+12316;Gastrenterologia;12316;Correspondência direta
+12317;Hematologia Clínica;;Sem produção associada
+12318;Anatomia Patológica;;Sem produção associada
+12319;Imunoalergologia;;Sem produção associada
+12320;Imuno-Hemoterapia;12320;Correspondência direta
+12321;Medicina Física E De Reabilitação;12321;Correspondência direta
+12322;Medicina Interna;12322;Correspondência direta
+12323;Medicina Do Trabalho;12323;Correspondência direta
+12324;Medicina Tropical;;Sem produção associada
+12325;Nefrologia;;Sem produção associada
+12326;Neurocirurgia;;Sem produção associada
+12327;Neurologia;12327;Correspondência direta
+12328;Cirurgia Cardíaca;;Sem produção associada
+12329;Cirurgia Torácica;;Sem produção associada
+1233001;Ortótica;12330;CC de acumulação do mapa oficial
+1233002;Oftalmologia;12330;CC de acumulação do mapa oficial
+1233003;Cri - Consulta Ortotica;12330;CC de acumulação do mapa oficial
+1233004;Cri - Consulta Oftalmologia;12330;CC de acumulação do mapa oficial
+12331;Oncologia Médica;12331;Correspondência direta
+12332;Otorrinolaringologia;12332;Correspondência direta
+1233301;Ortopedia;12333;CC de acumulação do mapa oficial
+1233302;Cri - Ortopedia;12333;CC de acumulação do mapa oficial
+12334;Pediatria;12334;Correspondência direta
+12335;Pneumologia;12335;Correspondência direta
+123361;Consulta Hospitalar Psiquiatria;12336;CC de acumulação do mapa oficial
+123362;Saúde Mental Na Comunidade;12336;CC de acumulação do mapa oficial
+123371;Consulta Hospitalar;;Sem produção associada
+123372;Saúde Mental Na Comunidade;;Sem produção associada
+12338;Radioncologia;;Sem produção associada
+12339;Reumatologia;;Sem produção associada
+12340;Urologia;12340;Correspondência direta
+12341;Farmacologia Clínica;;Sem produção associada
+12342;Ginecologia;;Sem produção associada
+12343;Medicina Nuclear;;Sem produção associada
+12344;Medicina Intensiva;;Sem produção associada
+12345;Neurorradiologia;;Sem produção associada
+12346;Obstetrícia;;Sem produção associada
+12347;Radiologia;;Sem produção associada
+1234801;Paliativos;12348;CC de acumulação do mapa oficial
+1234802;Paliativos - Domicilio;12348;CC de acumulação do mapa oficial
+12349;Patologia Clínica;;Sem produção associada
+12350;Medicina Dentária;;Sem produção associada
+12351;Neonatologia;;Sem produção associada
+12352;Transplantes;;Sem produção associada
+12353;Cirurgia De Cabeça E Pescoço;;Sem produção associada
+12354;Unidade De Atendimento Não Programado;;Sem produção associada
+12355;Consulta De Risco Familiar E Prevenção;;Sem produção associada
+12356;Consulta De Feridas;;Sem produção associada
+12357;Estomoterapia;;Sem produção associada
+12398;Custos Comuns/Gerais;;Sem produção associada
+1239901;Senologia;12399;CC de acumulação do mapa oficial
+1239902;Consulta Viajante;12399;CC de acumulação do mapa oficial
+1239903;Autoimunes;12399;CC de acumulação do mapa oficial
+1239904;Diabetes;12399;CC de acumulação do mapa oficial
+1239905;Telemedicina;12399;CC de acumulação do mapa oficial
+123990601;Consulta De Pequena Cirurgia - Hla;12399;Ascendente por código hierárquico do CC de acumulação
+123990602;Consulta De Pequena Cirurgia - Alcacer Do Sal;12399;Ascendente por código hierárquico do CC de acumulação
+123990603;Consulta De Pequena Cirurgia - Grandola;12399;Ascendente por código hierárquico do CC de acumulação
+123990604;Consulta De Pequena Cirurgia - Odemira;12399;Ascendente por código hierárquico do CC de acumulação
+1240101;Alcacer Do Sal;;Sem produção associada
+1240102;Grandola;;Sem produção associada
+1240103;Santiago Do Cacem;;Sem produção associada
+1240104;Sines;;Sem produção associada
+1240105;Odemira;;Sem produção associada
+12402;EQUIPAS DE APOIO DOMICILIÁRIO;;Sem produção associada
+12501;Angiologia E Cirurgia Vascular;;Sem produção associada
+12502;Cardiologia;;Sem produção associada
+12503;Cirurgia Cardio-Torácica;;Sem produção associada
+12504;Cirurgia Cardíaca;;Sem produção associada
+12505;Cirurgia Geral;12505;Correspondência direta
+12506;Cirurgia Maxilo-Facial;;Sem produção associada
+12507;Cirurgia Pediátrica;;Sem produção associada
+12508;Cirurgia Plástica Reconstrutiva E Estética;;Sem produção associada
+12509;Dermato-Venereologia;;Sem produção associada
+12510;Doenças Infecciosas;;Sem produção associada
+12511;Endocrinologia E Nutrição;;Sem produção associada
+12512;Estomatologia;;Sem produção associada
+12513;Gastrenterologia;;Sem produção associada
+12514;Genética Médica;;Sem produção associada
+12515;Ginecologia;12515;Correspondência direta
+12516;Ginecologia-Obstetrícia;;Sem produção associada
+12517;Hematologia Clínica;;Sem produção associada
+12518;Imunoalergologia;;Sem produção associada
+12519;Imuno-Hemoterapia;;Sem produção associada
+12520;Medicina Física E De Reabilitação;;Sem produção associada
+12521;Medicina Intensiva;;Sem produção associada
+12522;Medicina Interna;;Sem produção associada
+12523;Medicina Nuclear;;Sem produção associada
+12524;Neurologia;;Sem produção associada
+12525;Neurorradiologia;;Sem produção associada
+12526;Nefrologia;;Sem produção associada
+12527;Neurocirurgia;;Sem produção associada
+12528;Obstetrícia;;Sem produção associada
+1252901;Oftalmologia;12529;CC de acumulação do mapa oficial
+1252902;Cri - Oftalmologia;12529;CC de acumulação do mapa oficial
+12530;Oncologia Médica;;Sem produção associada
+12531;Ortopedia;12531;Correspondência direta
+12532;Otorrinolaringologia;12532;Correspondência direta
+12533;Patologia Clínica;;Sem produção associada
+12534;Radiologia;;Sem produção associada
+12535;Radioncologia;;Sem produção associada
+12536;Reumatologia;;Sem produção associada
+12537;Urologia;12537;Correspondência direta
+12538;Cirurgia Torácica;;Sem produção associada
+12539;Pneumologia;;Sem produção associada
+12540;Cirurgia De Cabeça E Pescoço;;Sem produção associada
+12598;Custos Comuns/Gerais;;Sem produção associada
+12599;Outras Especialidades;;Sem produção associada
+1261;Psiquiatria;;Sem produção associada
+1262;Psiquiatria Da Infância E Da Adolescência;;Sem produção associada
+1270101;USF MODELO A;;Sem produção associada
+1270102101;USF - Arrozais;1270102;Ascendente por código hierárquico do CC de acumulação
+1270102102;USF - Polo Casebres;1270102;Ascendente por código hierárquico do CC de acumulação
+1270102103;USF - Polo Palma;1270102;Ascendente por código hierárquico do CC de acumulação
+1270102104;USF - Polo Santa Susana;1270102;Ascendente por código hierárquico do CC de acumulação
+12701022;USFGRANDOLA;1270102;CC de acumulação do mapa oficial
+12701023;USF SANTIAGO DO CACEM;1270102;CC de acumulação do mapa oficial
+1270102401;Usf - Porto De Mar;1270102;Ascendente por código hierárquico do CC de acumulação
+12701025;USF ODEMIRA;1270102;CC de acumulação do mapa oficial
+1270103;USF MODELO C;;Sem produção associada
+12702101;Ucsp - Polo De Alcácer Do Sal;12702;Ascendente por código hierárquico do CC de acumulação
+12702102;Ucsp - Polo Do Torrão;12702;Ascendente por código hierárquico do CC de acumulação
+12702103;Ucsp - Polo Da Comporta;12702;Ascendente por código hierárquico do CC de acumulação
+12702104;Ucsp - Polo De Santa Susana;12702;Ascendente por código hierárquico do CC de acumulação
+12702105;Ucsp - Polo De Palma;12702;Ascendente por código hierárquico do CC de acumulação
+12702106;Ucsp - Polo De Casebres;12702;Ascendente por código hierárquico do CC de acumulação
+12702201;Ucsp -Polo De Grândola;12702;Ascendente por código hierárquico do CC de acumulação
+12702202;Ucsp -Polo De Melides;12702;Ascendente por código hierárquico do CC de acumulação
+12702203;Ucsp - Polo Do Carvalhal;12702;Ascendente por código hierárquico do CC de acumulação
+12702204;Ucsp - Polo De Azinheira De Barros;12702;Ascendente por código hierárquico do CC de acumulação
+12702205;Ucsp - Polo Do Lousal;12702;Ascendente por código hierárquico do CC de acumulação
+12702299;Ucsp - Outros Polos;12702;Ascendente por código hierárquico do CC de acumulação
+12702301;Ucsp - Polo De Santiago Do Cacém;12702;Ascendente por código hierárquico do CC de acumulação
+12702302;Ucsp - Polo De Santo André;12702;Ascendente por código hierárquico do CC de acumulação
+12702303;Ucsp - Polo De Alvalade Sado;12702;Ascendente por código hierárquico do CC de acumulação
+12702304;Ucsp - Polo Do Cercal Alentejo;12702;Ascendente por código hierárquico do CC de acumulação
+12702305;Ucsp - Polo De Ermidas-Sado;12702;Ascendente por código hierárquico do CC de acumulação
+12702306;Ucsp - Polo De S.Domingos;12702;Ascendente por código hierárquico do CC de acumulação
+12702307;Ucsp - Polo Da Abela;12702;Ascendente por código hierárquico do CC de acumulação
+12702399;Ucsp - Outros Polos;12702;Ascendente por código hierárquico do CC de acumulação
+12702401;Ucsp - Polo De Sines;12702;Ascendente por código hierárquico do CC de acumulação
+12702402;Ucsp - Polo De Porto Côvo;12702;Ascendente por código hierárquico do CC de acumulação
+12702501;Ucsp - Polo De Odemira;12702;Ascendente por código hierárquico do CC de acumulação
+12702502;Ucsp -Polo De Vila Nova Milfontes;12702;Ascendente por código hierárquico do CC de acumulação
+12702503;Ucsp - Polo De S.Teotónio;12702;Ascendente por código hierárquico do CC de acumulação
+12702504;Ucsp - Polo De Santa Clara A Velha;12702;Ascendente por código hierárquico do CC de acumulação
+12702505;Ucsp - Polo De Sabóia;12702;Ascendente por código hierárquico do CC de acumulação
+12702506;Ucsp - Polo De S.Luis;12702;Ascendente por código hierárquico do CC de acumulação
+12702507;Ucsp - Polo De Reliquias;12702;Ascendente por código hierárquico do CC de acumulação
+12702508;Ucsp - Polo De Bicos (Extinto);12702;Ascendente por código hierárquico do CC de acumulação
+12702509;Ucsp - Polo De Vale Santiago;12702;Ascendente por código hierárquico do CC de acumulação
+12702510;Ucsp - Polo De Fornalhas (Extinto);12702;Ascendente por código hierárquico do CC de acumulação
+12702511;Ucsp - Polo De Colos;12702;Ascendente por código hierárquico do CC de acumulação
+12702512;Ucsp - Polo De Almograve;12702;Ascendente por código hierárquico do CC de acumulação
+12702513;Ucsp - Polo De S. Martinho Amoreiras;12702;Ascendente por código hierárquico do CC de acumulação
+12702599;Ucsp - Outros Polos;12702;Ascendente por código hierárquico do CC de acumulação
+12702601;UCSP Polo De Santo André;12702;Ascendente por código hierárquico do CC de acumulação
+127030101;Ucc - Alcácer Do Sal;1270301;CC de acumulação do mapa oficial
+127030102;Ucc - Serra Mar;1270301;CC de acumulação do mapa oficial
+127030103;Unidade Móvel De Saúde Grandola;1270301;CC de acumulação do mapa oficial
+127030104;Ucc - Santiago Cacém;1270301;CC de acumulação do mapa oficial
+127030105;Unidade Móvel De Saúde Santiago;1270301;CC de acumulação do mapa oficial
+127030106;Ucc - Sines;1270301;CC de acumulação do mapa oficial
+127030107;Ucc - Saúde Na Mira;1270301;CC de acumulação do mapa oficial
+127030108;Unidade Móvel De Saúde Odemira;1270301;CC de acumulação do mapa oficial
+127030201;Ecci - Alcacer Do Sal;;Sem produção associada
+127030202;Ecci - Grandola;;Sem produção associada
+127030203;Ecci - Santiago Cacem;;Sem produção associada
+127030204;Ecci - Sines;;Sem produção associada
+127030205;Ecci - Odemira;;Sem produção associada
+1270303;Unidade Móvel De Intervenção;;Sem produção associada
+1270304;Centro De Aconselhamento E Despistagem;;Sem produção associada
+127041;AC Serviço de Atendimento Permanente (SAP);;Sem produção associada
+127042;AC Serviço de Atendimento Complementar (SAC);;Sem produção associada
+127043;AC Centro de Atendimento Clínico (CAC);;Sem produção associada
+1270501;Cdp-Crc Alentejo Litoral - Polo Alcacer Do Sal;12705;CC de acumulação do mapa oficial
+1270502;Cdp-Crc Alentejo Litoral - Polo Grândola;12705;CC de acumulação do mapa oficial
+1270503;Cdp-Crc Alentejo Litoral - Polo Santiago Do Cacem;12705;CC de acumulação do mapa oficial
+1270504;Cdp-Crc Alentejo Litoral - Sines (Sede);12705;CC de acumulação do mapa oficial
+1270505;Cdp-Crc Alentejo Litoral - Polo Odemira;12705;CC de acumulação do mapa oficial
+1270601;Eli - Alcacer Do Sal;12706;CC de acumulação do mapa oficial
+1270602;Eli - Grandola;12706;CC de acumulação do mapa oficial
+1270603;Eli - Santiago Do Cacem;12706;CC de acumulação do mapa oficial
+1270604;Eli - Sines;12706;CC de acumulação do mapa oficial
+1270605;Eli - Odemira;12706;CC de acumulação do mapa oficial
+1270701;Ecl Alentejo Litoral - Alcácer Do Sal;12707;CC de acumulação do mapa oficial
+1270702;Ecl Alentejo Litoral - Santiago Do Cacém;12707;CC de acumulação do mapa oficial
+1270703;Ecl Alentejo Litoral - Odemira;12707;CC de acumulação do mapa oficial
+1270709;ECL Alentejo Litoral - Geral;12707;CC de acumulação do mapa oficial
+12708;Juntas Médicas De Avaliação De Incapacidade (Jmai);12708;Correspondência direta
+1270901;Alcacer Do Sal;12709;CC de acumulação do mapa oficial
+1270902;Grandola;12709;CC de acumulação do mapa oficial
+1270903;Santiago Do Cacem;12709;CC de acumulação do mapa oficial
+1270904;Sines;12709;CC de acumulação do mapa oficial
+1270905;Odemira;12709;CC de acumulação do mapa oficial
+12710;Equipa Comunitária De Suporte Em Cuidados Paliativos;;Sem produção associada
+12711;Teleconsultas - Saúde 24;;Sem produção associada
+12797;CSP Utentes a aguardar Equipa de Saúde Familiar;;Sem produção associada
+12798;Custos Comuns/Gerais;;Sem produção associada
+12799;Outras Valências;;Sem produção associada
+12801;Saúde Pública Geral;128;Ascendente por código hierárquico do CC de acumulação
+12802;Usp - Polo De Alcácer Do Sal;128;Ascendente por código hierárquico do CC de acumulação
+12803;Usp - Polo De Grândola;128;Ascendente por código hierárquico do CC de acumulação
+12804;Usp - Polo De Santiago Do Cacém;128;Ascendente por código hierárquico do CC de acumulação
+12805;Usp - Polo De Sines;128;Ascendente por código hierárquico do CC de acumulação
+12806;Usp - Polo De Odemira;128;Ascendente por código hierárquico do CC de acumulação
+12807;Sanidade Maritima;128;Ascendente por código hierárquico do CC de acumulação
+12808;Vacinação Comunidade;128;Ascendente por código hierárquico do CC de acumulação
+12809;Outros;128;Ascendente por código hierárquico do CC de acumulação
+201;Anatomia Patológica;;Sem produção associada
+202;Patologia Clínica;;Sem produção associada
+20301;Imagiologia - Hospital;;Sem produção associada
+20302;Rx - Alcácer Do Sal;;Sem produção associada
+20303;Rx - Odemira;;Sem produção associada
+20401;Fisiatria;;Sem produção associada
+20402;Mfr - Hospital;;Sem produção associada
+20403;Mfr - Cs Alcácer Do Sal;;Sem produção associada
+20404;Mfr - Cd Grândola;;Sem produção associada
+20405;Mfr - Cd Santiago Do Cacém;;Sem produção associada
+20406;Mfr - Cd Sines;;Sem produção associada
+20407;Mfr - Cd Odemira;;Sem produção associada
+205;Imuno - Hemoterapia;;Sem produção associada
+208;Medicina Nuclear;;Sem produção associada
+209;Radioncologia;;Sem produção associada
+210;Técnicas De Cardiologia;;Sem produção associada
+211;Técnicas De Gastrenterologia;;Sem produção associada
+212;Técnicas De Neurofisiologia, Neurologia E Outros Procedimentos De Disciplinas Neurológicas;;Sem produção associada
+213;Técnicas De Oftalmologia;;Sem produção associada
+214;Técnicas De Otorrinolaringologia;;Sem produção associada
+215;Técnicas De Pneumologia;;Sem produção associada
+216;Técnicas De Urologia;;Sem produção associada
+220;Técnicas De Ginecologia;;Sem produção associada
+221;Técnicas De Dermatologia;;Sem produção associada
+222;Técnicas De Nefrologia;;Sem produção associada
+223;Crioconservação E Cultura De Tecidos;;Sem produção associada
+224;Desenvolvimento;;Sem produção associada
+225;Medicina Da Reprodução;;Sem produção associada
+226;Técnicas De Cirurgia Maxilo-Facial;;Sem produção associada
+227;Técnicas De Estomatologia;;Sem produção associada
+228;Técnicas De Genética;;Sem produção associada
+229;Técnicas De Imunoalergologia;;Sem produção associada
+230;Técnicas De Obstetrícia;;Sem produção associada
+231;Técnicas De Ortopedia;;Sem produção associada
+232;Técnicas De Psiquiatria;;Sem produção associada
+233;Técnicas De Oncologia Médica;;Sem produção associada
+234;Técnicas De Reumatologia;;Sem produção associada
+235;Técnicas De Endocrinologia;;Sem produção associada
+236;Técnicas De Pediatria;;Sem produção associada
+237;Técnicas De Angiologia E Cirurgia Vascular;;Sem produção associada
+238;Técnicas De Transplantaçãode Tecidos E Órgãos;;Sem produção associada
+239;Custos Comuns/Gerais;;Sem produção associada
+24001;Anestesiologia;;Sem produção associada
+24002;Terapia Da Dor Crónica;;Sem produção associada
+25001;Custos Comuns/Gerais;;Sem produção associada
+25002;Cirurgia Geral;;Sem produção associada
+25003;Cardiologia;;Sem produção associada
+25004;Ginecologia;;Sem produção associada
+25005;Obstetrícia;;Sem produção associada
+25006;Ginecologia-Obstetrícia;;Sem produção associada
+25007;Oftalmologia;;Sem produção associada
+2500801;Ortopedia;;Sem produção associada
+2500802;Cri Ortopedia;;Sem produção associada
+25009;Urologia;;Sem produção associada
+25010;Otorrinolaringologia;;Sem produção associada
+25011;Angiologia E Cirurgia Vascular;;Sem produção associada
+25012;Neurocirurgia;;Sem produção associada
+25013;Estomatologia;;Sem produção associada
+25014;Cirurgia Maxilo-Facial;;Sem produção associada
+25015;Cirurgia Plástica Reconstrutiva E Estética;;Sem produção associada
+25016;Cirurgia Pediátrica;;Sem produção associada
+25017;Pneumologia;;Sem produção associada
+25018;Transplantes;;Sem produção associada
+25019;Salas De Urgências;;Sem produção associada
+25020;Cirurgia Cárdio - Torácica;;Sem produção associada
+25021;Cirurgia Cardíaca;;Sem produção associada
+25022;Cirurgia Torácica;;Sem produção associada
+25023;Cirurgia De Cabeça E Pescoço;;Sem produção associada
+29901;Cirurgia Experimental;;Sem produção associada
+29902;Dietética / Nutrição;;Sem produção associada
+29903;Esterilização;;Sem produção associada
+29904;Fisica Médica;;Sem produção associada
+299051;Perícias Médico-Legais E Outras Perícias;;Sem produção associada
+299052;Relatórios Periciais;;Sem produção associada
+29906;Psicologia;;Sem produção associada
+29907;Serviço Social E Gabinete Do Cidadão;;Sem produção associada
+29908;Serviços Farmacêuticos;;Sem produção associada
+2990901;Equipa Comunitária Suporte C. Paliativos;;Sem produção associada
+2990902;Equipa Intrahospitalar Suporte C. Paliat;;Sem produção associada
+29910;Unidade De Cuidados Intermédios;;Sem produção associada
+2991101;Saúde Ocupacional;;Sem produção associada
+2991102;Higiene E Segurança No Trabalho;;Sem produção associada
+29912;Controlo De Infeção;;Sem produção associada
+299991;Equipa Gestão Altas - EGA;;Sem produção associada
+301;Instalações E Equipamentos;;Sem produção associada
+302;Gestão Hoteleira- Custos Gerais;;Sem produção associada
+303;Alimentação E Dietética;;Sem produção associada
+304;Tratamento De Roupa;;Sem produção associada
+305;Higiene E Limpeza;;Sem produção associada
+306;Segurança E Apoio;;Sem produção associada
+307;Barbearia;;Sem produção associada
+308;Lar;;Sem produção associada
+309;Parques E Jardins;;Sem produção associada
+310;Serviço De Viaturas;;Sem produção associada
+311;Resíduos;;Sem produção associada
+312;Assistência Espiritual E Religiosa;;Sem produção associada
+4101;Conselho Da Administração;;Sem produção associada
+4102;Gabinete De Informação E Apoio À Gestão;;Sem produção associada
+4103;Unidade De Apoio À Gestão;;Sem produção associada
+4104;Conselho Clínico;;Sem produção associada
+4105;Conselho Consultivo;;Sem produção associada
+4106;Comissões Técnicas;;Sem produção associada
+4107;Auditoria E Controle Interno;;Sem produção associada
+4108;Comunicação E Marketing;;Sem produção associada
+4109;Gabinete De Estudo E Planeamento;;Sem produção associada
+4110;Secretariado Do Conselho Administração;;Sem produção associada
+4111;Gabinete Apoio Ao Conselho Administração;;Sem produção associada
+4112;Departamento Csp;;Sem produção associada
+4201;Gestão Financeira;;Sem produção associada
+4202;Tesouraria;;Sem produção associada
+4203;Gestão De Aprovisionamento E Logistica;;Sem produção associada
+4204;Armazém;;Sem produção associada
+4205;Serviço De Gestão Recursos Humanos;;Sem produção associada
+4206;Expediente;;Sem produção associada
+4207;Informática E Tecnologias De Informação;;Sem produção associada
+420801;Arquivo Clínico;;Sem produção associada
+420802;Gestão De Mcdts;;Sem produção associada
+420803;Transporte Doentes;;Sem produção associada
+420804;Auditoria E Codificação Clínica;;Sem produção associada
+420805;ULGA;;Sem produção associada
+420806;Gestão De Doentes - Custos Gerais;;Sem produção associada
+420901;Formação;;Sem produção associada
+420902;Biblioteca E Documentação;;Sem produção associada
+4210;Administração Geral;;Sem produção associada
+4211;Serviços Jurídicos/Contencioso;;Sem produção associada
+4212;Comunicação / Central Telefónica;;Sem produção associada
+4213;Gabinete Da Qualidade;;Sem produção associada
+43;Notas De Crédito De Produtos Farmacêuticos Sem Afetação;;Sem produção associada
+44;Notas De Crédito De Material De Consumo Clínico Sem Afetação;;Sem produção associada
+9101;Comparticipação Produtos Vendidos Farmácia Comunitáriaaria Fora SNS;;Sem produção associada
+9102;Hemodiálise;;Sem produção associada
+9190;Prescrição Hospitalar a aguardar imputação;;Sem produção associada
+9193;Uls Diferente Da Uls Do Local De Prescrição;;Sem produção associada
+919401;Posto De Empresa;;Sem produção associada
+919402;Ipss;;Sem produção associada
+919403;Serviços Prisionais;;Sem produção associada
+9197;Mcdt - Despesa Não Conferida;;Sem produção associada
+9198;Produtos Vendidos Em Farmácias - Despesa Não Conferida;;Sem produção associada
+919901;Ajudas Técnicas;;Sem produção associada
+919902;Medicamentos de Distribuição Gratuita;;Sem produção associada
+919903;Faturas em conferência;;Sem produção associada
+919904;Protocolos ICAD;;Sem produção associada
+919909;Outros Custos Não Imputáveis;;Sem produção associada
+9201;Ensino;;Sem produção associada
+9202;Investigação;;Sem produção associada
