@@ -31,7 +31,13 @@ def apply_css():
         """
         <style>
         .stApp {background:linear-gradient(145deg,#f5f8fc,#edf3f8);color:#19334e;}
-        .block-container {padding-top:1.3rem;padding-bottom:3rem;}
+        /* A barra fixa do Streamlit ocupa cerca de 3.75rem.
+           A regra partilhada prevalece sobre os estilos locais dos módulos. */
+        .stMain .block-container,
+        [data-testid="stAppViewContainer"] .block-container {
+            padding-top:6rem !important;
+            padding-bottom:3rem;
+        }
         h1,h2,h3 {color:#173550;}
         [data-testid="stMetric"] {background:white;border:1px solid #dbe6ef;border-radius:16px;padding:16px;}
         .ulsla-hero {
